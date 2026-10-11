@@ -1,10 +1,10 @@
-# 中国地图卡片（China Map Card）
+# 中国地图仪表盘（China Map Dashboard）
 
-[![HACS](https://img.shields.io/badge/HACS-自定义集成-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.2.4-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![HACS](https://img.shields.io/badge/HACS-前端资源-41BDF5.svg)](https://github.com/hacs/integration)
+[![版本](https://img.shields.io/badge/版本-v0.2.5-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
-Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。
+Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后通过 UI 创建仪表盘、添加中国地图卡片并可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
 
 ## 为什么需要它
 
@@ -27,77 +27,53 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
 - **国内底图**：高德（默认）/ 腾讯 / 天地图 / OSM，样式含标准、浅色、卫星、深色
 - **坐标自动转换**：高德/腾讯（GCJ-02）自动把 WGS-84 实体坐标做火星坐标转换，位置不偏移；天地图/OSM 无需转换
 - **零外部依赖**：卡片为单文件自包含（已内置渲染引擎），国内无需任何 CDN
-- **安装即自动注册仪表盘资源**：集成安装后自动把卡片 JS（`/ha-map-cn/map-cn.js`）注入仪表盘，**无需手动添加资源**，刷新即用
-- **全程 UI 配置**：添加卡片后所有选项（实体/颜色/底图/样式/轨迹/聚合/比例尺等）都在界面里可视化设置，**不需要写任何 YAML**
+- **纯前端资源**：不是集成，不占用集成列表、不需要安装到 custom_components
+- **全程 UI 配置**：添加卡片后所有选项（实体/颜色/底图/样式/轨迹/聚合/比例尺等）都在界面里可视化设置
 
 ## 快速开始（纯 UI，不需要写代码）
 
-1. **安装**：HACS → 右上角 ⋮ → 自定义存储库 → 添加 `https://github.com/RockJesus/ha-map-cn`（类别选 **集成**）→ 下载 → **重启 Home Assistant**
-2. **刷新浏览器**（Ctrl+F5）——卡片资源已自动注册，无需任何手动配置
-3. **创建仪表盘**：设置 → 仪表盘 → **添加仪表盘** → 输入名称（如"地图"）→ 创建（任意类型均可）
-4. **添加卡片**：打开新仪表盘 → 右上角「编辑」→ **添加卡片** → 搜索 **地图** → 选择 **中国地图卡片**
-5. **UI 可视化设置**（全程界面操作，无代码）：
+1. **安装卡片 JS**（二选一）：
+   - **HACS**：HACS → ⋮ → 自定义存储库 → 添加 `https://github.com/RockJesus/ha-map-cn`，**类别选「前端」** → 下载
+   - **手动**：把 `map-cn.js` 放到 `/config/www/ha-map-cn/`（Releases 下载即得单文件 js）
+2. **注册资源（UI，一次性）**：设置 → 仪表盘 → ⋮ → **资源** → 添加资源：
+   - HACS 装：URL `/hacommunity/ha-map-cn/map-cn.js`
+   - 手动装：URL `/local/ha-map-cn/map-cn.js`
+   - 类型都选 **JavaScript 模块**
+3. **刷新浏览器**（Ctrl+F5）
+4. **创建仪表盘（UI）**：设置 → 仪表盘 → **添加仪表盘** → 输入名称（如"中国地图"）→ 创建
+5. **添加卡片（UI）**：打开仪表盘 → 右上角「编辑」→ **添加卡片** → 搜索 **地图** → 选择 **中国地图卡片**
+6. **可视化设置（UI）**：
    - **底图**：供应商下拉（高德/腾讯/天地图/OSM）+ 样式下拉（标准/浅色/卫星/深色）
    - **实体**：逐行「添加实体」选择器选择 person / device_tracker / zone，每行可设颜色、标签模式
    - **其他**：标题、默认缩放、轨迹小时数、显示全部实体、自动视野、区域半径、聚合、比例尺、深浅色 等开关/输入框
-6. **完成**：保存即可看到中国版地图；仪表盘以整页显示（Panel）时，地图顶部自动出现 **人 / 设备 / 区域** 切换
+7. **完成**：保存即看到中国版地图；仪表盘整页显示（Panel）时，地图顶部自动出现 **人 / 设备 / 区域** 切换
 
-> 整个流程**不需要编辑任何 YAML / configuration.yaml 文件**。如需更多设置项，请见下方「全部配置项」。
+> 整个流程**不需要编辑任何 YAML / configuration.yaml 文件**。如需更多设置项，见下方「全部配置项」。
 
-## 安装
+## 仪表盘示例（可选参考）
 
-> 安装后**自动注册仪表盘资源**（JS 由集成提供，URL 固定为 `/ha-map-cn/map-cn.js`），无需手动添加资源。
-
-### HACS（推荐）
-
-1. HACS → 右上角 ⋮ → **自定义存储库** → 添加 `https://github.com/RockJesus/ha-map-cn`，类别选 **集成**
-2. 下载并**重启 Home Assistant**
-3. 刷新浏览器（Ctrl+F5）——卡片资源已自动注册，按上面「快速开始」添加卡片即可
-
-### 手动安装
-
-1. 从 [Releases](https://github.com/RockJesus/ha-map-cn/releases) 下载 `map-cn.js`（v0.2.1 起发布物为单文件 js）
-2. 把 `map-cn.js` 放到 HA 配置目录的 `www/ha-map-cn/` 下（即 `/config/www/ha-map-cn/map-cn.js`）
-3. **设置 → 仪表盘 → 右上角 ⋮ → 资源** → 添加资源：
-   - URL：`/local/ha-map-cn/map-cn.js`
-   - 类型：**JavaScript 模块**
-4. 刷新浏览器（Ctrl+F5）
-
-## 使用
-
-添加卡片时选择**中国地图卡片**，所有设置项均为可视化控件（实体选择器、下拉、开关、输入框），保存即生效。
-
-<details>
-<summary>（可选）直接编辑 YAML 的高级用法</summary>
+仓库内置 `dashboards/map-cn.yaml`（Panel 视图 + 地图卡片 + 概述 Tab），作为 YAML 方式的可选参考（不想写代码就按上面「快速开始」在 UI 里创建）：
 
 ```yaml
-type: map-cn
-provider: gaode          # gaode | tencent | tianditu | osm，默认 gaode
-style: normal            # normal | light | satellite | dark，默认 normal
-tianditu_key: ""         # 仅 provider: tianditu 需要（www.tianditu.gov.cn 免费申请）
-auto_fit: true           # 自动缩放到所有实体
-entities:
-  - person.zhang_san
-  - entity: person.li_si
-    color: "#ff0000"
-hours_to_show: 24        # 显示 24 小时历史轨迹
-theme_mode: auto         # auto | light | dark
-cluster: true            # 标记聚合
-scale_ruler: true
-title: 家人位置
+views:
+  - title: 地图
+    path: map
+    type: panel
+    cards:
+      - type: map-cn
+        provider: gaode        # gaode | tencent | tianditu | osm
+        style: normal          # normal | light | satellite | dark
+        auto_fit: true
+        fit_zones: true
+        show_zone_radius: true
+        hours_to_show: 24
+        theme_mode: auto
+        cluster: true
+        scale_ruler: true
+        show_all: true
 ```
 
-</details>
-
-## （可选）YAML 仪表盘模板
-
-> 不想写代码就用「快速开始」的 UI 方式创建仪表盘，**无需本小节**。本小节仅适合偏好 YAML 的用户。
-
-仓库内置 `dashboards/map-cn.yaml`（Panel 视图 + 地图卡片，卡片顶部带 人/设备/区域 Tab），按 HA 官方仪表盘规范使用：
-
-1. 先安装本卡片（HACS 集成 或 手动资源）
-2. 把 `dashboards/map-cn.yaml` 复制到 `/config/map-cn.yaml`
-3. 在 `configuration.yaml` 追加：
+YAML 模式引用方式（`configuration.yaml`）：
 
 ```yaml
 lovelace:
@@ -111,10 +87,7 @@ lovelace:
       filename: map-cn.yaml
 ```
 
-4. 重启 Home Assistant（或「仪表盘 → ⋮ → 重新加载资源」）
-5. 侧边栏出现**中国地图**仪表盘，地图顶部可直接切换 人/设备/区域
-
-### 全部配置项
+## 全部配置项
 
 | 配置项 | 类型 | 默认 | 说明 |
 |---|---|---|---|
@@ -152,7 +125,7 @@ lovelace:
 ## 常见问题
 
 **地图空白？**
-- 确认已重启 HA 并硬刷新浏览器（Ctrl+F5）
+- 确认已注册资源并硬刷新浏览器（Ctrl+F5）
 - 确认网络可访问 `webrd01.is.autonavi.com`（高德）/ `rt1.map.gtimg.com`（腾讯）/ `t0.tianditu.gov.cn`（天地图）
 - 天地图未填 `tianditu_key` 时卡片会显示错误提示
 
@@ -170,7 +143,12 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.2.4（最新）</summary>
+<summary>v0.2.5（最新）</summary>
+
+- 形态回归：纯**前端资源（仪表盘）**形态——移除 custom_components 集成，HACS 类别改回「前端」；安装 = HACS 前端类别（或手动放 js）→ UI 添加资源 → UI 创建仪表盘 → UI 配置卡片，全程无需写代码
+</details>
+<details>
+<summary>v0.2.4</summary>
 
 - 文档重排：新增「快速开始（纯 UI）」——全程界面操作（仪表盘 UI 创建 + 卡片 UI 可视化设置），无需写任何 YAML；YAML 方式降级为可选
 </details>
