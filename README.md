@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
-[![HACS](https://img.shields.io/badge/HACS-前端资源-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.2.5-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
+[![版本](https://img.shields.io/badge/版本-v0.2.6-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后通过 UI 创建仪表盘、添加中国地图卡片并可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -33,7 +33,7 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
 ## 快速开始（纯 UI，不需要写代码）
 
 1. **安装卡片 JS**（二选一）：
-   - **HACS**：HACS → ⋮ → 自定义存储库 → 添加 `https://github.com/RockJesus/ha-map-cn`，**类别选「前端」** → 下载
+   - **HACS**：HACS → ⋮ → 自定义存储库 → 添加 `https://github.com/RockJesus/ha-map-cn`，**类别选「仪表盘」（Dashboard）** → 下载。HACS 2.x 界面里该类别名就叫 **Dashboard（仪表盘）**（旧名"前端" / Plugin，装的就是仪表盘卡片资源，不需要重启）
    - **手动**：把 `map-cn.js` 放到 `/config/www/ha-map-cn/`（Releases 下载即得单文件 js）
 2. **注册资源（UI，一次性）**：设置 → 仪表盘 → ⋮ → **资源** → 添加资源：
    - HACS 装：URL `/hacommunity/ha-map-cn/map-cn.js`
@@ -143,7 +143,12 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.2.5（最新）</summary>
+<summary>v0.2.6（最新）</summary>
+
+- 安装说明修正：HACS 2.x 中卡片资源类别名为 **「仪表盘」（Dashboard）**（旧名 前端/Plugin），安装时选该类别
+</details>
+<details>
+<summary>v0.2.5</summary>
 
 - 形态回归：纯**前端资源（仪表盘）**形态——移除 custom_components 集成，HACS 类别改回「前端」；安装 = HACS 前端类别（或手动放 js）→ UI 添加资源 → UI 创建仪表盘 → UI 配置卡片，全程无需写代码
 </details>
