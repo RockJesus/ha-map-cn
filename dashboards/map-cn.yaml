@@ -1,0 +1,53 @@
+# 中国版地图仪表盘（Map CN Dashboard）
+#
+# 功能与官方 Map 仪表盘一致：Panel 视图 + 中国版地图卡片，
+# 卡片顶部自动提供 人 / 设备 / 区域 三个概述 Tab（与官方 People/Devices/Zones 一致）。
+#
+# 安装（详见 README）：
+#   1) 先安装 map_cn 集成（HACS 集成类别 → 重启），卡片资源 /ha-map-cn/map-cn.js 自动注册
+#   2) 本文件放入 /config/map-cn.yaml
+#   3) configuration.yaml 中追加：
+#        lovelace:
+#          mode: storage
+#          dashboards:
+#            map-cn:
+#              mode: yaml
+#              title: 中国地图
+#              icon: mdi:map
+#              show_in_sidebar: true
+#              filename: map-cn.yaml
+#   4) 重启 Home Assistant（或重载 Lovelace 资源）
+#   5) 侧边栏出现「中国地图」仪表盘即可使用
+
+views:
+  # 主地图视图（Panel 布局）：顶部自动显示 人/设备/区域 Tab，与官方 Map 仪表盘一致
+  - title: 地图
+    path: map
+    type: panel
+    cards:
+      - type: map-cn
+        provider: gaode            # gaode | tencent | tianditu | osm（中国内地可达底图）
+        style: normal              # normal | light | satellite | dark
+        auto_fit: true             # 自动缩放至所有实体
+        fit_zones: true            # 视野包含区域
+        show_zone_radius: true     # 显示区域半径圈
+        hours_to_show: 24          # 最近 24 小时历史轨迹
+        theme_mode: auto           # auto | light | dark（深色自动滤镜）
+        cluster: true              # 标记聚合
+        scale_ruler: true          # 比例尺
+        show_all: true             # 显示全部 person / device_tracker / geo_location / zone
+
+  # 区域视图（Panel 布局）：单独查看所有区域与半径
+  - title: 区域
+    path: zones
+    type: panel
+    cards:
+      - type: map-cn
+        provider: gaode
+        style: normal
+        auto_fit: true
+        fit_zones: true
+        show_zone_radius: true
+        theme_mode: auto
+        entities:
+          - zone.home

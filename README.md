@@ -1,7 +1,7 @@
 # 中国地图卡片（China Map Card）
 
 [![HACS](https://img.shields.io/badge/HACS-自定义集成-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.2.2-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.2.3-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。
@@ -27,6 +27,8 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
 - **坐标自动转换**：高德/腾讯（GCJ-02）自动把 WGS-84 实体坐标做火星坐标转换，位置不偏移；天地图/OSM 无需转换
 - **零外部依赖**：卡片为单文件自包含（已内置渲染引擎），国内无需任何 CDN
 - **安装即自动注册仪表盘资源**：集成安装后自动把卡片 JS（`/ha-map-cn/map-cn.js`）注入仪表盘，**无需手动添加资源**，刷新即用
+- **概述 Tab（与官方 Map 仪表盘一致）**：Panel 布局下卡片顶部自动提供 **人 / 设备 / 区域** 三个切换 Tab（官方 People/Devices/Zones），按类过滤实体
+- **中国版地图仪表盘模板**：内置 `dashboards/map-cn.yaml`，按 HA 官方仪表盘规范一键创建「中国地图」仪表盘
 
 ## 安装
 
@@ -46,6 +48,31 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
    - URL：`/local/ha-map-cn/map-cn.js`
    - 类型：**JavaScript 模块**
 4. 刷新浏览器（Ctrl+F5）
+
+## 仪表盘模板（中国地图，与官方 Map 仪表盘一致）
+
+仓库内置 `dashboards/map-cn.yaml`（Panel 视图 + 地图卡片，卡片顶部带 人/设备/区域 Tab），按 HA 官方仪表盘规范使用：
+
+1. 先按上面任一种方式安装本卡片（HACS 集成 或 手动资源）
+2. 把 `dashboards/map-cn.yaml` 复制到 `/config/map-cn.yaml`
+3. 在 `configuration.yaml` 追加：
+
+```yaml
+lovelace:
+  mode: storage
+  dashboards:
+    map-cn:
+      mode: yaml
+      title: 中国地图
+      icon: mdi:map
+      show_in_sidebar: true
+      filename: map-cn.yaml
+```
+
+4. 重启 Home Assistant（或「仪表盘 → ⋮ → 重新加载资源」）
+5. 侧边栏出现**中国地图**仪表盘，地图顶部可直接切换 人/设备/区域
+
+> 也可在 HA「设置 → 仪表盘 → 添加仪表盘」从模板创建后自行添加本卡片。
 
 ## 使用
 
@@ -124,7 +151,13 @@ title: 家人位置
 ## 版本历史
 
 <details>
-<summary>v0.2.2（最新）</summary>
+<summary>v0.2.3（最新）</summary>
+
+- 概述 Tab：卡片实现官方 People/Devices/Zones 一致的 **人 / 设备 / 区域** 切换（Panel 布局自动显示、按类过滤实体）
+- 仪表盘模板：新增 `dashboards/map-cn.yaml`（按 HA 官方仪表盘规范，Panel 视图 + 地图卡片 + 概述 Tab）
+</details>
+<details>
+<summary>v0.2.2</summary>
 
 - 形态回归：轻量集成（custom_components/map_cn）——安装即**自动注册仪表盘资源**（`/ha-map-cn/map-cn.js`），无需手动添加资源；JS 目录/URL 统一使用 `ha-map-cn`
 </details>

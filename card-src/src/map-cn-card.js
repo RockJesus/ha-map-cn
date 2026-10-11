@@ -98,6 +98,7 @@ class MapCnCard extends LitElement {
     this._mapLoaded = false;
     this._subscribed = false;
     this._historyUnsub = undefined;
+    this._overviewTab = "people";
   }
 
   setConfig(config) {
@@ -219,6 +220,24 @@ class MapCnCard extends LitElement {
             "--map-cn-dark": isDark ? "1" : "0",
           })}
         >
+          ${
+            panel && !this.preview
+              ? html`<div id="overview-tabs">
+                  <button
+                    class="tab ${this._overviewTab === "people" ? "active" : ""}"
+                    @click=${() => this._setTab("people")}
+                  >人</button>
+                  <button
+                    class="tab ${this._overviewTab === "devices" ? "active" : ""}"
+                    @click=${() => this._setTab("devices")}
+                  >设备</button>
+                  <button
+                    class="tab ${this._overviewTab === "zones" ? "active" : ""}"
+                    @click=${() => this._setTab("zones")}
+                  >区域</button>
+                </div>`
+              : nothing
+          }
           <div id="map" class="map-cn-map"></div>
           <div id="buttons" class=${rtl ? "rtl" : ""}>
             ${
@@ -494,6 +513,31 @@ class MapCnCard extends LitElement {
     return [...confEntities, ...this._getSourceEntities()];
   }
 
+  // 与官方一致：panel 布局下按概述 Tab 过滤实体
+  // （person→人、device_tracker→设备，zone/geo_location 任何 Tab 都显示）
+  _displayEntities() {
+    const entities = this._mapEntities();
+    if (this.layout !== "panel" || this.preview) {
+      return entities;
+    }
+    const tab = this._overviewTab;
+    return entities.filter((e) => {
+      const domain = computeDomain(e.entity_id);
+      if (domain === "person") {
+        return tab === "people";
+      }
+      if (domain === "device_tracker") {
+        return tab === "devices";
+      }
+      return true;
+    });
+  }
+
+  _setTab(tab) {
+    this._overviewTab = tab;
+    this._updateAll();
+  }
+
   _meetsConditions(entityId) {
     const conditions = this._config?.conditions;
     if (!conditions) {
@@ -575,7 +619,7 @@ class MapCnCard extends LitElement {
 
   _reconcileMarkers() {
     const states = this.hass.states;
-    const entries = this._mapEntities().filter((e) =>
+    const entries = this._displayEntities().filter((e) =>
       this._meetsConditions(e.entity_id)
     );
     const drawn = new Set();
@@ -1214,6 +1258,35 @@ class MapCnCard extends LitElement {
     /* 深色模式：对瓦片画布做滤镜（HTML 标记不受影响） */
     .maplibregl-canvas {
       transition: filter 0.3s;
+    }
+    #overview-tabs {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      display: flex;
+      gap: 2px;
+      padding: 3px;
+      border-radius: 20px;
+      background: var(--ha-card-background, var(--card-background-color, #ffffff));
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    }
+    #overview-tabs button.tab {
+      border: none;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 0.9rem;
+      padding: 5px 14px;
+      border-radius: 16px;
+      cursor: pointer;
+      opacity: 0.75;
+    }
+    #overview-tabs button.tab.active {
+      background: var(--primary-color);
+      color: var(--text-primary-color, #ffffff);
+      opacity: 1;
     }
     #buttons {
       position: absolute;
