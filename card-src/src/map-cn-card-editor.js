@@ -1,4 +1,5 @@
-// map-cn-card-editor：中国地图卡片配置编辑器（复用 HA 全局组件）
+// map-cn-card-editor：中国地图卡片可视化配置编辑器
+// 实体用 ha-entity-picker 逐行选择（支持 color），全部选项均有 UI 控件
 import { LitElement, html, css, nothing } from "lit";
 
 const PROVIDERS = [
@@ -18,6 +19,7 @@ const THEME_MODES = [
   ["light", "浅色"],
   ["dark", "深色"],
 ];
+const ENTITY_DOMAINS = ["person", "device_tracker", "zone", "geo_location"];
 
 class MapCnCardEditor extends LitElement {
   static properties = {
@@ -41,19 +43,56 @@ class MapCnCardEditor extends LitElement {
     );
   }
 
-  _onEntitiesChange(ev) {
-    const lines = ev.target.value
-      .split("\n")
-      .map((l) => l.trim())
+  _entityRows() {
+    const entities = this._config?.entities || [];
+    return entities.map((e, i) => {
+      const row = typeof e === "string" ? { entity: e } : { ...e };
+      return { index: i, ...row };
+    });
+  }
+
+  _normalizeEntities(rows) {
+    return rows.map((r) => {
+      const { index, ...rest } = r;
+      const keys = Object.keys(rest).filter(
+        (k) => rest[k] !== undefined && rest[k] !== ""
+      );
+      return keys.length === 1 && keys[0] === "entity" ? rest.entity : rest;
+    });
+  }
+
+  _updateEntity(index, patch) {
+    const rows = this._entityRows();
+    rows[index] = { ...rows[index], ...patch };
+    this._update({ entities: this._normalizeEntities(rows) });
+  }
+
+  _removeEntity(index) {
+    const rows = this._entityRows().filter((_, i) => i !== index);
+    this._update({ entities: this._normalizeEntities(rows) });
+  }
+
+  _addEntity() {
+    this._update({
+      entities: [...(this._config?.entities || []), { entity: "" }],
+    });
+  }
+
+  _onSourcesChange(ev) {
+    const sources = ev.target.value
+      .split(",")
+      .map((s) => s.trim())
       .filter(Boolean);
-    this._update({ entities: lines });
+    this._update({ geo_location_sources: sources });
   }
 
   render() {
     const c = this._config || {};
-    const entitiesText = (c.entities || [])
-      .map((e) => (typeof e === "string" ? e : e.entity))
-      .join("\n");
+    const rows = this._entityRows();
+    const showAll = !!c.show_all;
+    const sourcesValue = (c.geo_location_sources || [])
+      .map((s) => (typeof s === "string" ? s : s.source))
+      .join(", ");
     return html`
       <div class="editor">
         <div class="row">
@@ -102,12 +141,12 @@ class MapCnCardEditor extends LitElement {
           .value=${c.title || ""}
           @change=${(ev) => this._update({ title: ev.target.value })}
         ></ha-textfield>
-        <ha-textfield
-          .label=${"宽高比（如 16/9，留空为 1:1）"}
-          .value=${c.aspect_ratio || ""}
-          @change=${(ev) => this._update({ aspect_ratio: ev.target.value })}
-        ></ha-textfield>
         <div class="row">
+          <ha-textfield
+            .label=${"宽高比（如 16/9，留空为 1:1）"}
+            .value=${c.aspect_ratio || ""}
+            @change=${(ev) => this._update({ aspect_ratio: ev.target.value })}
+          ></ha-textfield>
           <ha-textfield
             .label=${"默认缩放级别"}
             type="number"
@@ -116,28 +155,84 @@ class MapCnCardEditor extends LitElement {
               this._update({ default_zoom: Number(ev.target.value) })}
           ></ha-textfield>
           <ha-textfield
-            .label=${"轨迹显示小时数（0 关闭）"}
+            .label=${"轨迹小时数（0 关闭）"}
             type="number"
             .value=${String(c.hours_to_show ?? 0)}
             @change=${(ev) =>
               this._update({ hours_to_show: Number(ev.target.value) })}
           ></ha-textfield>
         </div>
-        <ha-expansion-panel .header=${"实体与高级选项"}>
+
+        <ha-expansion-panel .header=${"实体"}>
+          ${
+            rows.length
+              ? rows.map(
+                  (row) => html`
+                    <div class="entity-row">
+                      <ha-entity-picker
+                        .hass=${this.hass}
+                        .value=${row.entity}
+                        .includeDomains=${ENTITY_DOMAINS}
+                        .allowCustomEntity=${true}
+                        @change=${(ev) =>
+                          this._updateEntity(row.index, {
+                            entity: ev.target.value,
+                          })}
+                      ></ha-entity-picker>
+                      <ha-textfield
+                        class="color"
+                        .label=${"颜色"}
+                        .value=${row.color || ""}
+                        placeholder="#ff0000"
+                        @change=${(ev) =>
+                          this._updateEntity(row.index, {
+                            color: ev.target.value,
+                          })}
+                      ></ha-textfield>
+                      <ha-icon-button
+                        .label=${"删除实体"}
+                        @click=${() => this._removeEntity(row.index)}
+                        ><ha-icon icon="mdi:delete"></ha-icon
+                      ></ha-icon-button>
+                    </div>
+                  `
+                )
+              : html`<p class="hint">未添加实体</p>`
+          }
+          <ha-button .disabled=${showAll} @click=${this._addEntity}
+            >添加实体</ha-button
+          >
+          <ha-formfield .label=${"显示全部定位实体（不逐个选择）"}>
+            <ha-switch
+              .checked=${showAll}
+              @change=${(ev) => this._update({ show_all: ev.target.checked })}
+            ></ha-switch>
+          </ha-formfield>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel .header=${"geo_location 来源（逗号分隔）"}>
+          <ha-textfield
+            .label=${"来源列表，如 geolocation / owntracks"}
+            .value=${sourcesValue}
+            @change=${this._onSourcesChange}
+          ></ha-textfield>
+        </ha-expansion-panel>
+
+        <ha-expansion-panel .header=${"高级选项"}>
           <div class="row">
-            <ha-formfield .label=${"显示全部定位实体"}>
-              <ha-switch
-                .checked=${!!c.show_all}
-                @change=${(ev) => this._update({ show_all: ev.target.checked })}
-              ></ha-switch>
-            </ha-formfield>
             <ha-formfield .label=${"自动视野"}>
               <ha-switch
                 .checked=${!!c.auto_fit}
                 @change=${(ev) => this._update({ auto_fit: ev.target.checked })}
               ></ha-switch>
             </ha-formfield>
-            <ha-formfield .label=${"聚合标记"}>
+            <ha-formfield .label=${"视野含区域"}>
+              <ha-switch
+                .checked=${!!c.fit_zones}
+                @change=${(ev) => this._update({ fit_zones: ev.target.checked })}
+              ></ha-switch>
+            </ha-formfield>
+            <ha-formfield .label=${"标记聚合"}>
               <ha-switch
                 .checked=${c.cluster !== false}
                 @change=${(ev) => this._update({ cluster: ev.target.checked })}
@@ -145,7 +240,7 @@ class MapCnCardEditor extends LitElement {
             </ha-formfield>
           </div>
           <div class="row">
-            <ha-formfield .label=${"显示区域半径"}>
+            <ha-formfield .label=${"区域半径圈"}>
               <ha-switch
                 .checked=${c.show_zone_radius !== false}
                 @change=${(ev) =>
@@ -159,22 +254,13 @@ class MapCnCardEditor extends LitElement {
                   this._update({ scale_ruler: ev.target.checked })}
               ></ha-switch>
             </ha-formfield>
-            <ha-formfield .label=${"视野含区域"}>
+            <ha-formfield .label=${"强制深色"}>
               <ha-switch
-                .checked=${!!c.fit_zones}
-                @change=${(ev) => this._update({ fit_zones: ev.target.checked })}
+                .checked=${!!c.dark_mode}
+                @change=${(ev) => this._update({ dark_mode: ev.target.checked })}
               ></ha-switch>
             </ha-formfield>
           </div>
-          <p class="hint">
-            实体列表（每行一个 entity_id，如 person.zhang_san /
-            zone.home）
-          </p>
-          <ha-textarea
-            .label=${"实体"}
-            .value=${entitiesText}
-            @change=${this._onEntitiesChange}
-          ></ha-textarea>
         </ha-expansion-panel>
       </div>
     `;
@@ -192,6 +278,18 @@ class MapCnCardEditor extends LitElement {
       flex-wrap: wrap;
       gap: 8px;
       align-items: center;
+    }
+    .entity-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .entity-row ha-entity-picker {
+      flex: 1;
+    }
+    .entity-row .color {
+      width: 110px;
     }
     .hint {
       color: var(--secondary-text-color);

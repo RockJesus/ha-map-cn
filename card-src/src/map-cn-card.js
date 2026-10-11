@@ -22,6 +22,8 @@ import {
   checkConditionsMet,
   addEntityToCondition,
 } from "./conditions";
+// 编辑器静态引入：单文件产物方案下动态 import() 不会被 esbuild 内联（运行时 404）
+import "./map-cn-card-editor.js";
 
 const DEFAULT_ZOOM = 14;
 const DEFAULT_CENTER = [104.0, 35.0];
@@ -146,8 +148,8 @@ class MapCnCard extends LitElement {
     return 1 + Math.floor(ar / 25) || 3;
   }
 
-  static async getConfigElement() {
-    await import("./map-cn-card-editor.js");
+  static getConfigElement() {
+    // 编辑器已随主模块静态打包（见顶部 import）
     return document.createElement("map-cn-card-editor");
   }
 

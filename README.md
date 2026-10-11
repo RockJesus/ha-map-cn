@@ -1,7 +1,7 @@
 # 中国地图卡片（China Map Card）
 
 [![HACS](https://img.shields.io/badge/HACS-自定义集成-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.1.0-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.1.1-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。
@@ -118,7 +118,13 @@ title: 家人位置
 ## 版本历史
 
 <details>
-<summary>v0.1.0（最新）</summary>
+<summary>v0.1.1（最新）</summary>
+
+- UI 可视化编辑器：实体逐行选择（ha-entity-picker，支持自定义颜色）、底图/样式/主题/轨迹/聚合/比例尺等全部选项可视化配置
+- 修复：编辑器模块未随单文件产物内联（动态 import 在单文件方案下运行时 404）
+</details>
+<details>
+<summary>v0.1.0</summary>
 
 - 首个版本：中国版地图卡片，支持高德/腾讯/天地图/OSM 底图、官方地图卡片全部核心功能、WGS-84/GCJ-02 坐标自动转换
 </details>
