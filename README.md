@@ -1,7 +1,7 @@
 # 中国地图卡片（China Map Card）
 
-[![HACS](https://img.shields.io/badge/HACS-前端资源-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.2.1-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![HACS](https://img.shields.io/badge/HACS-自定义集成-41BDF5.svg)](https://github.com/hacs/integration)
+[![版本](https://img.shields.io/badge/版本-v0.2.2-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。
@@ -26,28 +26,24 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
 - **国内底图**：高德（默认）/ 腾讯 / 天地图 / OSM，样式含标准、浅色、卫星、深色
 - **坐标自动转换**：高德/腾讯（GCJ-02）自动把 WGS-84 实体坐标做火星坐标转换，位置不偏移；天地图/OSM 无需转换
 - **零外部依赖**：卡片为单文件自包含（已内置渲染引擎），国内无需任何 CDN
-- **纯前端资源**：不是集成，不占集成列表、**无需重启 HA**；作为仪表盘资源加载
+- **安装即自动注册仪表盘资源**：集成安装后自动把卡片 JS（`/ha-map-cn/map-cn.js`）注入仪表盘，**无需手动添加资源**，刷新即用
 
 ## 安装
 
-> 本卡片是**前端资源（Frontend plugin）**，不是集成：无需安装到 custom_components、无需重启 HA。装好后在仪表盘「添加卡片」里选择**中国地图卡片**即可（支持全程 UI 可视化配置）。
+> 安装后**自动注册仪表盘资源**（JS 由集成提供，URL 固定为 `/ha-map-cn/map-cn.js`），刷新浏览器即可在「添加卡片」中选择**中国地图卡片**，无需手动添加资源、全程 UI 可视化配置。
 
 ### HACS（推荐）
 
-1. HACS → 右上角 ⋮ → **自定义存储库** → 添加 `https://github.com/RockJesus/ha-map-cn`，类别选 **前端**
-2. 下载完成后，到 **设置 → 仪表盘 → 右上角 ⋮ → 资源** → 添加资源：
-   - URL：`/hacommunity/ha-map-cn/map-cn.js`
-   - 类型：**JavaScript 模块**
-3. 刷新浏览器（Ctrl+F5）
+1. HACS → 右上角 ⋮ → **自定义存储库** → 添加 `https://github.com/RockJesus/ha-map-cn`，类别选 **集成**
+2. 下载并**重启 Home Assistant**
+3. 刷新浏览器（Ctrl+F5）——卡片资源已自动注册，直接添加卡片即可
 
 ### 手动安装
 
-> v0.2.1 起发布物是**单个 `map-cn.js` 文件**（不再打包 zip），下载即得 js。
-
-1. 从 [Releases](https://github.com/RockJesus/ha-map-cn/releases) 下载 `map-cn.js`（或直接下载仓库根的 `map-cn.js`）
-2. 把 `map-cn.js` 放到 HA 配置目录的 `www/map-cn/` 下（即 `/config/www/map-cn/map-cn.js`）
+1. 从 [Releases](https://github.com/RockJesus/ha-map-cn/releases) 下载 `map-cn.js`（v0.2.1 起发布物为单文件 js）
+2. 把 `map-cn.js` 放到 HA 配置目录的 `www/ha-map-cn/` 下（即 `/config/www/ha-map-cn/map-cn.js`）
 3. **设置 → 仪表盘 → 右上角 ⋮ → 资源** → 添加资源：
-   - URL：`/local/map-cn/map-cn.js`
+   - URL：`/local/ha-map-cn/map-cn.js`
    - 类型：**JavaScript 模块**
 4. 刷新浏览器（Ctrl+F5）
 
@@ -128,7 +124,12 @@ title: 家人位置
 ## 版本历史
 
 <details>
-<summary>v0.2.1（最新）</summary>
+<summary>v0.2.2（最新）</summary>
+
+- 形态回归：轻量集成（custom_components/map_cn）——安装即**自动注册仪表盘资源**（`/ha-map-cn/map-cn.js`），无需手动添加资源；JS 目录/URL 统一使用 `ha-map-cn`
+</details>
+<details>
+<summary>v0.2.1</summary>
 
 - 发布物形态：Releases 的下载产物由 zip 包改为**单个 `map-cn.js` 文件**——手动下载即得 js（无需解压），HACS 前端类别下载同样直接取 js
 </details>
