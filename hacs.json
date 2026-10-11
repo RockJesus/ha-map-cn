@@ -1,0 +1,6 @@
+{
+  "name": "中国地图卡片 (China Map Card)",
+  "content_integrations": "map_cn",
+  "homeassistant": "2024.1.0",
+  "render_readme": true
+}

@@ -1,0 +1,14 @@
+{
+  "domain": "map_cn",
+  "name": "China Map Card (中国地图卡片)",
+  "codeowners": [
+    "@RockJesus"
+  ],
+  "config_flow": false,
+  "documentation": "https://github.com/RockJesus/ha-map-cn",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/RockJesus/ha-map-cn/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
