@@ -6,14 +6,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const outfile = path.join(
-  root,
-  "..",
-  "custom_components",
-  "map_cn",
-  "www",
-  "map-cn.js"
-);
+const outfile = path.join(root, "..", "map-cn.js");
 
 const inlineCssPlugin = {
   name: "inline-css",

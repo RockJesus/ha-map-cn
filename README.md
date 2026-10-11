@@ -1,7 +1,7 @@
 # 中国地图卡片（China Map Card）
 
-[![HACS](https://img.shields.io/badge/HACS-自定义集成-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.1.1-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![HACS](https://img.shields.io/badge/HACS-前端资源-41BDF5.svg)](https://github.com/hacs/integration)
+[![版本](https://img.shields.io/badge/版本-v0.2.0-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。
@@ -26,20 +26,28 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
 - **国内底图**：高德（默认）/ 腾讯 / 天地图 / OSM，样式含标准、浅色、卫星、深色
 - **坐标自动转换**：高德/腾讯（GCJ-02）自动把 WGS-84 实体坐标做火星坐标转换，位置不偏移；天地图/OSM 无需转换
 - **零外部依赖**：卡片为单文件自包含（已内置渲染引擎），国内无需任何 CDN
+- **纯前端资源**：不是集成，不占集成列表、**无需重启 HA**；作为仪表盘资源加载
 
 ## 安装
 
+> 本卡片是**前端资源（Frontend plugin）**，不是集成：无需安装到 custom_components、无需重启 HA。装好后在仪表盘「添加卡片」里选择**中国地图卡片**即可（支持全程 UI 可视化配置）。
+
 ### HACS（推荐）
 
-1. HACS → 右上角 ⋮ → **自定义存储库** → 添加 `https://github.com/RockJesus/ha-map-cn`，类别选 **集成**
-2. 下载并**重启 Home Assistant**
+1. HACS → 右上角 ⋮ → **自定义存储库** → 添加 `https://github.com/RockJesus/ha-map-cn`，类别选 **前端**
+2. 下载完成后，到 **设置 → 仪表盘 → 右上角 ⋮ → 资源** → 添加资源：
+   - URL：`/hacommunity/ha-map-cn/map-cn.js`
+   - 类型：**JavaScript 模块**
 3. 刷新浏览器（Ctrl+F5）
 
 ### 手动安装
 
-1. 从 [Releases](https://github.com/RockJesus/ha-map-cn/releases) 下载 `map_cn_ha_vX.Y.Z.zip`
-2. 解压后把 `custom_components/map_cn/` 整个目录复制到 HA 配置目录的 `custom_components/` 下（**先删除旧目录再复制**）
-3. 重启 HA、刷新浏览器
+1. 从 [Releases](https://github.com/RockJesus/ha-map-cn/releases) 下载 `map_cn_ha_vX.Y.Z.zip`（或直接下载仓库根的 `map-cn.js`）
+2. 把 `map-cn.js` 复制到 HA 配置目录的 `www/map-cn/` 下（即 `/config/www/map-cn/map-cn.js`）
+3. **设置 → 仪表盘 → 右上角 ⋮ → 资源** → 添加资源：
+   - URL：`/local/map-cn/map-cn.js`
+   - 类型：**JavaScript 模块**
+4. 刷新浏览器（Ctrl+F5）
 
 ## 使用
 
@@ -118,7 +126,12 @@ title: 家人位置
 ## 版本历史
 
 <details>
-<summary>v0.1.1（最新）</summary>
+<summary>v0.2.0（最新）</summary>
+
+- 形态变更：从 HACS 集成（custom_components）改为**前端资源（Frontend plugin）**——纯仪表盘资源加载，无需安装集成、无需重启 HA；安装方式见上文
+</details>
+<details>
+<summary>v0.1.1</summary>
 
 - UI 可视化编辑器：实体逐行选择（ha-entity-picker，支持自定义颜色）、底图/样式/主题/轨迹/聚合/比例尺等全部选项可视化配置
 - 修复：编辑器模块未随单文件产物内联（动态 import 在单文件方案下运行时 404）
