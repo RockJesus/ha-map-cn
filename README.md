@@ -1,7 +1,7 @@
 # 中国地图卡片（China Map Card）
 
 [![HACS](https://img.shields.io/badge/HACS-前端资源-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.2.0-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.2.1-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。
@@ -42,8 +42,10 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
 
 ### 手动安装
 
-1. 从 [Releases](https://github.com/RockJesus/ha-map-cn/releases) 下载 `map_cn_ha_vX.Y.Z.zip`（或直接下载仓库根的 `map-cn.js`）
-2. 把 `map-cn.js` 复制到 HA 配置目录的 `www/map-cn/` 下（即 `/config/www/map-cn/map-cn.js`）
+> v0.2.1 起发布物是**单个 `map-cn.js` 文件**（不再打包 zip），下载即得 js。
+
+1. 从 [Releases](https://github.com/RockJesus/ha-map-cn/releases) 下载 `map-cn.js`（或直接下载仓库根的 `map-cn.js`）
+2. 把 `map-cn.js` 放到 HA 配置目录的 `www/map-cn/` 下（即 `/config/www/map-cn/map-cn.js`）
 3. **设置 → 仪表盘 → 右上角 ⋮ → 资源** → 添加资源：
    - URL：`/local/map-cn/map-cn.js`
    - 类型：**JavaScript 模块**
@@ -126,7 +128,12 @@ title: 家人位置
 ## 版本历史
 
 <details>
-<summary>v0.2.0（最新）</summary>
+<summary>v0.2.1（最新）</summary>
+
+- 发布物形态：Releases 的下载产物由 zip 包改为**单个 `map-cn.js` 文件**——手动下载即得 js（无需解压），HACS 前端类别下载同样直接取 js
+</details>
+<details>
+<summary>v0.2.0</summary>
 
 - 形态变更：从 HACS 集成（custom_components）改为**前端资源（Frontend plugin）**——纯仪表盘资源加载，无需安装集成、无需重启 HA；安装方式见上文
 </details>
