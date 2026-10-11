@@ -1,7 +1,7 @@
 {
   "domain": "map_cn",
   "name": "中国地图卡片 (China Map Card)",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "codeowners": ["@RockJesus"],
   "documentation": "https://github.com/RockJesus/ha-map-cn",
   "issue_tracker": "https://github.com/RockJesus/ha-map-cn/issues",

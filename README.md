@@ -1,7 +1,7 @@
 # 中国地图卡片（China Map Card）
 
 [![HACS](https://img.shields.io/badge/HACS-自定义集成-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.2.3-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.2.4-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。
@@ -23,22 +23,36 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
   - `cluster` 标记聚合（可切换聚合/展开）
   - `conditions` 条件显示、`scale_ruler` 比例尺、`aspect_ratio`、`title`
   - zone 半径圈、GPS 精度圈、标记点击弹出详情
+- **概述 Tab（与官方 Map 仪表盘一致）**：Panel 布局下卡片顶部自动提供 **人 / 设备 / 区域** 三个切换 Tab（官方 People/Devices/Zones），按类过滤实体
 - **国内底图**：高德（默认）/ 腾讯 / 天地图 / OSM，样式含标准、浅色、卫星、深色
 - **坐标自动转换**：高德/腾讯（GCJ-02）自动把 WGS-84 实体坐标做火星坐标转换，位置不偏移；天地图/OSM 无需转换
 - **零外部依赖**：卡片为单文件自包含（已内置渲染引擎），国内无需任何 CDN
 - **安装即自动注册仪表盘资源**：集成安装后自动把卡片 JS（`/ha-map-cn/map-cn.js`）注入仪表盘，**无需手动添加资源**，刷新即用
-- **概述 Tab（与官方 Map 仪表盘一致）**：Panel 布局下卡片顶部自动提供 **人 / 设备 / 区域** 三个切换 Tab（官方 People/Devices/Zones），按类过滤实体
-- **中国版地图仪表盘模板**：内置 `dashboards/map-cn.yaml`，按 HA 官方仪表盘规范一键创建「中国地图」仪表盘
+- **全程 UI 配置**：添加卡片后所有选项（实体/颜色/底图/样式/轨迹/聚合/比例尺等）都在界面里可视化设置，**不需要写任何 YAML**
+
+## 快速开始（纯 UI，不需要写代码）
+
+1. **安装**：HACS → 右上角 ⋮ → 自定义存储库 → 添加 `https://github.com/RockJesus/ha-map-cn`（类别选 **集成**）→ 下载 → **重启 Home Assistant**
+2. **刷新浏览器**（Ctrl+F5）——卡片资源已自动注册，无需任何手动配置
+3. **创建仪表盘**：设置 → 仪表盘 → **添加仪表盘** → 输入名称（如"地图"）→ 创建（任意类型均可）
+4. **添加卡片**：打开新仪表盘 → 右上角「编辑」→ **添加卡片** → 搜索 **地图** → 选择 **中国地图卡片**
+5. **UI 可视化设置**（全程界面操作，无代码）：
+   - **底图**：供应商下拉（高德/腾讯/天地图/OSM）+ 样式下拉（标准/浅色/卫星/深色）
+   - **实体**：逐行「添加实体」选择器选择 person / device_tracker / zone，每行可设颜色、标签模式
+   - **其他**：标题、默认缩放、轨迹小时数、显示全部实体、自动视野、区域半径、聚合、比例尺、深浅色 等开关/输入框
+6. **完成**：保存即可看到中国版地图；仪表盘以整页显示（Panel）时，地图顶部自动出现 **人 / 设备 / 区域** 切换
+
+> 整个流程**不需要编辑任何 YAML / configuration.yaml 文件**。如需更多设置项，请见下方「全部配置项」。
 
 ## 安装
 
-> 安装后**自动注册仪表盘资源**（JS 由集成提供，URL 固定为 `/ha-map-cn/map-cn.js`），刷新浏览器即可在「添加卡片」中选择**中国地图卡片**，无需手动添加资源、全程 UI 可视化配置。
+> 安装后**自动注册仪表盘资源**（JS 由集成提供，URL 固定为 `/ha-map-cn/map-cn.js`），无需手动添加资源。
 
 ### HACS（推荐）
 
 1. HACS → 右上角 ⋮ → **自定义存储库** → 添加 `https://github.com/RockJesus/ha-map-cn`，类别选 **集成**
 2. 下载并**重启 Home Assistant**
-3. 刷新浏览器（Ctrl+F5）——卡片资源已自动注册，直接添加卡片即可
+3. 刷新浏览器（Ctrl+F5）——卡片资源已自动注册，按上面「快速开始」添加卡片即可
 
 ### 手动安装
 
@@ -49,34 +63,12 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
    - 类型：**JavaScript 模块**
 4. 刷新浏览器（Ctrl+F5）
 
-## 仪表盘模板（中国地图，与官方 Map 仪表盘一致）
-
-仓库内置 `dashboards/map-cn.yaml`（Panel 视图 + 地图卡片，卡片顶部带 人/设备/区域 Tab），按 HA 官方仪表盘规范使用：
-
-1. 先按上面任一种方式安装本卡片（HACS 集成 或 手动资源）
-2. 把 `dashboards/map-cn.yaml` 复制到 `/config/map-cn.yaml`
-3. 在 `configuration.yaml` 追加：
-
-```yaml
-lovelace:
-  mode: storage
-  dashboards:
-    map-cn:
-      mode: yaml
-      title: 中国地图
-      icon: mdi:map
-      show_in_sidebar: true
-      filename: map-cn.yaml
-```
-
-4. 重启 Home Assistant（或「仪表盘 → ⋮ → 重新加载资源」）
-5. 侧边栏出现**中国地图**仪表盘，地图顶部可直接切换 人/设备/区域
-
-> 也可在 HA「设置 → 仪表盘 → 添加仪表盘」从模板创建后自行添加本卡片。
-
 ## 使用
 
-在仪表盘添加卡片，选择「中国地图卡片」，或直接编辑 YAML：
+添加卡片时选择**中国地图卡片**，所有设置项均为可视化控件（实体选择器、下拉、开关、输入框），保存即生效。
+
+<details>
+<summary>（可选）直接编辑 YAML 的高级用法</summary>
 
 ```yaml
 type: map-cn
@@ -94,6 +86,33 @@ cluster: true            # 标记聚合
 scale_ruler: true
 title: 家人位置
 ```
+
+</details>
+
+## （可选）YAML 仪表盘模板
+
+> 不想写代码就用「快速开始」的 UI 方式创建仪表盘，**无需本小节**。本小节仅适合偏好 YAML 的用户。
+
+仓库内置 `dashboards/map-cn.yaml`（Panel 视图 + 地图卡片，卡片顶部带 人/设备/区域 Tab），按 HA 官方仪表盘规范使用：
+
+1. 先安装本卡片（HACS 集成 或 手动资源）
+2. 把 `dashboards/map-cn.yaml` 复制到 `/config/map-cn.yaml`
+3. 在 `configuration.yaml` 追加：
+
+```yaml
+lovelace:
+  mode: storage
+  dashboards:
+    map-cn:
+      mode: yaml
+      title: 中国地图
+      icon: mdi:map
+      show_in_sidebar: true
+      filename: map-cn.yaml
+```
+
+4. 重启 Home Assistant（或「仪表盘 → ⋮ → 重新加载资源」）
+5. 侧边栏出现**中国地图**仪表盘，地图顶部可直接切换 人/设备/区域
 
 ### 全部配置项
 
@@ -141,7 +160,7 @@ title: 家人位置
 - 默认 `coordinate_system: auto` 已按供应商自动转换，若实体坐标本就是 GCJ-02，请设 `coordinate_system: gcj02`
 
 **和官方地图卡片有什么区别？**
-- 底图换为国内瓦片源，其余功能（实体/轨迹/聚合/区域/条件/深浅色等）与官方一致；官方面板模式（地图概览抽屉）暂未实现
+- 底图换为国内瓦片源，其余功能（实体/轨迹/聚合/区域/条件/深浅色/概述 Tab）与官方一致
 
 ## 隐私
 
@@ -151,7 +170,12 @@ title: 家人位置
 ## 版本历史
 
 <details>
-<summary>v0.2.3（最新）</summary>
+<summary>v0.2.4（最新）</summary>
+
+- 文档重排：新增「快速开始（纯 UI）」——全程界面操作（仪表盘 UI 创建 + 卡片 UI 可视化设置），无需写任何 YAML；YAML 方式降级为可选
+</details>
+<details>
+<summary>v0.2.3</summary>
 
 - 概述 Tab：卡片实现官方 People/Devices/Zones 一致的 **人 / 设备 / 区域** 切换（Panel 布局自动显示、按类过滤实体）
 - 仪表盘模板：新增 `dashboards/map-cn.yaml`（按 HA 官方仪表盘规范，Panel 视图 + 地图卡片 + 概述 Tab）
