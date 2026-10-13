@@ -1,10 +1,10 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.2.6-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.2.7-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
-Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后通过 UI 创建仪表盘、添加中国地图卡片并可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
+Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
 
 ## 为什么需要它
 
@@ -14,16 +14,19 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
 
 ## 特性
 
+- **仪表盘模板（与官方 Map 仪表盘一致）**：注册官方机制的 **dashboard strategy**——「设置 → 仪表盘 → 添加仪表盘」对话框直接可选**中国地图**，一键创建 Panel 视图的中国版地图仪表盘（UI，无需写代码）
 - **功能与官方 `map` 卡片一致**：
   - `entities`（person / device_tracker / zone），支持自定义颜色、label 模式（name / state / attribute / icon）
   - `show_all`、`geo_location_sources`（含 label/attribute/unit/focus）
   - `auto_fit`、`fit_zones`、`show_zone_radius`、`default_zoom`
   - `hours_to_show` 历史轨迹
   - `dark_mode` / `theme_mode` 深浅色（深色自动滤镜）
-  - `cluster` 标记聚合（可切换聚合/展开）
+  - **`map_style` 渲染风格**（与官方选项一致：default / colorful / natural / muted / gray / toner）
+  - `cluster` 标记聚合（地图按钮可切换聚合/展开）
   - `conditions` 条件显示、`scale_ruler` 比例尺、`aspect_ratio`、`title`
-  - zone 半径圈、GPS 精度圈、标记点击弹出详情
-- **概述 Tab（与官方 Map 仪表盘一致）**：Panel 布局下卡片顶部自动提供 **人 / 设备 / 区域** 三个切换 Tab（官方 People/Devices/Zones），按类过滤实体
+  - zone 半径圈、GPS 精度圈
+- **Overview 抽屉（与官方最新 Map 仪表盘一致）**：Panel 布局下左侧/底部显示 **人 / 设备 / 区域** Tab 列表 + 实体详情页 + **24 小时活动时间线**（进出区域/状态变化，可展开全部）
+- **实体选择与聚焦**：点击地图标记或列表项选择实体（URL `entity_id` 参数与官方一致），自动聚焦并避开抽屉
 - **国内底图**：高德（默认）/ 腾讯 / 天地图 / OSM，样式含标准、浅色、卫星、深色
 - **坐标自动转换**：高德/腾讯（GCJ-02）自动把 WGS-84 实体坐标做火星坐标转换，位置不偏移；天地图/OSM 无需转换
 - **零外部依赖**：卡片为单文件自包含（已内置渲染引擎），国内无需任何 CDN
@@ -38,6 +41,11 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
 2. **注册资源（UI，一次性）**：设置 → 仪表盘 → ⋮ → **资源** → 添加资源：
    - HACS 装：URL `/hacommunity/ha-map-cn/map-cn.js`
    - 手动装：URL `/local/ha-map-cn/map-cn.js`
+   - 类型都选 **JavaScript 模块**
+3. **刷新浏览器**（Ctrl+F5）
+4. **创建中国地图仪表盘（UI，模板一键创建）**：设置 → 仪表盘 → **添加仪表盘** → 选择 **「中国地图」模板** → 输入名称（如"中国地图"）→ 创建。仪表盘即为 Panel 视图的中国版地图（顶部自动显示 人/设备/区域 Tab 与活动时间线）
+5. **可视化设置（UI，可选）**：仪表盘右上角「编辑」→ 点击地图卡片 → 配置（底图供应商/样式/渲染风格下拉、实体选择器逐行选并设颜色、轨迹小时数、聚合、比例尺等）
+6. **完成**：保存即看到中国版地图
    - 类型都选 **JavaScript 模块**
 3. **刷新浏览器**（Ctrl+F5）
 4. **创建仪表盘（UI）**：设置 → 仪表盘 → **添加仪表盘** → 输入名称（如"中国地图"）→ 创建
@@ -63,6 +71,7 @@ views:
       - type: map-cn
         provider: gaode        # gaode | tencent | tianditu | osm
         style: normal          # normal | light | satellite | dark
+        map_style: default     # default | colorful | natural | muted | gray | toner
         auto_fit: true
         fit_zones: true
         show_zone_radius: true
@@ -93,6 +102,7 @@ lovelace:
 |---|---|---|---|
 | `provider` | string | `gaode` | 底图供应商：`gaode` / `tencent` / `tianditu` / `osm` |
 | `style` | string | `normal` | 地图样式：`normal` / `light` / `satellite` / `dark` |
+| `map_style` | string | `default` | 渲染风格（与官方一致）：`default` / `colorful` / `natural` / `muted` / `gray` / `toner` |
 | `tianditu_key` | string | 空 | `tianditu` 必须填写（免费申请） |
 | `coordinate_system` | string | `auto` | `auto`（按供应商）/ `wgs84` / `gcj02`，实体坐标已是中国坐标时用 `gcj02` |
 | `entities` | list | - | 实体列表，字符串或对象（支持 `color` / `label_mode` / `attribute` / `unit` / `focus` / `name`） |
@@ -143,11 +153,19 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.2.6（最新）</summary>
+<summary>v0.2.7（最新）</summary>
 
-- 安装说明修正：HACS 2.x 中卡片资源类别名为 **「仪表盘」（Dashboard）**（旧名 前端/Plugin），安装时选该类别
+- **仪表盘模板**：注册官方 dashboard strategy——「设置 → 仪表盘 → 添加仪表盘」对话框直接选「中国地图」，一键创建中国版地图仪表盘（全程 UI，与官方 Map 仪表盘同构：Panel 视图 + `auto_fit/show_all`）
+- **Overview 抽屉对齐官方最新**：人/设备/区域 Tab 列表（自动只显有内容的 Tab）+ 实体详情页 + **24 小时活动时间线**（进出区域/状态变化，可展开）
+- **实体选择与聚焦**：点击标记/列表项选择实体（URL `entity_id`，与官方一致），自动聚焦避开抽屉
+- **`map_style` 渲染风格**（官方 6 预设：default/colorful/natural/muted/gray/toner）+ 编辑器下拉
+- show_all 补漏（后续定位的人/独立 tracker 自动出现）
 </details>
 <details>
+<summary>v0.2.6</summary>
+
+- 安装说明修正：HACS 2.x 中卡片资源类别名为 **「仪表盘」（Dashboard）**（旧名 前端/Plugin），安装时选该类别
+</details><details>
 <summary>v0.2.5</summary>
 
 - 形态回归：纯**前端资源（仪表盘）**形态——移除 custom_components 集成，HACS 类别改回「前端」；安装 = HACS 前端类别（或手动放 js）→ UI 添加资源 → UI 创建仪表盘 → UI 配置卡片，全程无需写代码
