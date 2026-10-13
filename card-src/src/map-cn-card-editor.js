@@ -19,6 +19,15 @@ const THEME_MODES = [
   ["light", "浅色"],
   ["dark", "深色"],
 ];
+// 官方 MAP_STYLES（src/common/map/map-styles.ts）：编辑器选项顺序与官方一致
+const MAP_STYLES = [
+  ["default", "默认"],
+  ["colorful", "彩色"],
+  ["natural", "自然"],
+  ["muted", "素雅"],
+  ["gray", "灰度"],
+  ["toner", "墨色"],
+];
 const ENTITY_DOMAINS = ["person", "device_tracker", "zone", "geo_location"];
 
 class MapCnCardEditor extends LitElement {
@@ -122,6 +131,16 @@ class MapCnCardEditor extends LitElement {
             @change=${(ev) => this._update({ theme_mode: ev.target.value })}
           >
             ${THEME_MODES.map(
+              ([v, label]) =>
+                html`<mwc-list-item .value=${v}>${label}</mwc-list-item>`
+            )}
+          </ha-select>
+          <ha-select
+            .label=${"渲染风格（map_style）"}
+            .value=${c.map_style || "default"}
+            @change=${(ev) => this._update({ map_style: ev.target.value })}
+          >
+            ${MAP_STYLES.map(
               ([v, label]) =>
                 html`<mwc-list-item .value=${v}>${label}</mwc-list-item>`
             )}

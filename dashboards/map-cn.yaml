@@ -3,24 +3,26 @@
 # 功能与官方 Map 仪表盘一致：Panel 视图 + 中国版地图卡片，
 # 卡片顶部自动提供 人 / 设备 / 区域 三个概述 Tab（与官方 People/Devices/Zones 一致）。
 #
-# 安装（详见 README）：
-#   1) 先安装 map_cn 集成（HACS 集成类别 → 重启），卡片资源 /ha-map-cn/map-cn.js 自动注册
-#   2) 本文件放入 /config/map-cn.yaml
-#   3) configuration.yaml 中追加：
-#        lovelace:
-#          mode: storage
-#          dashboards:
-#            map-cn:
-#              mode: yaml
-#              title: 中国地图
-#              icon: mdi:map
-#              show_in_sidebar: true
-#              filename: map-cn.yaml
-#   4) 重启 Home Assistant（或重载 Lovelace 资源）
-#   5) 侧边栏出现「中国地图」仪表盘即可使用
+# 推荐方式（全程 UI，无需本文件）：
+#   1) 安装卡片 JS（HACS → 自定义存储库 → 类别选「仪表盘」(Dashboard) → 下载）
+#   2) 设置 → 仪表盘 → ⋮ → 资源 → 添加 /hacommunity/ha-map-cn/map-cn.js（JavaScript 模块）
+#   3) 设置 → 仪表盘 → 添加仪表盘 → 选择「中国地图」模板（或空白仪表盘 + 添加中国地图卡片）
+#   4) 卡片内所有选项（底图/样式/实体/颜色/轨迹/聚合/比例尺等）均可在界面可视化配置
+#
+# 本文件仅为偏好 YAML 模式的可选参考（configuration.yaml）：
+#   lovelace:
+#     mode: storage
+#     dashboards:
+#       map-cn:
+#         mode: yaml
+#         title: 中国地图
+#         icon: mdi:map
+#         show_in_sidebar: true
+#         filename: map-cn.yaml
+#   （资源若用 YAML 模式管理：lovelace.resources 添加 /local/ha-map-cn/map-cn.js）
 
 views:
-  # 主地图视图（Panel 布局）：顶部自动显示 人/设备/区域 Tab，与官方 Map 仪表盘一致
+  # 主地图视图（Panel 布局）：顶部自动显示 人/设备/区域 Tab 与活动时间线，与官方 Map 仪表盘一致
   - title: 地图
     path: map
     type: panel
@@ -28,6 +30,7 @@ views:
       - type: map-cn
         provider: gaode            # gaode | tencent | tianditu | osm（中国内地可达底图）
         style: normal              # normal | light | satellite | dark
+        map_style: default         # 官方渲染风格：default | colorful | natural | muted | gray | toner
         auto_fit: true             # 自动缩放至所有实体
         fit_zones: true            # 视野包含区域
         show_zone_radius: true     # 显示区域半径圈

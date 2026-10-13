@@ -24,6 +24,9 @@ import {
 } from "./conditions";
 // 编辑器静态引入：单文件产物方案下动态 import() 不会被 esbuild 内联（运行时 404）
 import "./map-cn-card-editor.js";
+// Overview 抽屉组件（对齐官方 hui-map-overview）+ 仪表盘 strategy 注册（UI 创建中国地图仪表盘）
+import "./map-cn-overview.js";
+import { registerMapCnDashboardStrategy } from "./map-cn-strategy.js";
 
 const DEFAULT_ZOOM = 14;
 const DEFAULT_CENTER = [104.0, 35.0];
@@ -34,7 +37,39 @@ const CLUSTER_RADIUS_PX = 60;
 const NOMINAL_ACCURACY = 2.5;
 const EARTH_CIRCUMFERENCE = 40075016.686;
 
+// 官方 MAP_STYLES 预设 → 本卡片 raster 瓦片的近似渲染滤镜（编辑器中选项与官方一致）
+const MAP_STYLE_FILTERS = {
+  default: "",
+  colorful: "saturate(1.12)",
+  natural: "saturate(0.95) sepia(0.06)",
+  muted: "saturate(0.7)",
+  gray: "grayscale(1)",
+  toner: "grayscale(1) contrast(1.15)",
+};
+const DEFAULT_MAP_STYLE = "default";
+
+// 官方 SELECTABLE_DOMAINS（person/device_tracker/zone）
+const SELECTABLE_DOMAINS = ["person", "device_tracker", "zone"];
+const SELECTED_ENTITY_PARAM = "entity_id";
+const OVERVIEW_GAP = 12;
+
 const computeDomain = (entityId) => entityId.split(".")[0];
+
+// 与官方 map-engine.circleBoundsPoints 一致：以 center 为圆心、radius 为半径的 8 个圆点
+const circleBoundsPoints = (center, radius) => {
+  const [lng, lat] = center;
+  const dLat = (radius / EARTH_CIRCUMFERENCE) * 360;
+  const dLng = dLat / Math.max(Math.cos((lat * Math.PI) / 180), 1e-9);
+  const points = [];
+  for (let i = 0; i < 8; i += 1) {
+    const angle = (i / 8) * 2 * Math.PI;
+    points.push([
+      lng + dLng * Math.cos(angle),
+      lat + dLat * Math.sin(angle),
+    ]);
+  }
+  return points;
+};
 
 const getEntityLocation = (stateObj) => {
   if (!stateObj) {
@@ -99,6 +134,9 @@ class MapCnCard extends LitElement {
     this._subscribed = false;
     this._historyUnsub = undefined;
     this._overviewTab = "people";
+    this._overviewSelected = undefined;
+    this._overviewSize = { width: 0, height: 0 };
+    this._path = undefined;
   }
 
   setConfig(config) {
@@ -168,10 +206,17 @@ class MapCnCard extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this._subscribed = false;
+    // 与官方一致：URL entity_id 参数选择实体
+    this._path = window.location.pathname;
+    window.addEventListener("popstate", this._syncSelection);
+    window.addEventListener("location-changed", this._syncSelection);
+    this._syncSelection();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener("popstate", this._syncSelection);
+    window.removeEventListener("location-changed", this._syncSelection);
     this._unsubscribeHistory();
   }
 
@@ -218,26 +263,10 @@ class MapCnCard extends LitElement {
           class=${panel ? "panel-layout" : ""}
           style=${styleMap({
             "--map-cn-dark": isDark ? "1" : "0",
+            "--overview-width": `${this._overviewSize.width}px`,
+            "--overview-height": `${this._overviewSize.height}px`,
           })}
         >
-          ${
-            panel && !this.preview
-              ? html`<div id="overview-tabs">
-                  <button
-                    class="tab ${this._overviewTab === "people" ? "active" : ""}"
-                    @click=${() => this._setTab("people")}
-                  >人</button>
-                  <button
-                    class="tab ${this._overviewTab === "devices" ? "active" : ""}"
-                    @click=${() => this._setTab("devices")}
-                  >设备</button>
-                  <button
-                    class="tab ${this._overviewTab === "zones" ? "active" : ""}"
-                    @click=${() => this._setTab("zones")}
-                  >区域</button>
-                </div>`
-              : nothing
-          }
           <div id="map" class="map-cn-map"></div>
           <div id="buttons" class=${rtl ? "rtl" : ""}>
             ${
@@ -261,6 +290,20 @@ class MapCnCard extends LitElement {
               ><ha-icon icon="mdi:image-filter-center-focus"></ha-icon
             ></ha-icon-button>
           </div>
+          ${
+            panel && !this.preview
+              ? html`<map-cn-overview
+                  id="overview"
+                  .hass=${this.hass}
+                  .entities=${this._overviewEntities()}
+                  .selected=${this._overviewSelected}
+                  .tab=${this._overviewTab}
+                  @map-overview-select=${this._handleOverviewSelect}
+                  @map-overview-tab=${this._handleOverviewTab}
+                  @map-overview-resize=${this._handleOverviewResize}
+                ></map-cn-overview>`
+              : nothing
+          }
         </div>
       </ha-card>
     `;
@@ -438,11 +481,17 @@ class MapCnCard extends LitElement {
     const satellite =
       this._styleName === "satellite" ||
       this._config?.style === "satellite";
-    canvas.style.filter = isDark
+    // 官方 map_style 预设（default/colorful/natural/muted/gray/toner）→ raster 滤镜近似
+    const styleFilter =
+      MAP_STYLE_FILTERS[this._config?.map_style || DEFAULT_MAP_STYLE] ?? "";
+    const darkFilter = isDark
       ? satellite
         ? "brightness(0.85)"
         : "invert(1) hue-rotate(180deg)"
       : "";
+    canvas.style.filter = [darkFilter, styleFilter]
+      .filter(Boolean)
+      .join(" ");
   }
 
   _getAllEntities() {
@@ -514,7 +563,7 @@ class MapCnCard extends LitElement {
   }
 
   // 与官方一致：panel 布局下按概述 Tab 过滤实体
-  // （person→人、device_tracker→设备，zone/geo_location 任何 Tab 都显示）
+  // （person→人、device_tracker→设备，zone/geo_location 任何 Tab 都显示；选中实体恒显示）
   _displayEntities() {
     const entities = this._mapEntities();
     if (this.layout !== "panel" || this.preview) {
@@ -522,6 +571,9 @@ class MapCnCard extends LitElement {
     }
     const tab = this._overviewTab;
     return entities.filter((e) => {
+      if (e.entity_id === this._overviewSelected) {
+        return true;
+      }
       const domain = computeDomain(e.entity_id);
       if (domain === "person") {
         return tab === "people";
@@ -533,9 +585,194 @@ class MapCnCard extends LitElement {
     });
   }
 
-  _setTab(tab) {
-    this._overviewTab = tab;
+  // 与官方 _withMissingTracked 一致：show_all 冻结已定位实体，补上后续定位的人/独立 tracker
+  _withMissingTracked(entities) {
+    const hass = this.hass;
+    if (!hass || !this._config?.show_all) {
+      return entities;
+    }
+    const present = new Set(entities.map((entity) => entity.entity_id));
+    const personSources = new Set();
+    Object.values(hass.states).forEach((stateObj) => {
+      if (
+        computeDomain(stateObj.entity_id) === "person" &&
+        stateObj.attributes.source
+      ) {
+        personSources.add(stateObj.attributes.source);
+      }
+    });
+    const extra = [];
+    Object.values(hass.states).forEach((stateObj) => {
+      const entityId = stateObj.entity_id;
+      const domain = computeDomain(stateObj);
+      const eligible =
+        domain === "person" ||
+        (domain === "device_tracker" && !personSources.has(entityId));
+      if (
+        eligible &&
+        !present.has(entityId) &&
+        !hass.entities?.[entityId]?.hidden &&
+        this._meetsConditions(entityId)
+      ) {
+        extra.push({
+          entity_id: entityId,
+          color: this._entityColor(entityId, stateObj),
+        });
+      }
+    });
+    return extra.length ? [...entities, ...extra] : entities;
+  }
+
+  // 传给 overview 抽屉的实体（含补漏；过滤交给地图渲染）
+  _overviewEntities() {
+    const entities = this._mapEntities();
+    if (this.layout === "panel" && !this.preview) {
+      return this._withMissingTracked(entities);
+    }
+    return entities;
+  }
+
+  _handleOverviewTab(ev) {
+    this._overviewTab = ev.detail.tab;
     this._updateAll();
+  }
+
+  _handleOverviewSelect(ev) {
+    if (ev.detail.entityId) {
+      this._select(ev.detail.entityId);
+    } else {
+      this._deselect();
+    }
+  }
+
+  _handleOverviewResize(ev) {
+    const { width, height } = ev.detail;
+    this._overviewSize = width && height ? ev.detail : { width: 0, height: 0 };
+  }
+
+  // ---------- 实体选择（与官方一致：URL entity_id 参数） ----------
+  _syncSelection = () => {
+    if (this.layout !== "panel") {
+      return;
+    }
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const entityId = params.get(SELECTED_ENTITY_PARAM);
+      const selectable =
+        !!entityId && SELECTABLE_DOMAINS.includes(computeDomain(entityId));
+      if (entityId && !selectable) {
+        params.delete(SELECTED_ENTITY_PARAM);
+        const url = `${window.location.pathname}${
+          params.toString() ? `?${params.toString()}` : ""
+        }`;
+        if (typeof history !== "undefined" && history.replaceState) {
+          history.replaceState(null, "", url);
+        }
+        this._overviewSelected = undefined;
+        this.requestUpdate();
+        return;
+      }
+      const changed = (entityId || undefined) !== this._overviewSelected;
+      this._overviewSelected = entityId || undefined;
+      if (changed) {
+        this.requestUpdate();
+        if (this._overviewSelected) {
+          this._focusEntity(this._overviewSelected);
+        } else if (this._config?.auto_fit) {
+          this._fitAll();
+        }
+      }
+    } catch {
+      /* 环境无 URL 时忽略 */
+    }
+  };
+
+  _select(entityId) {
+    if (entityId === this._overviewSelected) {
+      this._focusEntity(entityId);
+      return;
+    }
+    try {
+      const params = new URLSearchParams(window.location.search);
+      params.set(SELECTED_ENTITY_PARAM, entityId);
+      const url = `${window.location.pathname}?${params.toString()}`;
+      if (typeof history !== "undefined" && history.pushState) {
+        history.pushState(null, "", url);
+      }
+      this._overviewSelected = entityId;
+      this.requestUpdate();
+      this._focusEntity(entityId);
+    } catch {
+      this._overviewSelected = entityId;
+      this.requestUpdate();
+      this._focusEntity(entityId);
+    }
+  }
+
+  _deselect() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      params.delete(SELECTED_ENTITY_PARAM);
+      const url = `${window.location.pathname}${
+        params.toString() ? `?${params.toString()}` : ""
+      }`;
+      if (typeof history !== "undefined" && history.pushState) {
+        history.pushState(null, "", url);
+      }
+    } catch {
+      /* ignore */
+    }
+    this._overviewSelected = undefined;
+    this.requestUpdate();
+  }
+
+  _focusEntity(entityId) {
+    if (!this._map) {
+      return;
+    }
+    const stateObj = this.hass?.states?.[entityId];
+    const location = stateObj && getEntityLocation(stateObj);
+    if (!location) {
+      return;
+    }
+    const [lng, lat] = toMapCoords(
+      location.latitude,
+      location.longitude,
+      this._coordinateSystem
+    );
+    const isZone = computeDomain(entityId) === "zone";
+    const radius = stateObj.attributes.radius ?? 100;
+    const padding = this._overviewPadding() || { top: 40, bottom: 40, left: 40, right: 40 };
+    if (isZone) {
+      const bounds = new maplibregl.LngLatBounds();
+      for (const [dLng, dLat] of circleBoundsPoints([lng, lat], radius)) {
+        bounds.extend([dLng, dLat]);
+      }
+      this._map.fitBounds(bounds, { padding, maxZoom: 16 });
+    } else {
+      this._map.fitBounds(
+        [[lng, lat], [lng, lat]],
+        { padding, maxZoom: 17 }
+      );
+    }
+  }
+
+  // 与官方一致：fit 视野避开 overview 抽屉（桌面左侧 / 手机底部）
+  _overviewPadding() {
+    if (this.layout !== "panel") {
+      return undefined;
+    }
+    const { width, height, fitHeight } = this._overviewSize;
+    if (!width || !height) {
+      return undefined;
+    }
+    const phone =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 600px)").matches;
+    if (phone) {
+      return { bottom: (fitHeight ?? height) + OVERVIEW_GAP };
+    }
+    return { left: width + 2 * OVERVIEW_GAP };
   }
 
   _meetsConditions(entityId) {
@@ -589,6 +826,18 @@ class MapCnCard extends LitElement {
       /* fallback */
     }
     return stateObj?.attributes?.friendly_name || entityId;
+  }
+
+  // 与官方 _handleMapMoreInfo 一致：panel 布局下点击可选实体 → 选择并 focus；否则打开详情
+  _handleMarkerClick(entityId) {
+    if (
+      this.layout === "panel" &&
+      SELECTABLE_DOMAINS.includes(computeDomain(entityId))
+    ) {
+      this._select(entityId);
+      return;
+    }
+    this._fireMoreInfo(entityId);
   }
 
   _fireMoreInfo(entityId) {
@@ -810,12 +1059,12 @@ class MapCnCard extends LitElement {
 
     wrap.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      this._fireMoreInfo(entityId);
+      this._handleMarkerClick(entityId);
     });
     wrap.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" || ev.key === " ") {
         ev.preventDefault();
-        this._fireMoreInfo(entityId);
+        this._handleMarkerClick(entityId);
       }
     });
     wrap.tabIndex = 0;
@@ -856,7 +1105,7 @@ class MapCnCard extends LitElement {
     }
     circleEl.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      this._fireMoreInfo(entityId);
+      this._handleMarkerClick(entityId);
     });
 
     const marker = new maplibregl.Marker({
@@ -1190,7 +1439,10 @@ class MapCnCard extends LitElement {
     }
     const bounds = new maplibregl.LngLatBounds();
     points.forEach((p) => bounds.extend(p));
-    this._map.fitBounds(bounds, { padding: 40, maxZoom: 16 });
+    this._map.fitBounds(bounds, {
+      padding: this._overviewPadding() || { top: 40, bottom: 40, left: 40, right: 40 },
+      maxZoom: 16,
+    });
   }
 
   _resetFocus() {
@@ -1259,34 +1511,41 @@ class MapCnCard extends LitElement {
     .maplibregl-canvas {
       transition: filter 0.3s;
     }
-    #overview-tabs {
+    /* Overview 抽屉（与官方一致：桌面左侧 / 手机底部） */
+    #overview {
       position: absolute;
-      top: 8px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 2;
+      top: 12px;
+      inset-inline-start: 12px;
+      width: min(360px, calc(100% - 24px));
+      max-height: calc(100% - 24px);
       display: flex;
-      gap: 2px;
-      padding: 3px;
-      border-radius: 20px;
-      background: var(--ha-card-background, var(--card-background-color, #ffffff));
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      z-index: 2;
     }
-    #overview-tabs button.tab {
-      border: none;
-      background: transparent;
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 0.9rem;
-      padding: 5px 14px;
-      border-radius: 16px;
-      cursor: pointer;
-      opacity: 0.75;
+    #root.panel-layout .map-cn-map {
+      --ha-map-left-inset: calc(
+        var(--overview-width, 0px) + 2 * var(--ha-space-3, 12px) +
+          var(--map-bleed-left)
+      );
+      --ha-map-right-inset: var(--map-bleed-right);
+      --ha-map-bottom-inset: var(--map-bleed-bottom);
     }
-    #overview-tabs button.tab.active {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #ffffff);
-      opacity: 1;
+    @media (max-width: 600px) {
+      #overview {
+        top: auto;
+        bottom: 0;
+        inset-inline-start: 0;
+        inset-inline-end: 0;
+        width: auto;
+        max-height: 70%;
+        border-radius: 12px 12px 0 0;
+      }
+      #root.panel-layout .map-cn-map {
+        --ha-map-left-inset: var(--map-bleed-left);
+        --ha-map-right-inset: var(--map-bleed-right);
+        --ha-map-bottom-inset: calc(
+          var(--overview-height, 0px) + var(--ha-space-2, 8px)
+        );
+      }
     }
     #buttons {
       position: absolute;
@@ -1431,5 +1690,8 @@ window.customCards.push({
   preview: false,
   documentationURL: "https://github.com/RockJesus/ha-map-cn",
 });
+
+// 注册「中国地图」仪表盘模板（设置→仪表盘→添加仪表盘 对话框直接可选，全程 UI）
+registerMapCnDashboardStrategy();
 
 export { MapCnCard };
