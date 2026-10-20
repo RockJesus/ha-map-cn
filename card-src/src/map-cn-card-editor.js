@@ -321,4 +321,4 @@ class MapCnCardEditor extends LitElement {
   `;
 }
 
-customElements.define("map-cn-card-editor", MapCnCardEditor);
+customElements.define("map-cn-editor", MapCnCardEditor);

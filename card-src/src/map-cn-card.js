@@ -255,7 +255,7 @@ class MapCnCard extends LitElement {
 
   static getConfigElement() {
     // 编辑器已随主模块静态打包（见顶部 import）
-    return document.createElement("map-cn-card-editor");
+    return document.createElement("map-cn-editor");
   }
 
   static getStubConfig(hass, entities) {
@@ -1812,8 +1812,8 @@ class MapCnCard extends LitElement {
   `;
 }
 
-if (!customElements.get("map-cn-card")) {
-  customElements.define("map-cn-card", MapCnCard);
+if (!customElements.get("map-cn")) {
+  customElements.define("map-cn", MapCnCard);
 }
 
 window.customCards = window.customCards || [];
