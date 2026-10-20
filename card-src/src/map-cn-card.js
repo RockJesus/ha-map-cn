@@ -55,23 +55,69 @@ const OVERVIEW_GAP = 12;
 
 const computeDomain = (entityId) => entityId.split(".")[0];
 
-// 与官方 map-engine.circleBoundsPoints 一致：以 center 为圆心、radius 为半径的 8 个圆点
-const circleBoundsPoints = (center, radius) => {
-  const [lng, lat] = center;
-  const dLat = (radius / EARTH_CIRCUMFERENCE) * 360;
-  const dLng = dLat / Math.max(Math.cos((lat * Math.PI) / 180), 1e-9);
-  const points = [];
-  for (let i = 0; i < 8; i += 1) {
-    const angle = (i / 8) * 2 * Math.PI;
-    points.push([
-      lng + dLng * Math.cos(angle),
-      lat + dLat * Math.sin(angle),
-    ]);
+// 与官方 map-engine 一致：球面大圆 bounding box 角点（fitBounds 用）
+const EARTH_RADIUS = 6371008.8;
+const toRadians = (deg) => (deg * Math.PI) / 180;
+const toDegrees = (rad) => (rad * 180) / Math.PI;
+const circleBoundsPoints = (center, radiusMeters) => {
+  const angular = radiusMeters / EARTH_RADIUS;
+  const latMin = Math.max(-90, center[0] - toDegrees(angular));
+  const latMax = Math.min(90, center[0] + toDegrees(angular));
+  const sinRatio = Math.sin(angular) / Math.cos(toRadians(center[0]));
+  if (latMin <= -90 || latMax >= 90 || Math.abs(sinRatio) >= 1) {
+    return [
+      [latMin, -180],
+      [latMax, 180],
+    ];
   }
-  return points;
+  const dLng = toDegrees(Math.asin(sinRatio));
+  return [
+    [latMin, center[1] - dLng],
+    [latMax, center[1] + dLng],
+  ];
 };
 
-const getEntityLocation = (stateObj) => {
+// 与官方 map-engine.pixelDistance 一致：墨卡托投影像素距离（_focusZoom 用）
+const MERCATOR_MAX_LAT = 85.051129;
+const projectMercator = ([lat, lng], scale) => {
+  const sinLat = Math.sin(
+    toRadians(Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, lat)))
+  );
+  return {
+    x: (lng / 360 + 0.5) * scale,
+    y: (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * scale,
+  };
+};
+const pixelDistance = (a, b, zoom) => {
+  const scale = 256 * 2 ** zoom;
+  const pa = projectMercator(a, scale);
+  const pb = projectMercator(b, scale);
+  const dx = Math.abs(pa.x - pb.x);
+  return Math.hypot(Math.min(dx, scale - dx), pa.y - pb.y);
+};
+
+// 与官方 computeRTL 一致的简化版（影响 overview padding 侧与按钮位置）
+const computeRTL = (hass) => {
+  const lang = hass?.language || "en";
+  return ["he", "ar", "fa", "ur", "yi"].includes(lang);
+};
+
+// 与官方 getEntityLocation 一致：person 无坐标时回退到第一个非被动 in_zone 坐标
+const findFirstActiveZone = (inZones, states) => {
+  for (const zoneId of inZones || []) {
+    const zone = states?.[zoneId];
+    if (
+      zone &&
+      !zone.attributes.passive &&
+      typeof zone.attributes.latitude === "number" &&
+      typeof zone.attributes.longitude === "number"
+    ) {
+      return zone;
+    }
+  }
+  return undefined;
+};
+const getEntityLocation = (stateObj, states) => {
   if (!stateObj) {
     return undefined;
   }
@@ -79,7 +125,17 @@ const getEntityLocation = (stateObj) => {
   if (typeof latitude === "number" && typeof longitude === "number") {
     return { latitude, longitude, gpsAccuracy };
   }
-  return undefined;
+  if (computeDomain(stateObj.entity_id) !== "person") {
+    return undefined;
+  }
+  const zone = findFirstActiveZone(stateObj.attributes.in_zones, states);
+  if (!zone) {
+    return undefined;
+  }
+  return {
+    latitude: zone.attributes.latitude,
+    longitude: zone.attributes.longitude,
+  };
 };
 
 // 与官方一致的文字对比色（WCAG 3:1）
@@ -187,6 +243,16 @@ class MapCnCard extends LitElement {
     return 1 + Math.floor(ar / 25) || 3;
   }
 
+  // 与官方一致：网格布局下跨全列、占 4 行
+  getGridOptions() {
+    return {
+      columns: "full",
+      rows: 4,
+      min_columns: 6,
+      min_rows: 2,
+    };
+  }
+
   static getConfigElement() {
     // 编辑器已随主模块静态打包（见顶部 import）
     return document.createElement("map-cn-card-editor");
@@ -227,6 +293,9 @@ class MapCnCard extends LitElement {
   }
 
   willUpdate(changedProps) {
+    if (changedProps.has("layout")) {
+      this._syncSelection();
+    }
     if (changedProps.has("hass") && this._map) {
       if (this._config?.show_all) {
         this._config.entities = this._getAllEntities();
@@ -255,12 +324,12 @@ class MapCnCard extends LitElement {
           ? false
           : this.hass?.themes?.darkMode ?? false;
     const panel = this.layout === "panel" || this.layout === "grid";
-    const rtl = this._computeRtl();
+    const rtl = computeRTL(this.hass);
     return html`
       <ha-card id="card" .header=${this._config?.title}>
         <div
           id="root"
-          class=${panel ? "panel-layout" : ""}
+          class="${panel ? "panel-layout" : ""}${rtl ? " rtl" : ""}"
           style=${styleMap({
             "--map-cn-dark": isDark ? "1" : "0",
             "--overview-width": `${this._overviewSize.width}px`,
@@ -443,7 +512,10 @@ class MapCnCard extends LitElement {
     }
 
     this._map.on("click", () => {
-      /* 面板外点击：无选中态，暂无动作 */
+      // 与官方 _handleMapClicked 一致：点击地图空白处取消选择
+      if (this._overviewSelected) {
+        this._deselect();
+      }
     });
 
     this._map.on("load", () => {
@@ -474,6 +546,8 @@ class MapCnCard extends LitElement {
         : this._config?.theme_mode === "light"
           ? false
           : (this.hass?.themes?.darkMode ?? false);
+    const panel = this.layout === "panel";
+    const rtl = computeRTL(this.hass);
     const canvas = this.shadowRoot?.querySelector(".maplibregl-canvas");
     if (!canvas) {
       return;
@@ -502,7 +576,7 @@ class MapCnCard extends LitElement {
     const personSources = new Set();
     const locationEntities = [];
     Object.values(hass.states).forEach((entity) => {
-      if (!getEntityLocation(entity)) {
+      if (!getEntityLocation(entity, hass.states)) {
         return;
       }
       locationEntities.push(entity.entity_id);
@@ -623,13 +697,26 @@ class MapCnCard extends LitElement {
     return extra.length ? [...entities, ...extra] : entities;
   }
 
-  // 传给 overview 抽屉的实体（含补漏；过滤交给地图渲染）
+  // 传给 overview 抽屉的实体：补漏 + 与官方 _decorateOverviewEntities 一致的装饰
+  // （未选中的隐藏精度圈/半径圈，除非配置显示或区域 Tab；选中实体标记 selected）
   _overviewEntities() {
     const entities = this._mapEntities();
-    if (this.layout === "panel" && !this.preview) {
-      return this._withMissingTracked(entities);
-    }
-    return entities;
+    let overview =
+      this.layout === "panel" && !this.preview
+        ? this._withMissingTracked(entities)
+        : entities;
+    const selected = this._overviewSelected;
+    const showRadii =
+      this.preview ||
+      this._config?.show_zone_radius ||
+      this._overviewTab === "zones";
+    overview = overview.map((entity) => ({
+      ...entity,
+      hide_accuracy: entity.entity_id !== selected,
+      hide_radius: !showRadii && entity.entity_id !== selected,
+      selected: entity.entity_id === selected,
+    }));
+    return overview;
   }
 
   _handleOverviewTab(ev) {
@@ -647,12 +734,23 @@ class MapCnCard extends LitElement {
 
   _handleOverviewResize(ev) {
     const { width, height } = ev.detail;
+    const padding = this._overviewPadding();
+    // 折叠时保留宽度但归零，不再预留空间（与官方一致）
     this._overviewSize = width && height ? ev.detail : { width: 0, height: 0 };
+    // 选中态下抽屉尺寸变化 → 重新聚焦以应用新 padding
+    if (this._overviewSelected && this._overviewPadding() !== padding) {
+      this._focusEntity(this._overviewSelected);
+    }
   }
 
   // ---------- 实体选择（与官方一致：URL entity_id 参数） ----------
   _syncSelection = () => {
-    if (this.layout !== "panel") {
+    // 与官方一致：仅 panel 布局 + 当前路径一致（防止跨仪表盘误同步）
+    if (
+      this.layout !== "panel" ||
+      (typeof window !== "undefined" &&
+        window.location.pathname !== this._path)
+    ) {
       return;
     }
     try {
@@ -726,38 +824,56 @@ class MapCnCard extends LitElement {
     this.requestUpdate();
   }
 
+  // 与官方 _focusEntity 一致：zone 用球面圆角点 fitBounds；单点按需放大到
+  // 恰好清除最近标记（FOCUS_MAX_ZOOM=17），padding 避开 overview 抽屉
   _focusEntity(entityId) {
-    if (!this._map) {
-      return;
-    }
     const stateObj = this.hass?.states?.[entityId];
-    const location = stateObj && getEntityLocation(stateObj);
-    if (!location) {
+    const center = this._entityCenter(entityId);
+    if (!stateObj || !center) {
       return;
     }
-    const [lng, lat] = toMapCoords(
-      location.latitude,
-      location.longitude,
-      this._coordinateSystem
-    );
-    const isZone = computeDomain(entityId) === "zone";
-    const radius = stateObj.attributes.radius ?? 100;
-    const padding = this._overviewPadding() || { top: 40, bottom: 40, left: 40, right: 40 };
-    if (isZone) {
-      const bounds = new maplibregl.LngLatBounds();
-      for (const [dLng, dLat] of circleBoundsPoints([lng, lat], radius)) {
-        bounds.extend([dLng, dLat]);
+    const zoom = this._map?.getZoom();
+    const zone = computeDomain(entityId) === "zone";
+    // 官方 MapLatLng=[lat,lng]；maplibre fitBounds 期望 [lng,lat]
+    const toLngLat = (p) => [p[1], p[0]];
+    this._map?.fitBounds(
+      zone
+        ? circleBoundsPoints(center, stateObj.attributes.radius ?? 100).map(toLngLat)
+        : [toLngLat(center)],
+      {
+        maxZoom: zone ? 16 : this._focusZoom(center, zoom),
+        padding: this._overviewPadding() || { top: 40, bottom: 40, left: 40, right: 40 },
       }
-      this._map.fitBounds(bounds, { padding, maxZoom: 16 });
-    } else {
-      this._map.fitBounds(
-        [[lng, lat], [lng, lat]],
-        { padding, maxZoom: 17 }
-      );
-    }
+    );
   }
 
-  // 与官方一致：fit 视野避开 overview 抽屉（桌面左侧 / 手机底部）
+  _entityCenter(entityId) {
+    const stateObj = this.hass?.states?.[entityId];
+    const location = stateObj && getEntityLocation(stateObj, this.hass?.states);
+    return location && [location.latitude, location.longitude];
+  }
+
+  // 与官方 _focusZoom 一致：只放大到清除最近的其他标记
+  _focusZoom(center, zoom) {
+    const FOCUS_MAX_ZOOM = 17;
+    const FOCUS_CLEARANCE_PX = 80;
+    if (zoom === undefined || !this._map) {
+      return FOCUS_MAX_ZOOM;
+    }
+    let nearest = Infinity;
+    for (const entity of this._displayEntities()) {
+      const other = this._entityCenter(entity.entity_id);
+      if (other && (other[0] !== center[0] || other[1] !== center[1])) {
+        nearest = Math.min(nearest, pixelDistance(center, other, zoom));
+      }
+    }
+    return Math.max(
+      zoom,
+      Math.min(FOCUS_MAX_ZOOM, zoom + Math.log2(FOCUS_CLEARANCE_PX / nearest))
+    );
+  }
+
+  // 与官方一致：fit 视野避开 overview 抽屉（桌面左侧/RTL 右侧 / 手机底部）
   _overviewPadding() {
     if (this.layout !== "panel") {
       return undefined;
@@ -772,7 +888,8 @@ class MapCnCard extends LitElement {
     if (phone) {
       return { bottom: (fitHeight ?? height) + OVERVIEW_GAP };
     }
-    return { left: width + 2 * OVERVIEW_GAP };
+    const side = width + 2 * OVERVIEW_GAP;
+    return computeRTL(this.hass) ? { right: side } : { left: side };
   }
 
   _meetsConditions(entityId) {
@@ -830,10 +947,11 @@ class MapCnCard extends LitElement {
 
   // 与官方 _handleMapMoreInfo 一致：panel 布局下点击可选实体 → 选择并 focus；否则打开详情
   _handleMarkerClick(entityId) {
-    if (
-      this.layout === "panel" &&
-      SELECTABLE_DOMAINS.includes(computeDomain(entityId))
-    ) {
+    const selectable = SELECTABLE_DOMAINS.includes(computeDomain(entityId));
+    const inFiltered =
+      computeDomain(entityId) === "zone" ||
+      this._displayEntities().some((e) => e.entity_id === entityId);
+    if (this.layout === "panel" && entityId && selectable && inFiltered) {
       this._select(entityId);
       return;
     }
@@ -879,7 +997,7 @@ class MapCnCard extends LitElement {
       if (!stateObj) {
         continue;
       }
-      const location = getEntityLocation(stateObj);
+      const location = getEntityLocation(stateObj, states);
       if (!location) {
         continue;
       }
@@ -1477,6 +1595,9 @@ class MapCnCard extends LitElement {
       overflow: hidden;
       width: 100%;
     }
+    #card:has(#root.panel-layout) {
+      overflow: visible;
+    }
     #root {
       position: relative;
       width: 100%;
@@ -1511,7 +1632,7 @@ class MapCnCard extends LitElement {
     .maplibregl-canvas {
       transition: filter 0.3s;
     }
-    /* Overview 抽屉（与官方一致：桌面左侧 / 手机底部） */
+    /* Overview 抽屉（与官方一致：桌面左侧 / 手机底部；单 Tab 时收窄） */
     #overview {
       position: absolute;
       top: 12px;
@@ -1521,6 +1642,9 @@ class MapCnCard extends LitElement {
       display: flex;
       z-index: 2;
     }
+    #overview[single-tab] {
+      width: min(300px, calc(100% - 24px));
+    }
     #root.panel-layout .map-cn-map {
       --ha-map-left-inset: calc(
         var(--overview-width, 0px) + 2 * var(--ha-space-3, 12px) +
@@ -1529,8 +1653,16 @@ class MapCnCard extends LitElement {
       --ha-map-right-inset: var(--map-bleed-right);
       --ha-map-bottom-inset: var(--map-bleed-bottom);
     }
+    #root.panel-layout.rtl .map-cn-map {
+      --ha-map-left-inset: var(--map-bleed-left);
+      --ha-map-right-inset: calc(
+        var(--overview-width, 0px) + 2 * var(--ha-space-3, 12px) +
+          var(--map-bleed-right)
+      );
+    }
     @media (max-width: 600px) {
-      #overview {
+      #overview,
+      #overview[single-tab] {
         top: auto;
         bottom: 0;
         inset-inline-start: 0;
@@ -1539,7 +1671,8 @@ class MapCnCard extends LitElement {
         max-height: 70%;
         border-radius: 12px 12px 0 0;
       }
-      #root.panel-layout .map-cn-map {
+      #root.panel-layout .map-cn-map,
+      #root.panel-layout.rtl .map-cn-map {
         --ha-map-left-inset: var(--map-bleed-left);
         --ha-map-right-inset: var(--map-bleed-right);
         --ha-map-bottom-inset: calc(
@@ -1560,9 +1693,11 @@ class MapCnCard extends LitElement {
       left: auto;
       right: 3px;
     }
+    /* 与官方一致：panel 布局下按钮移到抽屉对侧 */
     #root.panel-layout #buttons {
       left: auto;
-      right: 3px;
+      inset-inline-start: auto;
+      inset-inline-end: 3px;
     }
     /* ---- 实体标记（复刻官方 ha-entity-marker） ---- */
     .map-cn-marker-wrap {

@@ -716,6 +716,8 @@ class MapCnOverview extends LitElement {
     const tab = tabs.includes(this.tab) ? this.tab : tabs[0];
     const items = itemsPerTab[tab] || [];
     const tabNames = { people: "人", devices: "设备", zones: "区域" };
+    // 与官方一致：单 Tab 时收窄抽屉（#overview[single-tab]）
+    this.toggleAttribute("single-tab", tabs.length === 1);
     if (tabs.length === 1) {
       return html`
         <div class="heading">${tabNames[tab]}</div>
