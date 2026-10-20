@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.2.8-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.2.9-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -39,27 +39,16 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
 ## 快速开始（纯 UI，不需要写代码）
 
 1. **安装卡片 JS**（二选一）：
-   - **HACS**：HACS → ⋮ → 自定义存储库 → 添加 `https://github.com/RockJesus/ha-map-cn`，**类别选「仪表盘」（Dashboard）** → 下载。HACS 2.x 界面里该类别名就叫 **Dashboard（仪表盘）**（旧名"前端" / Plugin，装的就是仪表盘卡片资源，不需要重启）
+   - **HACS（推荐）**：HACS → ⋮ → 自定义存储库 → 添加 `https://github.com/RockJesus/ha-map-cn`，**类别选「仪表盘」（Dashboard）** → 下载。HACS 2.x 界面里该类别名就叫 **Dashboard（仪表盘）**（旧名"前端" / Plugin）
    - **手动**：把 `map-cn.js` 放到 `/config/www/ha-map-cn/`（Releases 下载即得单文件 js）
-2. **注册资源（UI，一次性）**：设置 → 仪表盘 → ⋮ → **资源** → 添加资源：
-   - HACS 装：URL `/hacommunity/ha-map-cn/map-cn.js`
-   - 手动装：URL `/local/ha-map-cn/map-cn.js`
-   - 类型都选 **JavaScript 模块**
+2. **注册资源**：
+   - **HACS 装：无需手动注册**——HACS 下载后会**自动注册**资源 `/hacsfiles/ha-map-cn/map-cn.js`（设置 → 仪表盘 → ⋮ → 资源 里能看到）
+   - **手动装**：设置 → 仪表盘 → ⋮ → **资源** → 添加资源：URL `/local/ha-map-cn/map-cn.js`，类型选 **JavaScript 模块**
 3. **刷新浏览器**（Ctrl+F5）
-4. **创建中国地图仪表盘（UI，模板一键创建）**：设置 → 仪表盘 → **添加仪表盘** → 选择 **「中国地图」模板** → 输入名称（如"中国地图"）→ 创建。仪表盘即为 Panel 视图的中国版地图（顶部自动显示 人/设备/区域 Tab 与活动时间线）
+4. **创建中国地图仪表盘（UI，模板一键创建，推荐）**：设置 → 仪表盘 → **添加仪表盘** → 选择 **「中国地图」模板** → 输入名称（如"中国地图"）→ 创建。仪表盘即为 Panel 视图的中国版地图（顶部自动显示 人/设备/区域 Tab 与活动时间线）
+   - 或创建普通仪表盘后「添加卡片」→ 搜索 **地图** → 选 **中国地图卡片**
 5. **可视化设置（UI，可选）**：仪表盘右上角「编辑」→ 点击地图卡片 → 配置（底图供应商/样式/渲染风格下拉、实体选择器逐行选并设颜色、轨迹小时数、聚合、比例尺等）
-6. **完成**：保存即看到中国版地图
-   - 类型都选 **JavaScript 模块**
-3. **刷新浏览器**（Ctrl+F5）
-4. **创建仪表盘（UI）**：设置 → 仪表盘 → **添加仪表盘** → 输入名称（如"中国地图"）→ 创建
-5. **添加卡片（UI）**：打开仪表盘 → 右上角「编辑」→ **添加卡片** → 搜索 **地图** → 选择 **中国地图卡片**
-6. **可视化设置（UI）**：
-   - **底图**：供应商下拉（高德/腾讯/天地图/OSM）+ 样式下拉（标准/浅色/卫星/深色）
-   - **实体**：逐行「添加实体」选择器选择 person / device_tracker / zone，每行可设颜色、标签模式
-   - **其他**：标题、默认缩放、轨迹小时数、显示全部实体、自动视野、区域半径、聚合、比例尺、深浅色 等开关/输入框
-7. **完成**：保存即看到中国版地图；仪表盘整页显示（Panel）时，地图顶部自动出现 **人 / 设备 / 区域** 切换
-
-> 整个流程**不需要编辑任何 YAML / configuration.yaml 文件**。如需更多设置项，见下方「全部配置项」。
+6. **完成**：保存即看到中国版地图；仪表盘整页显示（Panel）时，地图顶部自动出现 **人 / 设备 / 区域** 切换
 
 ## 仪表盘示例（可选参考）
 
@@ -156,7 +145,12 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.2.8（最新）</summary>
+<summary>v0.2.9（最新）</summary>
+
+- **安装说明修正**：HACS 2.x 下载后**自动注册资源**（`/hacsfiles/ha-map-cn/map-cn.js`），删除错误的 `/hacommunity` 手动注册步骤与残留重复段落——此前按旧说明手动注册 `/hacommunity` 路径会 404 导致"卡片加载不出来"
+</details>
+<details>
+<summary>v0.2.8</summary>
 
 - **对齐 HA 最新官方源码（2026-10-20 dev）**：逐行核对 `hui-map-card.ts` / `map-engine.ts` / `get_entity_location.ts` 后修复——
   - **聚焦缩放官方化**：`_focusZoom` 只放大到恰好清除最近标记（墨卡托像素距离计算，≤17 级）；区域用球面大圆角点 `circleBoundsPoints`（官方精确实现，替换原 8 点近似）
