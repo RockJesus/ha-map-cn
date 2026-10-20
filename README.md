@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.2.7-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.2.8-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -26,9 +26,12 @@ HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部�
   - `conditions` 条件显示、`scale_ruler` 比例尺、`aspect_ratio`、`title`
   - zone 半径圈、GPS 精度圈
 - **Overview 抽屉（与官方最新 Map 仪表盘一致）**：Panel 布局下左侧/底部显示 **人 / 设备 / 区域** Tab 列表 + 实体详情页 + **24 小时活动时间线**（进出区域/状态变化，可展开全部）
-- **实体选择与聚焦**：点击地图标记或列表项选择实体（URL `entity_id` 参数与官方一致），自动聚焦并避开抽屉
+- **实体选择与聚焦**：点击地图标记或列表项选择实体（URL `entity_id` 参数与官方一致），自动聚焦并避开抽屉；聚焦缩放与官方一致——单点只放大到恰好清除最近标记（≤17 级），区域用球面圆边界整体纳入视野
 - **国内底图**：高德（默认）/ 腾讯 / 天地图 / OSM，样式含标准、浅色、卫星、深色
 - **坐标自动转换**：高德/腾讯（GCJ-02）自动把 WGS-84 实体坐标做火星坐标转换，位置不偏移；天地图/OSM 无需转换
+- **person 区域定位兜底**（与官方一致）：person 无 GPS 坐标时回退到其所在第一个非被动区域的坐标
+- **RTL 支持**：希伯来/阿拉伯等从右到左语言下抽屉与按钮自动换侧（与官方一致）
+- **网格布局选项**（与官方一致）：grid 布局下自动跨全列、占 4 行
 - **零外部依赖**：卡片为单文件自包含（已内置渲染引擎），国内无需任何 CDN
 - **纯前端资源**：不是集成，不占用集成列表、不需要安装到 custom_components
 - **全程 UI 配置**：添加卡片后所有选项（实体/颜色/底图/样式/轨迹/聚合/比例尺等）都在界面里可视化设置
@@ -153,7 +156,19 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.2.7（最新）</summary>
+<summary>v0.2.8（最新）</summary>
+
+- **对齐 HA 最新官方源码（2026-10-20 dev）**：逐行核对 `hui-map-card.ts` / `map-engine.ts` / `get_entity_location.ts` 后修复——
+  - **聚焦缩放官方化**：`_focusZoom` 只放大到恰好清除最近标记（墨卡托像素距离计算，≤17 级）；区域用球面大圆角点 `circleBoundsPoints`（官方精确实现，替换原 8 点近似）
+  - **person 区域定位兜底**：person 无坐标时回退第一个非被动 in_zone 坐标（官方 `getEntityLocation(stateObj, states)`）
+  - **RTL 支持**：希伯来/阿拉伯等 RTL 语言下抽屉、按钮、视野 padding 自动换侧
+  - **地图空白点击取消选择**（官方 `_handleMapClicked`）；`_handleMarkerClick` 增加"非过滤实体不选择"检查（与官方一致）
+  - **`getGridOptions`**：grid 布局跨全列占 4 行（官方 full/rows 4）
+  - **抽屉交互对齐**：选中态下抽屉尺寸变化自动重新聚焦；单 Tab 时抽屉收窄为 300px（`single-tab` 属性）；panel 布局按钮移到抽屉对侧
+  - **Overview 装饰对齐**：未选中实体隐藏精度圈/半径圈（`hide_accuracy`/`hide_radius`/`selected`），区域 Tab 或配置显示时例外
+</details>
+<details>
+<summary>v0.2.7</summary>
 
 - **仪表盘模板**：注册官方 dashboard strategy——「设置 → 仪表盘 → 添加仪表盘」对话框直接选「中国地图」，一键创建中国版地图仪表盘（全程 UI，与官方 Map 仪表盘同构：Panel 视图 + `auto_fit/show_all`）
 - **Overview 抽屉对齐官方最新**：人/设备/区域 Tab 列表（自动只显有内容的 Tab）+ 实体详情页 + **24 小时活动时间线**（进出区域/状态变化，可展开）
