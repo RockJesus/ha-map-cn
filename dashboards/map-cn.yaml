@@ -27,7 +27,7 @@ views:
     path: map
     type: panel
     cards:
-      - type: map-cn
+      - type: custom:map-cn
         provider: gaode            # gaode | tencent | tianditu | osm（中国内地可达底图）
         style: normal              # normal | light | satellite | dark
         map_style: default         # 官方渲染风格：default | colorful | natural | muted | gray | toner
@@ -45,7 +45,7 @@ views:
     path: zones
     type: panel
     cards:
-      - type: map-cn
+      - type: custom:map-cn
         provider: gaode
         style: normal
         auto_fit: true

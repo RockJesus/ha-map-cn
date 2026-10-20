@@ -44,7 +44,7 @@ export const registerMapCnDashboardStrategy = () => {
             icon: "mdi:map",
             cards: [
               {
-                type: "map-cn",
+                type: "custom:map-cn",
                 auto_fit: true,
                 show_all: true,
               },
