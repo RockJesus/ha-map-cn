@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.3.5-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.3.6-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -145,24 +145,30 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.3.5（最新）</summary>
+<summary>v0.3.6（最新）</summary>
+
+- **可视化编辑器端到端验证通过（真实 HA 2026.10.x 环境，dyc 实测）**：编辑模式打开中国地图卡片配置 → `map-cn-editor` 渲染全部配置项（底图供应商/地图样式/深浅模式/渲染风格 map_style/天地图 Key/实体选择/轨迹/高级选项）→ UI 保存 → 配置持久化到仪表盘，全程无 YAML
+- **对齐 HA 前端多版本编辑机制**：兼容 HA 前端 20260930.x（`hui-panel-view` 监听 `ll-edit-card`、path 为 `[viewIndex, cardIndex]`）与最新 main（`hui-view` 监听、path 为 `[viewIndex, "cards", cardIndex]`）两种卡片编辑打开方式——卡片/编辑器遵循官方协议（`setConfig` + `hassChanged` + `config-changed`）在两种版本均正常
+</details>
+<details>
+<summary>v0.3.5</summary>
 
 - **修复面板/网格视图下卡片宿主高度未撑满**（dyc 实测：错误分支已保留 ha-card 容器，但宿主 `:host` 未声明高度，百分比高度链在宿主层断裂 → 卡片仍 64px）——`map-cn` 元素补 `width:100%; height:100%`，穿透到面板视图容器（官方 hui-map-card 无显式宿主样式、靠逐层 auto 穿透；本项目显式声明更稳）
 </details>
 <details>
-<summary>v0.3.4（最新）</summary>
+<summary>v0.3.4</summary>
 
 - **修复地图加载失败时卡片塌陷成 64px 错误条**（dyc 实测发现）：地图初始化出错（WebGL 不可用/底图瓦片加载失败/天地图 key 无效等）时，错误分支丢弃了 ha-card 全屏容器、直接输出错误条，panel 视图下卡片只剩标题栏高度——与官方一致改为**错误也渲染在 ha-card 容器内**（容器保持 `height:100%` 全屏链，容器内显示错误提示）
 - **补全 ha-card 官方高度链**：v0.3.2 只在 `#card` 补了高度，漏了官方最关键的 `ha-card { height:100%; display:flex }`（百分比高度需穿透到 panel 视图容器），现完整对齐官方 hui-map-card 样式
 </details>
 <details>
-<summary>v0.3.3（最新）</summary>
+<summary>v0.3.3</summary>
 
 - **修复卡片打开即白屏/不渲染（show_all 路径崩溃）**：`_withMissingTracked` 补漏实体时把整个状态对象传给 `computeDomain`（应为 `entity_id`），模板求值即抛 `j.split is not a function`、卡片无法渲染——官方默认开启的 `show_all` 必触发
 - **修复可视化编辑器配置页打不开**：编辑器实现 HA 标准协议 `hassChanged()`（前端创建编辑器后依次调用 `setConfig` → `hassChanged`），此前缺失该方法导致 UI 配置界面报错
 </details>
 <details>
-<summary>v0.3.2（最新）</summary>
+<summary>v0.3.2</summary>
 
 - **修复 panel 布局下地图不铺满全屏（大片主题背景残留）**：对照官方 hui-map-card 样式，panel/grid 布局时卡片容器补 `height:100%` + flex 撑满，地图全屏显示
 </details>
