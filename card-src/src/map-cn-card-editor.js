@@ -59,6 +59,9 @@ class MapCnCardEditor extends LitElement {
   _update(changes) {
     const config = { ...this._config, ...changes };
     this._config = config;
+    // 同步 lit property 触发即时重渲染（否则切换控件后界面不刷新，
+    // 如切换供应商后样式下拉仍显示旧选项）
+    this.config = config;
     this.dispatchEvent(
       new CustomEvent("config-changed", {
         detail: { config },
