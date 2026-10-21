@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.3.8-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.3.9-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -145,7 +145,13 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.3.8（最新）</summary>
+<summary>v0.3.9（最新）</summary>
+
+- **修复编辑器控件切换不刷新（UI 交互即时反馈）**：`_update` 只更新内部 `_config` 并派发 `config-changed`，未同步 lit property `config` → 切换底图供应商后样式下拉仍显示旧选项（含已不可用的"卫星"）、控件改动界面不刷新。修复：`_update` 同时更新 `this.config` 触发即时重渲染；切换腾讯时样式自动过滤为 标准/浅色/深色
+- **editor.test.js 增补断言**：`_update` 后 `config` property 同步（provider 切换即时生效）
+</details>
+<details>
+<summary>v0.3.8</summary>
 
 - **修正各底图样式语义（瓦片逐张实测）**：① 高德"浅色"原用 style=8（实测为纯地名标注层，无道路底图）→ 改为 style=7 标准底图；② 腾讯移除"卫星"样式（实测 styleid=4 是**深色夜景**而非卫星，腾讯卫星走官方私有 ImageMapType 无公开瓦片 URL），腾讯提供 标准/浅色/深色 三样式；③ 腾讯"深色"用 styleid=4 深色瓦片，加 `darkTile` 标记——暗色模式下不再叠反相滤镜（否则深色瓦片被反相成浅色），仅微调亮度
 - **编辑器样式选项按供应商过滤**：切换底图供应商时，地图样式下拉动态过滤（腾讯无卫星选项），并自动把已选但不可用的样式回退为标准
