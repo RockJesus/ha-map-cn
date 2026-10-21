@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.3.2-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.3.3-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -144,6 +144,12 @@ lovelace:
 
 ## 版本历史
 
+<details>
+<summary>v0.3.3（最新）</summary>
+
+- **修复卡片打开即白屏/不渲染（show_all 路径崩溃）**：`_withMissingTracked` 补漏实体时把整个状态对象传给 `computeDomain`（应为 `entity_id`），模板求值即抛 `j.split is not a function`、卡片无法渲染——官方默认开启的 `show_all` 必触发
+- **修复可视化编辑器配置页打不开**：编辑器实现 HA 标准协议 `hassChanged()`（前端创建编辑器后依次调用 `setConfig` → `hassChanged`），此前缺失该方法导致 UI 配置界面报错
+</details>
 <details>
 <summary>v0.3.2（最新）</summary>
 
