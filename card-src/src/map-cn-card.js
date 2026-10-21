@@ -500,6 +500,23 @@ class MapCnCard extends LitElement {
         zoom: DEFAULT_CENTER_ZOOM,
         attributionControl: { compact: true },
         renderWorldCopies: true,
+        // 腾讯地图瓦片 y 轴为 TMS（从南到北），MapLibre 请求的是 XYZ（从北到南）：
+        // 需 y' = 2^z - 1 - y 反转后才能取到正确瓦片（实测 XYZ y=6105 北京返回纯白占位图，
+        // TMS y=10278 才是真实北京地图）。其余供应商（高德/天地图/OSM）为标准 XYZ，不改写。
+        transformRequest: (url, resourceType) => {
+          if (
+            resourceType === "Tile" &&
+            url.includes(".map.gtimg.com/tile")
+          ) {
+            const m = url.match(/[?&]z=(\d+)[^&]*&x=(\d+)[^&]*&y=(\d+)/);
+            if (m) {
+              const z = Number(m[1]);
+              const yTms = (1 << z) - 1 - Number(m[3]);
+              return { url: url.replace(`y=${m[3]}`, `y=${yTms}`) };
+            }
+          }
+          return { url };
+        },
       });
     } catch (err) {
       this._error = { code: "map_init", message: String(err) };
