@@ -312,10 +312,14 @@ class MapCnCard extends LitElement {
 
   render() {
     if (this._error) {
-      return html`<ha-alert alert-type="error">
-        ${this.hass?.localize?.("ui.components.map.error") || "Map error"}:
-        ${this._error.message} (${this._error.code})
-      </ha-alert>`;
+      // 与官方一致：错误时仍保留 ha-card 全屏容器（height:100%），容器内显示错误提示，
+      // 避免地图加载失败（WebGL/瓦片/底图 key）时卡片塌陷成一条 64px 的错误条
+      return html`<ha-card class="map-cn-error">
+        <ha-alert alert-type="error" class="map-cn-error-alert">
+          ${this.hass?.localize?.("ui.components.map.error") || "Map error"}:
+          ${this._error.message} (${this._error.code})
+        </ha-alert>
+      </ha-card>`;
     }
     const isDark =
       this._config?.dark_mode || this._config?.theme_mode === "dark"
@@ -1594,6 +1598,9 @@ class MapCnCard extends LitElement {
     ha-card {
       overflow: hidden;
       width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
     }
     #card:has(#root.panel-layout) {
       overflow: visible;

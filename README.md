@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.3.3-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.3.4-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -144,6 +144,12 @@ lovelace:
 
 ## 版本历史
 
+<details>
+<summary>v0.3.4（最新）</summary>
+
+- **修复地图加载失败时卡片塌陷成 64px 错误条**（dyc 实测发现）：地图初始化出错（WebGL 不可用/底图瓦片加载失败/天地图 key 无效等）时，错误分支丢弃了 ha-card 全屏容器、直接输出错误条，panel 视图下卡片只剩标题栏高度——与官方一致改为**错误也渲染在 ha-card 容器内**（容器保持 `height:100%` 全屏链，容器内显示错误提示）
+- **补全 ha-card 官方高度链**：v0.3.2 只在 `#card` 补了高度，漏了官方最关键的 `ha-card { height:100%; display:flex }`（百分比高度需穿透到 panel 视图容器），现完整对齐官方 hui-map-card 样式
+</details>
 <details>
 <summary>v0.3.3（最新）</summary>
 
