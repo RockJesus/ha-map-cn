@@ -1865,3 +1865,4 @@ registerMapCnDashboardStrategy();
 
 export { MapCnCard };
 export { TILE_PROVIDERS, DEFAULT_PROVIDER, DEFAULT_STYLE } from "./tiles.js";
+export { personActivity, zoneActivity } from "./map-cn-overview.js";

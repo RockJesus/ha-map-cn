@@ -23,7 +23,7 @@ const getEntityLocation = (stateObj) => {
     : undefined;
 };
 
-// 与官方 map-activity.ts 一致
+// 与官方 map-activity.ts 一致；zoneActivity 额外接受 stateFallback（无 in_zones 属性的旧版 HA 回退）
 const NO_LOCATION_STATES = ["unavailable", "unknown"];
 const personActivity = (history, since) => {
   const entries = [];
@@ -42,7 +42,7 @@ const personActivity = (history, since) => {
   return entries.reverse().slice(0, ACTIVITY_MAX_ENTRIES);
 };
 
-const zoneActivity = (history, personIds, zoneState, since) => {
+const zoneActivity = (history, personIds, zoneId, stateFallback, since) => {
   const entries = [];
   for (const personId of personIds) {
     let wasInZone;
@@ -50,7 +50,10 @@ const zoneActivity = (history, personIds, zoneState, since) => {
       if (NO_LOCATION_STATES.includes(entry.s)) {
         continue;
       }
-      const inZone = entry.s === zoneState;
+      // 官方语义：in_zones 属性数组（权威）；旧版 HA 无该属性时回退 state 比较
+      const inZone =
+        (entry.a?.in_zones || []).includes(zoneId) ||
+        (stateFallback !== undefined && entry.s === stateFallback);
       if (wasInZone === undefined && entry.lu * 1000 < since) {
         // 窗口起点前的状态仅用于判断是否“刚进入”
         wasInZone = inZone;
@@ -560,9 +563,9 @@ class MapCnOverview extends LitElement {
         this._activity = [];
         return;
       }
-      const zoneState =
+      const stateFallback =
         entityId === HOME_ZONE_ENTITY_ID ? "home" : this._entityName(zone);
-      this._activity = zoneActivity(history, personIds, zoneState, since);
+      this._activity = zoneActivity(history, personIds, entityId, stateFallback, since);
     } else {
       history = await this._fetchHistory([entityId], since);
       if (request !== this._activityRequest) {
@@ -907,3 +910,6 @@ class MapCnOverview extends LitElement {
 }
 
 customElements.define("map-cn-overview", MapCnOverview);
+
+// 导出活动时间线逻辑供单测/复用（对齐官方 map-activity.ts 结构）
+export { personActivity, zoneActivity };

@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.3.9-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.4.0-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -145,7 +145,16 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.3.9（最新）</summary>
+<summary>v0.4.0（最新）</summary>
+
+- **区域活动时间线对齐官方最新 `map-activity.ts`（in_zones 属性判定）**：区域详情的活动时间线原用「person state 与区域名比较」判断进出区域——person 状态并非始终等于区域名（如 state 为 not_home 但 in_zones 属性记录实际所在区域），边界场景会漏记事件。修复：优先使用官方语义的 `attributes.in_zones` 数组判定进出（`entry.a.in_zones.includes(zoneId)`），无该属性的旧版 HA 自动回退原 state 比较；`arrived` 进出标记、窗口起点基线语义与官方逐行一致
+- **活动时间线逻辑抽为可测模块并导出**：`personActivity` / `zoneActivity` 从 overview 内部函数导出（对齐官方独立 `map-activity.ts` 结构），供单测直接断言
+- **新增 activity.test.js（13 项断言全绿）**：person 活动跳过 unavailable/unknown、窗口起点不算事件、newest first、20 条上限；zone 活动 in_zones 判定（人 A 进出区域事件）、state 回退（人 B 旧版 HA）、arrived 标记、时间倒序
+- **新增 entities.test.js（13 项断言全绿）**：show_all 实体收集（person 的 source tracker 排除、隐藏实体排除、geo_location 纳入）、geo_location_sources 过滤（all/指定 source/字符串归一化/label_mode 继承）、_mapEntities 结构
+- **GCJ-02 精度实测**：北京/上海/广州三点 WGS-84→GCJ-02 偏移（0.006241/0.001401 等）与往返误差（微米级 1e-5~1e-6 度）——坐标转换精度良好
+</details>
+<details>
+<summary>v0.3.9</summary>
 
 - **修复编辑器控件切换不刷新（UI 交互即时反馈）**：`_update` 只更新内部 `_config` 并派发 `config-changed`，未同步 lit property `config` → 切换底图供应商后样式下拉仍显示旧选项（含已不可用的"卫星"）、控件改动界面不刷新。修复：`_update` 同时更新 `this.config` 触发即时重渲染；切换腾讯时样式自动过滤为 标准/浅色/深色
 - **editor.test.js 增补断言**：`_update` 后 `config` property 同步（provider 切换即时生效）
