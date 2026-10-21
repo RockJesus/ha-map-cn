@@ -678,7 +678,7 @@ class MapCnCard extends LitElement {
     const extra = [];
     Object.values(hass.states).forEach((stateObj) => {
       const entityId = stateObj.entity_id;
-      const domain = computeDomain(stateObj);
+      const domain = computeDomain(entityId);
       const eligible =
         domain === "person" ||
         (domain === "device_tracker" && !personSources.has(entityId));

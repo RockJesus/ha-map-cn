@@ -40,6 +40,11 @@ class MapCnCardEditor extends LitElement {
     this._config = { ...(config || {}) };
   }
 
+  // HA 编辑器协议：前端创建编辑器后依次调用 setConfig() 与 hassChanged()
+  hassChanged(hass) {
+    this.hass = hass;
+  }
+
   _update(changes) {
     const config = { ...this._config, ...changes };
     this._config = config;
