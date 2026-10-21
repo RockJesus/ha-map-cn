@@ -1593,6 +1593,8 @@ class MapCnCard extends LitElement {
   static styles = css`
     :host {
       display: block;
+      width: 100%;
+      height: 100%;
       --ha-marker-size: 48px;
     }
     ha-card {

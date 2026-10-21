@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.3.4-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.3.5-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -144,6 +144,11 @@ lovelace:
 
 ## 版本历史
 
+<details>
+<summary>v0.3.5（最新）</summary>
+
+- **修复面板/网格视图下卡片宿主高度未撑满**（dyc 实测：错误分支已保留 ha-card 容器，但宿主 `:host` 未声明高度，百分比高度链在宿主层断裂 → 卡片仍 64px）——`map-cn` 元素补 `width:100%; height:100%`，穿透到面板视图容器（官方 hui-map-card 无显式宿主样式、靠逐层 auto 穿透；本项目显式声明更稳）
+</details>
 <details>
 <summary>v0.3.4（最新）</summary>
 
