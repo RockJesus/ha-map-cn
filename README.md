@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.3.7-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.3.8-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -145,7 +145,14 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.3.7（最新）</summary>
+<summary>v0.3.8（最新）</summary>
+
+- **修正各底图样式语义（瓦片逐张实测）**：① 高德"浅色"原用 style=8（实测为纯地名标注层，无道路底图）→ 改为 style=7 标准底图；② 腾讯移除"卫星"样式（实测 styleid=4 是**深色夜景**而非卫星，腾讯卫星走官方私有 ImageMapType 无公开瓦片 URL），腾讯提供 标准/浅色/深色 三样式；③ 腾讯"深色"用 styleid=4 深色瓦片，加 `darkTile` 标记——暗色模式下不再叠反相滤镜（否则深色瓦片被反相成浅色），仅微调亮度
+- **编辑器样式选项按供应商过滤**：切换底图供应商时，地图样式下拉动态过滤（腾讯无卫星选项），并自动把已选但不可用的样式回退为标准
+- **新增 tiles.test.js 瓦片逻辑测试（20 项断言全绿）**：腾讯 TMS y 轴反转只作用于腾讯瓦片（高德/天地图不误匹配）、样式矩阵结构、darkTile 标记、默认供应商/样式
+</details>
+<details>
+<summary>v0.3.7</summary>
 
 - **修复腾讯地图底图全白（瓦片 y 轴方向错误）**：腾讯瓦片服务 y 轴为 **TMS（从南到北）**，与 MapLibre 请求的 XYZ（从北到南）相反——此前请求北京区域返回恒定的纯白占位瓦片（1712B JPEG），整个腾讯底图白屏。修复：`transformRequest` 对腾讯瓦片做 `y' = 2^z - 1 - y` 反转（仅腾讯域名，高德/天地图/OSM 为标准 XYZ 不改写）；实测北京 z14 瓦片反转后返回真实地图（非空白）
 - **瓦片服务可用性实测**（当前网络环境）：高德标准（PNG）/卫星（JPEG）正常；腾讯标准/卫星正常（Content-Type 为 application/octet-stream 但内容为有效 JPEG，MapLibre 可渲染）；天地图域名可达（需有效 key）；OSM 国内不可达（503，预期内）

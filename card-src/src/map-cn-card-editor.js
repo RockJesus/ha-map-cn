@@ -14,6 +14,17 @@ const STYLES = [
   ["satellite", "卫星"],
   ["dark", "深色"],
 ];
+// 各供应商可用样式（腾讯无公开卫星瓦片——官方 SATELLITE 走自定义 ImageMapType）
+const PROVIDER_STYLES = {
+  gaode: STYLES,
+  tencent: [
+    ["normal", "标准"],
+    ["light", "浅色"],
+    ["dark", "深色"],
+  ],
+  tianditu: STYLES,
+  osm: STYLES,
+};
 const THEME_MODES = [
   ["auto", "跟随主题"],
   ["light", "浅色"],
@@ -104,6 +115,9 @@ class MapCnCardEditor extends LitElement {
     const c = this._config || {};
     const rows = this._entityRows();
     const showAll = !!c.show_all;
+    const providerVal = c.provider || "gaode";
+    const styleOptions =
+      PROVIDER_STYLES[providerVal] || PROVIDER_STYLES.gaode;
     const sourcesValue = (c.geo_location_sources || [])
       .map((s) => (typeof s === "string" ? s : s.source))
       .join(", ");
@@ -112,8 +126,16 @@ class MapCnCardEditor extends LitElement {
         <div class="row">
           <ha-select
             .label=${"底图供应商"}
-            .value=${c.provider || "gaode"}
-            @change=${(ev) => this._update({ provider: ev.target.value })}
+            .value=${providerVal}
+            @change=${(ev) => {
+              const p = ev.target.value;
+              const opts = PROVIDER_STYLES[p] || PROVIDER_STYLES.gaode;
+              const cur = this._config?.style || "normal";
+              this._update({
+                provider: p,
+                style: opts.some(([v]) => v === cur) ? cur : "normal",
+              });
+            }}
           >
             ${PROVIDERS.map(
               ([v, label]) =>
@@ -125,7 +147,7 @@ class MapCnCardEditor extends LitElement {
             .value=${c.style || "normal"}
             @change=${(ev) => this._update({ style: ev.target.value })}
           >
-            ${STYLES.map(
+            ${styleOptions.map(
               ([v, label]) =>
                 html`<mwc-list-item .value=${v}>${label}</mwc-list-item>`
             )}

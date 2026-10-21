@@ -579,10 +579,15 @@ class MapCnCard extends LitElement {
     // 官方 map_style 预设（default/colorful/natural/muted/gray/toner）→ raster 滤镜近似
     const styleFilter =
       MAP_STYLE_FILTERS[this._config?.map_style || DEFAULT_MAP_STYLE] ?? "";
+    // darkTile：该样式瓦片本身已是深色（如腾讯 styleid=4 夜景），暗色模式不再反相，
+    // 仅微调亮度；浅色瓦片反相 invert+hue-rotate 成暗色（官方 ha-map 暗色模式等效做法）
+    const darkTile = this._provider?.styles?.dark?.darkTile;
     const darkFilter = isDark
       ? satellite
         ? "brightness(0.85)"
-        : "invert(1) hue-rotate(180deg)"
+        : darkTile
+          ? "brightness(0.9)"
+          : "invert(1) hue-rotate(180deg)"
       : "";
     canvas.style.filter = [darkFilter, styleFilter]
       .filter(Boolean)
@@ -1859,3 +1864,4 @@ window.customCards.push({
 registerMapCnDashboardStrategy();
 
 export { MapCnCard };
+export { TILE_PROVIDERS, DEFAULT_PROVIDER, DEFAULT_STYLE } from "./tiles.js";

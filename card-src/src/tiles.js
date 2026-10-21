@@ -39,7 +39,7 @@ export const TILE_PROVIDERS = {
       '&copy; <a href="https://www.amap.com" target="_blank" rel="noopener">高德地图</a>',
     styles: {
       normal: { urls: amapStyle(7), maxzoom: 18 },
-      light: { urls: amapStyle(8), maxzoom: 18 },
+      light: { urls: amapStyle(7), maxzoom: 18 },
       satellite: { urls: amapSatellite, maxzoom: 18 },
       dark: { urls: amapStyle(7), maxzoom: 18, darkFilter: true },
     },
@@ -49,11 +49,14 @@ export const TILE_PROVIDERS = {
     coordinateSystem: "gcj02",
     attribution:
       '&copy; <a href="https://lbs.qq.com" target="_blank" rel="noopener">腾讯地图</a>',
+    // 腾讯瓦片 styleid 语义（实测）：0=标准(白底)、1=标准(浅灰底)、4=深色夜景；
+    // styleid=2 为透明层（无底图）。腾讯卫星图无公开瓦片 URL（官方 SATELLITE 走自定义
+    // ImageMapType），故腾讯不提供 satellite 样式。
     styles: {
       normal: { urls: tencentTiles(0), maxzoom: 20 },
       light: { urls: tencentTiles(1), maxzoom: 20 },
-      satellite: { urls: tencentTiles(4), maxzoom: 20 },
-      dark: { urls: tencentTiles(0), maxzoom: 20, darkFilter: true },
+      // darkTile: 瓦片本身已是深色，卡片暗色模式不再反相（仅微调亮度）
+      dark: { urls: tencentTiles(4), maxzoom: 20, darkTile: true },
     },
   },
   tianditu: {
