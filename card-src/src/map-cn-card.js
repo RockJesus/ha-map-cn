@@ -1597,6 +1597,9 @@ class MapCnCard extends LitElement {
     }
     #card:has(#root.panel-layout) {
       overflow: visible;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
     }
     #root {
       position: relative;

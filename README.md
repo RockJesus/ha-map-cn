@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.3.1-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.3.2-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -145,7 +145,12 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.3.1（最新）</summary>
+<summary>v0.3.2（最新）</summary>
+
+- **修复 panel 布局下地图不铺满全屏（大片主题背景残留）**：对照官方 hui-map-card 样式，panel/grid 布局时卡片容器补 `height:100%` + flex 撑满，地图全屏显示
+</details>
+<details>
+<summary>v0.3.1</summary>
 
 - **修复卡片加载失败（`Custom element doesn't exist: map-cn`）**：HA 对自定义卡片的元素名规则 = 类型去掉 `custom:` 前缀（`map-cn`），此前注册为 `map-cn-card` 导致卡片永远找不到；同步修正可视化编辑器元素名（`map-cn-editor`）
 </details>
