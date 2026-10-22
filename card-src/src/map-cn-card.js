@@ -899,6 +899,11 @@ class MapCnCard extends LitElement {
     }
     this._overviewSelected = undefined;
     this.requestUpdate();
+    // 官方 #54774：取消选中恢复自动适配（auto_fit 开启时重新 fit 全部实体）
+    if (this._config?.auto_fit && this._map) {
+      this._autoFitted = false;
+      this._updateAll();
+    }
   }
 
   // 与官方 _focusEntity 一致：zone 用球面圆角点 fitBounds；单点按需放大到
@@ -1071,7 +1076,8 @@ class MapCnCard extends LitElement {
     this._updatePaths();
     this._resizeCircles();
     this._applyClustering();
-    if (this._config?.auto_fit && !this._autoFitted) {
+    // 选中实体时暂停自动适配（保持聚焦）；取消选中恢复（官方 #54774 unpause_autofit）
+    if (this._config?.auto_fit && !this._autoFitted && !this._overviewSelected) {
       this._autoFitted = true;
       this._fitAll();
     }

@@ -496,6 +496,52 @@ class MapCnOverview extends LitElement {
     return out;
   }
 
+  connectedCallback() {
+    super.connectedCallback?.();
+    // 尺寸变化通知宿主（地图 inset/padding 避开抽屉）——对应官方
+    // ha-snap-bottom-sheet 的 bottom-sheet-resized → map-overview-resize
+    if (typeof ResizeObserver !== "undefined") {
+      this._sizeObserver = new ResizeObserver(() => this._emitSize());
+      this._sizeObserver.observe(this);
+    }
+    this._emitSize();
+  }
+
+  disconnectedCallback() {
+    this._sizeObserver?.disconnect();
+    this._sizeObserver = undefined;
+    super.disconnectedCallback?.();
+  }
+
+  _emitSize() {
+    try {
+      const rect = this.getBoundingClientRect?.();
+      if (!rect || (!rect.width && !rect.height)) {
+        return;
+      }
+      const phone =
+        typeof window !== "undefined" &&
+        !!window.matchMedia &&
+        window.matchMedia("(max-width: 600px)").matches;
+      const height = Math.round(rect.height);
+      const width = Math.round(rect.width);
+      this.dispatchEvent(
+        new CustomEvent("map-overview-resize", {
+          detail: {
+            width,
+            height,
+            // 手机端底部面板：fitHeight = 当前高度（宿主 padding 用）
+            fitHeight: phone ? height : undefined,
+          },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
   updated(changedProps) {
     // 当前 tab 无内容时切到第一个有内容的 tab
     const tabs = Object.keys(
@@ -507,6 +553,7 @@ class MapCnOverview extends LitElement {
     if (changedProps.has("selected") && this.selected) {
       this._loadActivity();
     }
+    this._emitSize();
   }
 
   willUpdate(changedProps) {

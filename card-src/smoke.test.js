@@ -128,6 +128,31 @@ window.URL.revokeObjectURL = () => {};
   const coord = await import("./src/coord.js");
   const [lng, lat] = coord.toMapCoords(39.9087, 116.3975, "gcj02");
   console.log("gcj02 shift dLng,dLat:", (lng - 116.3975).toFixed(5), (lat - 39.9087).toFixed(5));
+
+  // Overview 尺寸通知（地图 inset/padding 避开抽屉的关键）
+  const ov = document.createElement("map-cn-overview");
+  ov.getBoundingClientRect = () => ({ width: 360, height: 500, top: 0, left: 0, right: 360, bottom: 500 });
+  let resizeEv = null;
+  ov.addEventListener("map-overview-resize", (e) => { resizeEv = e; });
+  ov._emitSize();
+  console.log("overview resize detail:", JSON.stringify(resizeEv && resizeEv.detail));
+  if (!resizeEv || resizeEv.detail.width !== 360 || resizeEv.detail.height !== 500) {
+    console.error("FAIL: map-overview-resize 事件缺失/尺寸错误"); process.exit(1);
+  }
+
+  // 选中暂停 autofit + deselect 恢复（官方 #54774）
+  el._config = { auto_fit: true, entities: ["person.a"] };
+  el._overviewSelected = "person.a";
+  el._autoFitted = true;
+  el._map = { truthy: true };
+  const updateAllCalls = [];
+  el._updateAll = () => { updateAllCalls.push("updateAll"); };
+  el._deselect();
+  console.log("deselect autoFit reset:", el._autoFitted === false, "| _updateAll:", updateAllCalls.length);
+  if (el._autoFitted !== false || updateAllCalls.length === 0) {
+    console.error("FAIL: deselect 未恢复自动适配"); process.exit(1);
+  }
+
   console.log("SMOKE PASS");
   process.exit(0);
 })().catch((e) => {

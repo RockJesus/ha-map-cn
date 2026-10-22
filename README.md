@@ -145,7 +145,14 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.4.3（最新）</summary>
+<summary>v0.4.4（最新）</summary>
+
+- **Overview 抽屉尺寸通知宿主（修复地图被抽屉遮挡）**：overview 组件通过 ResizeObserver + 渲染后主动发送 `map-overview-resize` 事件（含 width/height，手机端附 fitHeight）——宿主 `--overview-width` CSS 变量与 `_overviewPadding` 依赖该事件更新地图 inset，此前事件从未触发导致地图被左侧抽屉遮挡、聚焦/适配 padding 失效。对应官方 ha-snap-bottom-sheet 的 bottom-sheet-resized → map-overview-resize 链路
+- **auto_fit 选中暂停 / 取消恢复（对齐官方 #54774）**：选中实体时暂停自动适配（保持聚焦视野不被 _fitAll 覆盖）；点返回取消选中后恢复自动适配（重新 fit 全部实体，官方 `unpause_autofit` 语义）
+- **smoke.test.js 增补断言**：map-overview-resize 事件载荷、deselect 恢复 autofit 标志与 _updateAll 触发
+</details>
+<details>
+<summary>v0.4.3</summary>
 
 - **聚焦飞行语义对齐官方**：目标已在视野内时不飞行（`fly: !containsLocation`），直接跳转
 - **轨迹订阅失败自动重试**：订阅失败/未建立时相关 hass 变化触发 shouldUpdate 重试（对照官方「组件列表变化重试订阅」）
