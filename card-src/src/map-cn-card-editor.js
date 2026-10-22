@@ -49,6 +49,7 @@ class MapCnCardEditor extends LitElement {
 
   setConfig(config) {
     this._config = { ...(config || {}) };
+    this._pendingRows = []; // 外部 config 变化时清空待提交行
   }
 
   // HA 编辑器协议：前端创建编辑器后依次调用 setConfig() 与 hassChanged()
@@ -73,37 +74,88 @@ class MapCnCardEditor extends LitElement {
 
   _entityRows() {
     const entities = this._config?.entities || [];
-    return entities.map((e, i) => {
+    const rows = entities.map((e, i) => {
       const row = typeof e === "string" ? { entity: e } : { ...e };
-      return { index: i, ...row };
+      return { index: i, pending: false, ...row };
     });
+    // 待提交的空行（用户刚点"添加实体"尚未选择实体）——不写入 config，避免
+    // 配置文件里累积 {"entity":""} 垃圾行（dyc v0.4.1 config 曾出现 6 个空行）
+    return [
+      ...rows,
+      ...(this._pendingRows || []).map((r) => ({
+        ...r,
+        index: rows.length + this._pendingRows.indexOf(r),
+        pending: true,
+      })),
+    ];
   }
 
   _normalizeEntities(rows) {
-    return rows.map((r) => {
-      const { index, ...rest } = r;
-      const keys = Object.keys(rest).filter(
-        (k) => rest[k] !== undefined && rest[k] !== ""
-      );
-      return keys.length === 1 && keys[0] === "entity" ? rest.entity : rest;
-    });
+    return rows
+      .map((r) => {
+        if (typeof r === "string") {
+          return r; // 字符串实体直接保留
+        }
+        if (!r || typeof r !== "object") {
+          return null;
+        }
+        const { index, pending, ...rest } = r;
+        if (!rest.entity) {
+          return null; // 空实体行不产出（pending 行未选实体时同样过滤）
+        }
+        const keys = Object.keys(rest).filter(
+          (k) => rest[k] !== undefined && rest[k] !== ""
+        );
+        return keys.length === 1 && keys[0] === "entity" ? rest.entity : rest;
+      })
+      .filter(Boolean);
   }
 
   _updateEntity(index, patch) {
     const rows = this._entityRows();
-    rows[index] = { ...rows[index], ...patch };
+    const row = rows[index];
+    if (!row) {
+      return;
+    }
+    if (row.pending) {
+      // pending 行位于 config 行之后：pendingIndex = index - configRows 数
+      const pendingIndex = index - rows.length;
+      if (patch.entity) {
+        // pending 行选好实体 → 提交为真实行（追加到 config 尾部）
+        const merged = { ...row, ...patch };
+        const entities = this._normalizeEntities([
+          ...this._config?.entities || [],
+          ...(merged.color ? [{ ...merged }] : [merged.entity]),
+        ]);
+        this._pendingRows.splice(pendingIndex, 1);
+        this._update({ entities });
+      } else {
+        this._pendingRows[pendingIndex] = { ...row, ...patch };
+        this.requestUpdate();
+      }
+      return;
+    }
+    rows[index] = { ...row, ...patch };
     this._update({ entities: this._normalizeEntities(rows) });
   }
 
   _removeEntity(index) {
-    const rows = this._entityRows().filter((_, i) => i !== index);
-    this._update({ entities: this._normalizeEntities(rows) });
+    const rows = this._entityRows();
+    const row = rows[index];
+    if (row?.pending) {
+      this._pendingRows.splice(this._pendingRows.indexOf(row), 1);
+      this.requestUpdate();
+      return;
+    }
+    this._update({ entities: this._normalizeEntities(rows.filter((_, i) => i !== index)) });
   }
 
   _addEntity() {
-    this._update({
-      entities: [...(this._config?.entities || []), { entity: "" }],
-    });
+    if (!this._pendingRows) {
+      this._pendingRows = [];
+    }
+    this._pendingRows.push({ entity: "", pending: true });
+    this.requestUpdate();
   }
 
   _onSourcesChange(ev) {

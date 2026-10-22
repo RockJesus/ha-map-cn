@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.4.1-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.4.2-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -145,7 +145,16 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.4.1（最新）</summary>
+<summary>v0.4.2（最新）</summary>
+
+- **精度圈/半径圈按选中态显示（对齐官方 `_decorateOverviewEntities`）**：panel 布局下未选中实体的 GPS 精度圈与 zone 半径圈原先始终显示（只要数据存在），官方语义是「只有选中实体显示精度圈，zone 半径圈仅选中/预览/配置显示/zones Tab 时显示」。修复：`_displayEntities` 携带 `hide_accuracy`/`hide_radius`/`selected` 装饰，`_drawEntityMarker`/`_drawZone` 按装饰创建/更新/移除圈；`_resizeCircles` 只负责尺寸计算，不再覆盖圈显示逻辑（避免配置 `show_zone_radius=false` 时把选中 zone 的半径圈也隐藏——选中实体恒显示）
+- **精度圈跟随选中态/`gps_accuracy` 实时增删**：抽取 `_syncAccuracyCircle`，marker 已存在分支同步处理圈创建/更新/移除（选中切换、精度变化即时生效，不再依赖重建）
+- **编辑器空实体行不再污染配置（v0.4.1 发现 dyc config 累积 6 个 `{"entity":""}` 空行）**：`_addEntity` 改为「待提交 pending 行」（不写 config），选好实体才提交；`_normalizeEntities` 过滤空 entity 行；`setConfig` 时清空 pending。editor.test.js 增补断言：添加不产出空行、pending 提交、空行过滤、清空实体过滤
+- **聚焦飞行语义对齐官方**：目标已在视野内时不飞行（`fly: !containsLocation`），直接跳转
+- **轨迹订阅失败自动重试**：订阅失败/未建立时相关 hass 变化触发 shouldUpdate 重试（对照官方「组件列表变化重试订阅」）
+</details>
+<details>
+<summary>v0.4.1</summary>
 
 - **修复实体聚焦中心缺 GCJ-02 纠偏（偏移约 600 米）**：`_focusEntity` 聚焦时 fitBounds 中心用的是原始 WGS-84 经纬度，而底图是 GCJ-02 坐标系——选中实体后视野中心偏离实体实际位置约 0.006 度（数百米）。修复：聚焦中心先 `toMapCoords` 纠偏为地图坐标再算球面圆边界/fitBounds；区域半径圈同样用纠偏后中心
 - **修复聚焦缩放像素距离坐标混算**：`_focusZoom` 计算「其他实体到聚焦中心像素距离」时，其他实体中心仍是 WGS-84，与纠偏后的聚焦中心混合运算导致缩放级数偏差。修复：两侧统一先转地图坐标再算距离

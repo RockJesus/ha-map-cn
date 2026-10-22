@@ -37,14 +37,23 @@ Object.defineProperty(window.document, "adoptedStyleSheets", { value: [], writab
     console.error("FAIL: remove/merge wrong"); process.exit(1);
   }
   // 添加实体
+  // 添加实体：pending 空行不写 config（v0.4.2：不累积 {"entity":""} 垃圾行）
   el._addEntity();
-  console.log("after add:", JSON.stringify(lastConfig.entities));
-  if (lastConfig.entities.length !== 2) { console.error("FAIL: add"); process.exit(1); }
+  console.log("after add (pending, config unchanged):", JSON.stringify(lastConfig.entities));
+  if (lastConfig.entities.length !== 1) { console.error("FAIL: add 不应写空行进 config"); process.exit(1); }
+  // pending 行选好实体 → 提交为真实行
+  el._updateEntity(1, { entity: "zone.home" });
+  console.log("after pending commit:", JSON.stringify(lastConfig.entities));
+  if (lastConfig.entities.length !== 2) { console.error("FAIL: pending 提交"); process.exit(1); }
   // 只有 entity 的行应归一化为字符串
   el._updateEntity(1, { entity: "zone.home", color: "" });
   console.log("normalized:", JSON.stringify(lastConfig.entities));
   const s = lastConfig.entities.find(e => typeof e === "string");
   if (s !== "zone.home") { console.error("FAIL: normalize to string"); process.exit(1); }
+  // 空行过滤：更新为空 entity 不产出垃圾行
+  el._updateEntity(1, { entity: "" });
+  console.log("after clear entity (filtered):", JSON.stringify(lastConfig.entities));
+  if (lastConfig.entities.length !== 1) { console.error("FAIL: 空行未过滤"); process.exit(1); }
   // show_all 切换
   el._update({ show_all: true });
   console.log("show_all:", lastConfig.show_all);

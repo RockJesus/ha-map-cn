@@ -314,6 +314,10 @@ class MapCnCard extends LitElement {
     if (this._config?.show_all || this._config?.geo_location_sources) {
       return true;
     }
+    // 轨迹订阅失败/未建立时允许重试（对照官方：组件列表变化时重试订阅）
+    if (this._config?.hours_to_show && !this._subscribed && !this._error) {
+      return true;
+    }
     const ids = this._mapEntities().map((e) => e.entity_id);
     const oldStates = oldHass.states;
     const newStates = this.hass.states;
@@ -697,25 +701,39 @@ class MapCnCard extends LitElement {
 
   // 与官方一致：panel 布局下按概述 Tab 过滤实体
   // （person→人、device_tracker→设备，zone/geo_location 任何 Tab 都显示；选中实体恒显示）
+  // 同时携带 hide_accuracy/hide_radius/selected 装饰（官方 _decorateOverviewEntities 语义：
+  // panel 布局下只有选中实体显示精度圈/半径圈，除非预览/配置显示半径/zones Tab）
   _displayEntities() {
     const entities = this._mapEntities();
     if (this.layout !== "panel" || this.preview) {
       return entities;
     }
     const tab = this._overviewTab;
-    return entities.filter((e) => {
-      if (e.entity_id === this._overviewSelected) {
+    const selected = this._overviewSelected;
+    const showRadii =
+      this.preview ||
+      this._config?.show_zone_radius ||
+      this._overviewTab === "zones";
+    return entities
+      .map((entity) => ({
+        ...entity,
+        hide_accuracy: entity.entity_id !== selected,
+        hide_radius: !showRadii && entity.entity_id !== selected,
+        selected: entity.entity_id === selected,
+      }))
+      .filter((e) => {
+        if (e.entity_id === selected) {
+          return true;
+        }
+        const domain = computeDomain(e.entity_id);
+        if (domain === "person") {
+          return tab === "people";
+        }
+        if (domain === "device_tracker") {
+          return tab === "devices";
+        }
         return true;
-      }
-      const domain = computeDomain(e.entity_id);
-      if (domain === "person") {
-        return tab === "people";
-      }
-      if (domain === "device_tracker") {
-        return tab === "devices";
-      }
-      return true;
-    });
+      });
   }
 
   // 与官方 _withMissingTracked 一致：show_all 冻结已定位实体，补上后续定位的人/独立 tracker
@@ -903,6 +921,8 @@ class MapCnCard extends LitElement {
     const zone = computeDomain(entityId) === "zone";
     // 官方 MapLatLng=[lat,lng]；maplibre fitBounds 期望 [lng,lat]
     const toLngLat = (p) => [p[1], p[0]];
+    // 目标是否已在地图视野内（官方 fly 语义：在视野内不飞行直接跳转）
+    const contains = this._map?.containsLocation?.(mapCenter);
     this._map?.fitBounds(
       zone
         ? circleBoundsPoints(mapCenter, stateObj.attributes.radius ?? 100).map(toLngLat)
@@ -910,6 +930,7 @@ class MapCnCard extends LitElement {
       {
         maxZoom: zone ? 16 : this._focusZoom(mapCenter, zoom),
         padding: this._overviewPadding() || { top: 40, bottom: 40, left: 40, right: 40 },
+        fly: !contains,
       }
     );
   }
@@ -1171,6 +1192,15 @@ class MapCnCard extends LitElement {
           existing.element.title = title;
         }
       }
+      // 精度圈同步（hide_accuracy / gps_accuracy 变化）
+      this._syncAccuracyCircle(
+        entityId,
+        position,
+        color,
+        gpsAccuracy,
+        entity.focus,
+        entity.hide_accuracy
+      );
       return;
     }
 
@@ -1200,9 +1230,32 @@ class MapCnCard extends LitElement {
       entityName,
     };
 
-    // 精度圈
-    const accuracy = gpsAccuracy || (entity.focus ? NOMINAL_ACCURACY : 0);
-    if (accuracy > 0) {
+    // 精度圈（官方语义：panel 布局未选中实体隐藏；有 gps_accuracy 时显示）
+    this._syncAccuracyCircle(
+      entityId,
+      position,
+      color,
+      gpsAccuracy,
+      entity.focus,
+      entity.hide_accuracy
+    );
+  }
+
+  // 精度圈同步：创建/更新/移除（跟随选中态与 gps_accuracy 变化）
+  _syncAccuracyCircle(entityId, position, color, gpsAccuracy, focus, hideAccuracy) {
+    const em = this._entityMarkers[entityId];
+    if (!em) {
+      return;
+    }
+    const shouldHide = hideAccuracy && this.layout === "panel";
+    const accuracy =
+      !shouldHide && gpsAccuracy
+        ? gpsAccuracy
+        : !shouldHide && focus
+          ? NOMINAL_ACCURACY
+          : 0;
+    const have = !!em.accuracyMarker;
+    if (accuracy > 0 && !have) {
       const circleEl = this._createCircleEl(color, 1);
       circleEl.style.display = "none";
       const circleMarker = new maplibregl.Marker({
@@ -1210,9 +1263,19 @@ class MapCnCard extends LitElement {
       })
         .setLngLat(position)
         .addTo(this._map);
-      this._entityMarkers[entityId].accuracyEl = circleEl;
-      this._entityMarkers[entityId].accuracyMarker = circleMarker;
-      this._entityMarkers[entityId].accuracy = accuracy;
+      em.accuracyEl = circleEl;
+      em.accuracyMarker = circleMarker;
+      em.accuracy = accuracy;
+    } else if (accuracy > 0 && have) {
+      em.accuracy = accuracy;
+      if (em.accuracyMarker) {
+        em.accuracyMarker.setLngLat(position);
+      }
+    } else if (accuracy <= 0 && have) {
+      em.accuracyMarker?.remove();
+      em.accuracyMarker = undefined;
+      em.accuracyEl = undefined;
+      em.accuracy = 0;
     }
   }
 
@@ -1290,13 +1353,37 @@ class MapCnCard extends LitElement {
     const existing = this._zoneMarkers[entityId];
     const passive = !!stateObj.attributes.passive;
     const radius = stateObj.attributes.radius;
+    // 官方语义：panel 布局下未选中 zone 隐藏半径圈（hide_radius）
+    const showRadius =
+      !(entity.hide_radius && this.layout === "panel") && !!radius;
 
     if (existing) {
       existing.marker.setLngLat(position);
-      if (existing.radiusMarker && radius) {
-        existing.radiusMarker.setLngLat(position);
+      if (existing.radiusMarker) {
+        if (showRadius) {
+          existing.radiusMarker.setLngLat(position);
+          existing.radius = radius;
+          if (existing.radiusEl) {
+            existing.radiusEl.style.borderColor = color;
+          }
+        } else {
+          existing.radiusMarker.remove();
+          existing.radiusMarker = undefined;
+          existing.radiusEl = undefined;
+          existing.radius = 0;
+        }
+      } else if (showRadius) {
+        const radiusEl = this._createCircleEl(color, 1);
+        radiusEl.style.display = "none";
+        const radiusMarker = new maplibregl.Marker({
+          element: radiusEl,
+          anchor: "center",
+        })
+          .setLngLat(position)
+          .addTo(this._map);
+        existing.radiusEl = radiusEl;
+        existing.radiusMarker = radiusMarker;
         existing.radius = radius;
-        existing.radiusEl.style.borderColor = color;
       }
       return;
     }
@@ -1338,7 +1425,7 @@ class MapCnCard extends LitElement {
       radiusMarker: null,
     };
 
-    if (radius) {
+    if (showRadius) {
       const radiusEl = this._createCircleEl(color, 1);
       radiusEl.style.display = "none";
       const radiusMarker = new maplibregl.Marker({
@@ -1387,18 +1474,11 @@ class MapCnCard extends LitElement {
         em.accuracyEl.style.display = "block";
       }
     }
-    // zone 半径圈（按 show_zone_radius 配置）
-    const showRadius =
-      this._config?.show_zone_radius === undefined
-        ? true
-        : this._config.show_zone_radius;
+    // zone 半径圈（尺寸计算；显示/隐藏由 _drawZone 按官方 hide_radius 语义管理——
+    // 选中 zone 恒显示，未选中 zone 仅在 show_zone_radius/preview/zones Tab 时显示）
     for (const zoneId of Object.keys(this._zoneMarkers)) {
       const z = this._zoneMarkers[zoneId];
       if (z.radiusEl && z.radiusMarker && z.radius) {
-        if (!showRadius) {
-          z.radiusEl.style.display = "none";
-          continue;
-        }
         const px = this._metersToPixels(z.radius, z.position[1]);
         z.radiusEl.style.width = `${px * 2}px`;
         z.radiusEl.style.height = `${px * 2}px`;
