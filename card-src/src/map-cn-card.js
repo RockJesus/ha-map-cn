@@ -29,7 +29,8 @@ import "./map-cn-overview.js";
 import { registerMapCnDashboardStrategy } from "./map-cn-strategy.js";
 
 const DEFAULT_ZOOM = 14;
-const DEFAULT_CENTER = [104.0, 35.0];
+// 中国中心 WGS-84 [104,35] 转 GCJ-02（底图坐标系）后值；全国视野偏差虽小但保持精确
+const DEFAULT_CENTER = [104.00251, 34.99908];
 const DEFAULT_CENTER_ZOOM = 4;
 const MARKER_SIZE = 48;
 const ZONE_CIRCLE_SIZE = 36;
@@ -290,6 +291,38 @@ class MapCnCard extends LitElement {
     this._updateAspectRatio();
     this._initMap();
     this._updateAll();
+  }
+
+  // 与官方 shouldUpdate 一致：过滤与地图无关的 hass 状态变化（避免每次
+  // 温度传感器更新都重建全部 marker）。保守策略：layout/preview/config 变化
+  // 必更新；show_all/geo_location 模式任何 hass 变化都更新（需跟踪所有实体）；
+  // 配置实体模式仅相关实体状态变化才更新。
+  shouldUpdate(changedProps) {
+    if (changedProps.has("layout") || changedProps.has("preview") || changedProps.has("config")) {
+      return true;
+    }
+    if (!changedProps.has("hass") || changedProps.size > 1) {
+      return true;
+    }
+    const oldHass = changedProps.get("hass");
+    if (!oldHass || !this.hass || !this._configEntities) {
+      return true;
+    }
+    if (oldHass.themes?.darkMode !== this.hass.themes?.darkMode) {
+      return true;
+    }
+    if (this._config?.show_all || this._config?.geo_location_sources) {
+      return true;
+    }
+    const ids = this._mapEntities().map((e) => e.entity_id);
+    const oldStates = oldHass.states;
+    const newStates = this.hass.states;
+    for (const id of ids) {
+      if (oldStates[id] !== newStates[id]) {
+        return true;
+      }
+    }
+    return false;
   }
 
   willUpdate(changedProps) {
@@ -858,16 +891,24 @@ class MapCnCard extends LitElement {
     if (!stateObj || !center) {
       return;
     }
+    // 底图是 GCJ-02（高德/腾讯/天地图）：聚焦中心必须做 WGS-84→GCJ-02 纠偏，
+    // 否则 fitBounds 中心偏 ~0.006 度（数百米）
+    const [mapLng, mapLat] = toMapCoords(
+      center[0],
+      center[1],
+      this._coordinateSystem
+    );
+    const mapCenter = [mapLng, mapLat];
     const zoom = this._map?.getZoom();
     const zone = computeDomain(entityId) === "zone";
     // 官方 MapLatLng=[lat,lng]；maplibre fitBounds 期望 [lng,lat]
     const toLngLat = (p) => [p[1], p[0]];
     this._map?.fitBounds(
       zone
-        ? circleBoundsPoints(center, stateObj.attributes.radius ?? 100).map(toLngLat)
-        : [toLngLat(center)],
+        ? circleBoundsPoints(mapCenter, stateObj.attributes.radius ?? 100).map(toLngLat)
+        : [toLngLat(mapCenter)],
       {
-        maxZoom: zone ? 16 : this._focusZoom(center, zoom),
+        maxZoom: zone ? 16 : this._focusZoom(mapCenter, zoom),
         padding: this._overviewPadding() || { top: 40, bottom: 40, left: 40, right: 40 },
       }
     );
@@ -888,9 +929,14 @@ class MapCnCard extends LitElement {
     }
     let nearest = Infinity;
     for (const entity of this._displayEntities()) {
-      const other = this._entityCenter(entity.entity_id);
-      if (other && (other[0] !== center[0] || other[1] !== center[1])) {
-        nearest = Math.min(nearest, pixelDistance(center, other, zoom));
+      const raw = this._entityCenter(entity.entity_id);
+      if (!raw) {
+        continue;
+      }
+      // 与 center 同坐标系（GCJ-02）：实体中心是 WGS-84，必须纠偏后再算像素距离
+      const [olng, olat] = toMapCoords(raw[0], raw[1], this._coordinateSystem);
+      if (olng !== center[0] || olat !== center[1]) {
+        nearest = Math.min(nearest, pixelDistance(center, [olng, olat], zoom));
       }
     }
     return Math.max(
@@ -1101,6 +1147,29 @@ class MapCnCard extends LitElement {
       if (markerDiv) {
         markerDiv.style.borderColor = color;
         markerDiv.style.setProperty("--ha-marker-color", color);
+      }
+      // label_mode=state/attribute 时状态变化需刷新标签文本（name 模式不变）
+      if (entityName !== existing.entityName) {
+        existing.entityName = entityName;
+        if (markerDiv) {
+          const unitSpan = markerDiv.querySelector(".map-cn-marker-unit");
+          if (unitSpan) {
+            const firstSpan = markerDiv.querySelector("span");
+            if (firstSpan) {
+              firstSpan.textContent = entityName + " ";
+            }
+            unitSpan.textContent = unit;
+          } else if (
+            !markerDiv.querySelector(".map-cn-marker-picture") &&
+            !markerDiv.querySelector("ha-icon")
+          ) {
+            markerDiv.textContent = entityName;
+          }
+        }
+        // title 同步（官方 marker 悬停提示显示实体名）
+        if (title) {
+          existing.element.title = title;
+        }
       }
       return;
     }

@@ -55,6 +55,50 @@ Object.defineProperty(window.document, "adoptedStyleSheets", { value: [], writab
     process.exit(1);
   }
   console.log("provider 切换同步:", el.config.provider);
+
+  // ---------- 条件编辑器（v0.4.1） ----------
+  el.setConfig({ provider: "gaode", entities: ["person.a"], conditions: [
+    { entity: "sensor.temperature", above: "20" },
+    { entity: "sensor.door", state: "off" },
+  ]});
+  await el.updateComplete;
+  const condRows = el._conditionRows();
+  if (condRows.length !== 2) { console.error("FAIL: condition rows != 2"); process.exit(1); }
+  if (condRows[0].type !== "above" || condRows[0].value !== "20") { console.error("FAIL: above 解析"); process.exit(1); }
+  if (condRows[1].type !== "state" || condRows[1].value !== "off") { console.error("FAIL: state 解析"); process.exit(1); }
+  // 更新条件值 → config-changed 产物正确
+  el._updateCondition(0, { value: "25" });
+  const c0 = lastConfig.conditions.find((c) => c.entity === "sensor.temperature");
+  if (!c0 || c0.above !== "25") { console.error("FAIL: above 更新产物"); process.exit(1); }
+  // 添加条件（state_not）
+  el._addCondition();
+  el._updateCondition(2, { entity: "binary_sensor.motion", type: "state_not", value: "on" });
+  const c2 = lastConfig.conditions.find((c) => c.entity === "binary_sensor.motion");
+  if (!c2 || c2.state_not !== "on") { console.error("FAIL: state_not 组装"); process.exit(1); }
+  // 切换 OR 组合 → { condition: "or", conditions: [...] }
+  el._onConditionMode({ target: { value: "any" } });
+  const anyCond = lastConfig.conditions;
+  if (anyCond.length !== 1 || anyCond[0].condition !== "or" || anyCond[0].conditions.length !== 3) {
+    console.error("FAIL: OR 组装", JSON.stringify(anyCond)); process.exit(1);
+  }
+  // 切回 AND（扁平数组）
+  el._onConditionMode({ target: { value: "all" } });
+  if (!Array.isArray(lastConfig.conditions) || lastConfig.conditions.length !== 3 || lastConfig.conditions[0].condition === "or") {
+    console.error("FAIL: AND 回切"); process.exit(1);
+  }
+  // 空行过滤（entity 空的条件行不产出）
+  el.setConfig({ provider: "gaode", entities: ["person.a"], conditions: [{ entity: "", state: "on" }] });
+  await el.updateComplete;
+  const filtered = el._buildConditions(el._conditionRows(), false);
+  if (filtered !== undefined) { console.error("FAIL: 空行过滤"); process.exit(1); }
+  // 删除条件
+  el.setConfig({ provider: "gaode", entities: ["person.a"], conditions: [{ entity: "sensor.x", state: "on" }, { entity: "sensor.y", below: "10" }] });
+  await el.updateComplete;
+  el._removeCondition(0);
+  if (lastConfig.conditions.length !== 1 || lastConfig.conditions[0].entity !== "sensor.y") {
+    console.error("FAIL: 删除条件"); process.exit(1);
+  }
+  console.log("条件编辑器数据流 OK");
   console.log("EDITOR DATAFLOW TEST PASS");
   process.exit(0);
 })().catch(e => { console.error("EDITOR TEST ERROR", e); process.exit(1); });

@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.4.0-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.4.1-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -145,7 +145,18 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.4.0（最新）</summary>
+<summary>v0.4.1（最新）</summary>
+
+- **修复实体聚焦中心缺 GCJ-02 纠偏（偏移约 600 米）**：`_focusEntity` 聚焦时 fitBounds 中心用的是原始 WGS-84 经纬度，而底图是 GCJ-02 坐标系——选中实体后视野中心偏离实体实际位置约 0.006 度（数百米）。修复：聚焦中心先 `toMapCoords` 纠偏为地图坐标再算球面圆边界/fitBounds；区域半径圈同样用纠偏后中心
+- **修复聚焦缩放像素距离坐标混算**：`_focusZoom` 计算「其他实体到聚焦中心像素距离」时，其他实体中心仍是 WGS-84，与纠偏后的聚焦中心混合运算导致缩放级数偏差。修复：两侧统一先转地图坐标再算距离
+- **默认中心点改为 GCJ-02 值**：`DEFAULT_CENTER`（未配置时的初始视野中心）WGS-84 [104, 35] → GCJ-02 [104.00251, 34.99908]，初始视野不再整体偏移
+- **修复 marker 标签不刷新**：`_drawEntityMarker` 已存在分支原先只更新位置和颜色，`label_mode=state` / `label_mode=attribute` 模式下实体状态或属性变化后，标记上的标签文本保持旧值（除非重建）。修复：已存在分支同步更新标签文本与悬停标题
+- **编辑器新增条件可视化配置（与官方 conditions 一致）**：新增「条件」面板——逐行选择实体 + 条件类型（状态等于 / 状态不等于 / 数值大于 / 数值小于）+ 条件值，支持全部满足（AND）/ 任一满足（OR）组合切换；条件行实体留空表示应用到所有实体；产出 `conditions` 数组（OR 组合为 `{ condition: "or", conditions: [...] }`）与运行时 `conditions.js` 语义一致
+- **性能优化：shouldUpdate 实体相关过滤（对照官方）**：layout/preview/config 变化必更新；`show_all` / `geo_location_sources` 模式任何 hass 变化更新（需跟踪全部实体）；配置实体模式仅当相关实体状态变化（或深色模式切换）才重建 marker——无关实体（如温度传感器）的状态变化不再触发地图重建
+- **editor.test.js 增补条件数据流断言**：above/state 解析、更新产物、state_not 组装、OR 切换、AND 回切、空行过滤、删除条件（全绿）
+</details>
+<details>
+<summary>v0.4.0</summary>
 
 - **区域活动时间线对齐官方最新 `map-activity.ts`（in_zones 属性判定）**：区域详情的活动时间线原用「person state 与区域名比较」判断进出区域——person 状态并非始终等于区域名（如 state 为 not_home 但 in_zones 属性记录实际所在区域），边界场景会漏记事件。修复：优先使用官方语义的 `attributes.in_zones` 数组判定进出（`entry.a.in_zones.includes(zoneId)`），无该属性的旧版 HA 自动回退原 state 比较；`arrived` 进出标记、窗口起点基线语义与官方逐行一致
 - **活动时间线逻辑抽为可测模块并导出**：`personActivity` / `zoneActivity` 从 overview 内部函数导出（对齐官方独立 `map-activity.ts` 结构），供单测直接断言

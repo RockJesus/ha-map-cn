@@ -114,6 +114,83 @@ class MapCnCardEditor extends LitElement {
     this._update({ geo_location_sources: sources });
   }
 
+  // ---------- 条件编辑器（按条件显示实体，与官方卡片 conditions 一致） ----------
+  _conditionRows() {
+    const conds = this._config?.conditions || [];
+    const isGroup = conds.length === 1 && conds[0]?.condition === "or";
+    const flat = isGroup ? conds[0].conditions || [] : conds;
+    return flat.map((c) => ({
+      entity: c.entity || "",
+      type:
+        c.state !== undefined
+          ? "state"
+          : c.state_not !== undefined
+            ? "state_not"
+            : c.above !== undefined
+              ? "above"
+              : "below",
+      value:
+        c.state !== undefined
+          ? c.state
+          : c.state_not !== undefined
+            ? c.state_not
+            : c.above ?? c.below ?? "",
+    }));
+  }
+
+  _conditionAnyMode() {
+    const conds = this._config?.conditions;
+    return !!(
+      conds &&
+      conds.length === 1 &&
+      conds[0] &&
+      conds[0].condition === "or"
+    );
+  }
+
+  _buildConditions(rows, anyMode) {
+    const flat = rows
+      .filter((r) => r.entity)
+      .map((r) => {
+        if (r.type === "state_not") {
+          return { entity: r.entity, state_not: r.value };
+        }
+        if (r.type === "above") {
+          return { entity: r.entity, above: r.value };
+        }
+        if (r.type === "below") {
+          return { entity: r.entity, below: r.value };
+        }
+        return { entity: r.entity, state: r.value };
+      });
+    if (!flat.length) {
+      return undefined;
+    }
+    return anyMode ? [{ condition: "or", conditions: flat }] : flat;
+  }
+
+  _updateCondition(index, patch) {
+    const rows = this._conditionRows();
+    rows[index] = { ...rows[index], ...patch };
+    this._update({ conditions: this._buildConditions(rows, this._conditionAnyMode()) });
+  }
+
+  _addCondition() {
+    const rows = this._conditionRows();
+    rows.push({ entity: "", type: "state", value: "on" });
+    this._update({ conditions: this._buildConditions(rows, this._conditionAnyMode()) });
+  }
+
+  _removeCondition(index) {
+    const rows = this._conditionRows().filter((_, i) => i !== index);
+    this._update({ conditions: this._buildConditions(rows, this._conditionAnyMode()) });
+  }
+
+  _onConditionMode(ev) {
+    const anyMode = ev.target.value === "any";
+    this._update({ conditions: this._buildConditions(this._conditionRows(), anyMode) });
+  }
+
   render() {
     const c = this._config || {};
     const rows = this._entityRows();
@@ -311,6 +388,58 @@ class MapCnCardEditor extends LitElement {
             </ha-formfield>
           </div>
         </ha-expansion-panel>
+
+        <ha-expansion-panel .header=${"条件（按条件显示实体）"}>
+          <p class="hint">
+            实体仅在满足以下条件时显示在地图上；条件行 entity
+            留空表示应用到所有实体
+          </p>
+          <div class="row">
+            <ha-select
+              .label=${"组合模式"}
+              .value=${this._conditionAnyMode() ? "any" : "all"}
+              @change=${this._onConditionMode}
+            >
+              <mwc-list-item .value=${"all"}>全部满足（AND）</mwc-list-item>
+              <mwc-list-item .value=${"any"}>任一满足（OR）</mwc-list-item>
+            </ha-select>
+          </div>
+          ${this._conditionRows().map(
+            (row, i) => html`
+              <div class="entity-row">
+                <ha-entity-picker
+                  .value=${row.entity}
+                  @change=${(ev) =>
+                    this._updateCondition(i, { entity: ev.target.value })}
+                ></ha-entity-picker>
+                <select
+                  class="cond-type"
+                  .value=${row.type}
+                  @change=${(ev) =>
+                    this._updateCondition(i, { type: ev.target.value })}
+                >
+                  <option value="state">状态等于</option>
+                  <option value="state_not">状态不等于</option>
+                  <option value="above">数值大于</option>
+                  <option value="below">数值小于</option>
+                </select>
+                <ha-textfield
+                  .label=${"条件值"}
+                  .value=${row.value}
+                  @change=${(ev) =>
+                    this._updateCondition(i, { value: ev.target.value })}
+                ></ha-textfield>
+                <ha-icon-button
+                  .label=${"删除条件"}
+                  @click=${() => this._removeCondition(i)}
+                >
+                  <ha-icon icon="mdi:delete"></ha-icon>
+                </ha-icon-button>
+              </div>
+            `
+          )}
+          <ha-button @click=${this._addCondition}>添加条件</ha-button>
+        </ha-expansion-panel>
       </div>
     `;
   }
@@ -339,6 +468,14 @@ class MapCnCardEditor extends LitElement {
     }
     .entity-row .color {
       width: 110px;
+    }
+    .cond-type {
+      background: var(--input-fill-color, #f5f5f5);
+      border: 1px solid var(--divider-color, #e0e0e0);
+      border-radius: 8px;
+      padding: 8px;
+      color: var(--primary-text-color);
+      font-size: 14px;
     }
     .hint {
       color: var(--secondary-text-color);
