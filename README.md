@@ -145,7 +145,13 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.4.2（最新）</summary>
+<summary>v0.4.3（最新）</summary>
+
+- **聚焦飞行语义对齐官方**：目标已在视野内时不飞行（`fly: !containsLocation`），直接跳转
+- **轨迹订阅失败自动重试**：订阅失败/未建立时相关 hass 变化触发 shouldUpdate 重试（对照官方「组件列表变化重试订阅」）
+</details>
+<details>
+<summary>v0.4.2</summary>
 
 - **精度圈/半径圈按选中态显示（对齐官方 `_decorateOverviewEntities`）**：panel 布局下未选中实体的 GPS 精度圈与 zone 半径圈原先始终显示（只要数据存在），官方语义是「只有选中实体显示精度圈，zone 半径圈仅选中/预览/配置显示/zones Tab 时显示」。修复：`_displayEntities` 携带 `hide_accuracy`/`hide_radius`/`selected` 装饰，`_drawEntityMarker`/`_drawZone` 按装饰创建/更新/移除圈；`_resizeCircles` 只负责尺寸计算，不再覆盖圈显示逻辑（避免配置 `show_zone_radius=false` 时把选中 zone 的半径圈也隐藏——选中实体恒显示）
 - **精度圈跟随选中态/`gps_accuracy` 实时增删**：抽取 `_syncAccuracyCircle`，marker 已存在分支同步处理圈创建/更新/移除（选中切换、精度变化即时生效，不再依赖重建）
