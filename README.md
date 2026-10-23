@@ -1,7 +1,7 @@
 # 中国地图仪表盘（China Map Dashboard）
 
 [![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.4.2-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
+[![版本](https://img.shields.io/badge/版本-v0.4.5-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
 
 Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
@@ -145,7 +145,18 @@ lovelace:
 ## 版本历史
 
 <details>
-<summary>v0.4.4（最新）</summary>
+<summary>v0.4.5（最新）</summary>
+
+- **面板工具栏（借鉴 ha-china-map v2.0.1 交互）**：中国地图仪表盘（panel 布局）顶部新增居中工具栏——底图一键切换（高德 / 腾讯 / 天地图）、卫星影像、实时路况（高德）、暗色模式、显示全部、⚙️ 地图设置；左下角新增图例（家 / 区域 / 轨迹）
+- **可视化设置抽屉（UI 设置，无需 YAML / 无需重启）**：工具栏 ⚙️ 打开「地图设置」抽屉，分类表单（地图 Key / 底图与显示 / 开关）——天地图 Key、高德 Key、底图服务商、地图样式（标准/卫星）、主题模式（自动/亮/暗）、默认缩放、最大瓦片级别、轨迹历史时长、家标签、轨迹颜色、实时路况、区域圈层、地图注记；保存即应用并本地持久化（localStorage），与卡片编辑器（Lovelace 可视化配置）双通道
+- **实时路况叠加（新功能）**：高德底图支持实时路况透明瓦片层（`show_traffic`），工具栏一键开关；非高德底图自动不叠加
+- **区域圈层 / 地图注记开关**：新增 `show_zones` / `show_labels` 配置（zone 圈层、天地图注记层可隐藏），编辑器同步提供表单
+- **家标签 / 轨迹颜色自定义**：新增 `home_label`（zone.home 显示「家」文案，可改）、`track_color`（统一轨迹颜色，默认跟随实体颜色）
+- **编辑器新增配置项**：区域圈层、地图注记、实时路况、家标签、轨迹颜色、高德 Key
+- **测试增补**：tiles.test.js 新增 traffic 瓦片 4 项断言（高德有/腾讯无/天地图无/URL 正确）；smoke.test.js 新增设置抽屉注册断言 + 运行时选项合并断言（localStorage 覆盖卡片配置，编辑器 preview 场景不合并）
+</details>
+<details>
+<summary>v0.4.4</summary>
 
 - **Overview 抽屉尺寸通知宿主（修复地图被抽屉遮挡）**：overview 组件通过 ResizeObserver + 渲染后主动发送 `map-overview-resize` 事件（含 width/height，手机端附 fitHeight）——宿主 `--overview-width` CSS 变量与 `_overviewPadding` 依赖该事件更新地图 inset，此前事件从未触发导致地图被左侧抽屉遮挡、聚焦/适配 padding 失效。对应官方 ha-snap-bottom-sheet 的 bottom-sheet-resized → map-overview-resize 链路
 - **auto_fit 选中暂停 / 取消恢复（对齐官方 #54774）**：选中实体时暂停自动适配（保持聚焦视野不被 _fitAll 覆盖）；点返回取消选中后恢复自动适配（重新 fit 全部实体，官方 `unpause_autofit` 语义）
