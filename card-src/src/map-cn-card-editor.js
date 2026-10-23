@@ -439,6 +439,46 @@ class MapCnCardEditor extends LitElement {
               ></ha-switch>
             </ha-formfield>
           </div>
+          <div class="row">
+            <ha-formfield .label=${"区域圈层"}>
+              <ha-switch
+                .checked=${c.show_zones !== false}
+                @change=${(ev) =>
+                  this._update({ show_zones: ev.target.checked })}
+              ></ha-switch>
+            </ha-formfield>
+            <ha-formfield .label=${"地图注记"}>
+              <ha-switch
+                .checked=${c.show_labels !== false}
+                @change=${(ev) =>
+                  this._update({ show_labels: ev.target.checked })}
+              ></ha-switch>
+            </ha-formfield>
+            <ha-formfield .label=${"实时路况（高德）"}>
+              <ha-switch
+                .checked=${!!c.show_traffic}
+                @change=${(ev) =>
+                  this._update({ show_traffic: ev.target.checked })}
+              ></ha-switch>
+            </ha-formfield>
+          </div>
+          <div class="row">
+            <ha-textfield
+              .label=${"「家」标签"}
+              .value=${c.home_label || "家"}
+              @change=${(ev) => this._update({ home_label: ev.target.value })}
+            ></ha-textfield>
+            <ha-textfield
+              .label=${"轨迹颜色"}
+              .value=${c.track_color || "#e91e63"}
+              @change=${(ev) => this._update({ track_color: ev.target.value })}
+            ></ha-textfield>
+            <ha-textfield
+              .label=${"高德 Key（可选）"}
+              .value=${c.amap_key || ""}
+              @change=${(ev) => this._update({ amap_key: ev.target.value })}
+            ></ha-textfield>
+          </div>
         </ha-expansion-panel>
 
         <ha-expansion-panel .header=${"条件（按条件显示实体）"}>

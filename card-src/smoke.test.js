@@ -107,6 +107,32 @@ window.URL.revokeObjectURL = () => {};
   }
   console.log("map-cn-overview: registered");
 
+  // 设置抽屉组件注册（面板工具栏 ⚙️）
+  if (!window.customElements.get("map-cn-settings")) {
+    console.error("FAIL: map-cn-settings 未注册"); process.exit(1);
+  }
+  console.log("map-cn-settings: registered");
+
+  // 运行时选项（localStorage）合并：面板工具栏/设置抽屉保存后覆盖卡片配置
+  const rtKey = "map-cn-runtime-options";
+  window.localStorage.setItem(rtKey, JSON.stringify({ provider: "tencent", show_traffic: true }));
+  const rtEl = document.createElement("map-cn");
+  document.body.appendChild(rtEl);
+  rtEl.setConfig({ provider: "gaode", entities: ["person.a"] });
+  console.log("runtime merge provider:", rtEl._config.provider, "| show_traffic:", rtEl._config.show_traffic);
+  if (rtEl._config.provider !== "tencent" || rtEl._config.show_traffic !== true) {
+    console.error("FAIL: 运行时选项未合并到卡片配置"); process.exit(1);
+  }
+  // 编辑器（preview）场景不合并
+  const previewEl = document.createElement("map-cn");
+  previewEl.preview = true;
+  previewEl.setConfig({ provider: "gaode", entities: ["person.a"] });
+  console.log("preview no-merge provider:", previewEl._config.provider);
+  if (previewEl._config.provider !== "gaode") {
+    console.error("FAIL: preview 场景不应合并运行时选项"); process.exit(1);
+  }
+  window.localStorage.removeItem(rtKey);
+
   // 校验 getCardSize / getStubConfig / getGridOptions
   console.log("getCardSize:", el.getCardSize(), "(aspect 1:1 => 5)");
   el.setConfig({ provider: "tencent", entities: ["device_tracker.x"], aspect_ratio: "16/9" });

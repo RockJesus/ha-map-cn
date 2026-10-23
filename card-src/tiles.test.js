@@ -103,6 +103,15 @@ check(
   check("默认 provider 高德", mod.DEFAULT_PROVIDER === "gaode");
   check("默认 style normal", mod.DEFAULT_STYLE === "normal");
 
+  // 实时路况叠加层（借鉴 ha-china-map：高德 traffic 瓦片）
+  check("高德有 traffic 叠加层", !!TILE_PROVIDERS.gaode.traffic);
+  check(
+    "高德 traffic 用 tm.amap.com/trafficengine",
+    TILE_PROVIDERS.gaode.traffic.urls[0].includes("tm.amap.com/trafficengine")
+  );
+  check("腾讯无 traffic 叠加层", !TILE_PROVIDERS.tencent.traffic);
+  check("天地图无 traffic 叠加层", !TILE_PROVIDERS.tianditu.traffic);
+
   // 编辑器样式过滤（PROVIDER_STYLES 常量行为）
   const editor = document.createElement("map-cn-editor");
   editor.setConfig({ provider: "tencent", show_all: true });

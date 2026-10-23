@@ -24,6 +24,8 @@ import {
 } from "./conditions";
 // 编辑器静态引入：单文件产物方案下动态 import() 不会被 esbuild 内联（运行时 404）
 import "./map-cn-card-editor.js";
+// 可视化设置抽屉（面板工具栏 ⚙️，借鉴 ha-china-map settings 交互）
+import "./map-cn-settings.js";
 // Overview 抽屉组件（对齐官方 hui-map-overview）+ 仪表盘 strategy 注册（UI 创建中国地图仪表盘）
 import "./map-cn-overview.js";
 import { registerMapCnDashboardStrategy } from "./map-cn-strategy.js";
@@ -37,6 +39,40 @@ const ZONE_CIRCLE_SIZE = 36;
 const CLUSTER_RADIUS_PX = 60;
 const NOMINAL_ACCURACY = 2.5;
 const EARTH_CIRCUMFERENCE = 40075016.686;
+
+// 面板工具栏/设置抽屉可运行时覆盖的配置键（localStorage 持久化，浏览器本地生效）
+const RUNTIME_LS_KEY = "map-cn-runtime-options";
+const RUNTIME_KEYS = [
+  "provider",
+  "style",
+  "theme_mode",
+  "dark_mode",
+  "default_zoom",
+  "max_zoom",
+  "hours_to_show",
+  "home_label",
+  "track_color",
+  "show_traffic",
+  "show_zones",
+  "show_labels",
+  "tianditu_key",
+  "amap_key",
+  "coordinate_system",
+];
+function loadRuntimeOptions() {
+  try {
+    return JSON.parse(window.localStorage.getItem(RUNTIME_LS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+function saveRuntimeOptions(opts) {
+  try {
+    window.localStorage.setItem(RUNTIME_LS_KEY, JSON.stringify(opts));
+  } catch {
+    /* 隐私模式等写入失败忽略 */
+  }
+}
 
 // 官方 MAP_STYLES 预设 → 本卡片 raster 瓦片的近似渲染滤镜（编辑器中选项与官方一致）
 const MAP_STYLE_FILTERS = {
@@ -224,6 +260,16 @@ class MapCnCard extends LitElement {
       );
     }
     this._config = { ...config };
+    // 面板工具栏/设置抽屉保存的运行时选项（localStorage）覆盖卡片配置；
+    // 编辑器（preview）场景不合并，保证编辑看到的是配置原值。
+    if (!this.preview && typeof window !== "undefined") {
+      const rt = loadRuntimeOptions();
+      for (const k of RUNTIME_KEYS) {
+        if (rt[k] !== undefined && rt[k] !== null) {
+          this._config[k] = rt[k];
+        }
+      }
+    }
     if (this.hass && config.show_all) {
       this._config.entities = this._getAllEntities();
     }
@@ -366,6 +412,10 @@ class MapCnCard extends LitElement {
           : this.hass?.themes?.darkMode ?? false;
     const panel = this.layout === "panel" || this.layout === "grid";
     const rtl = computeRTL(this.hass);
+    const showToolbar = panel && !this.preview;
+    const activeProvider = this._config?.provider || DEFAULT_PROVIDER;
+    const trackColor = this._config?.track_color || "#e91e63";
+    const homeLabel = this._config?.home_label || "家";
     return html`
       <ha-card id="card" .header=${this._config?.title}>
         <div
@@ -400,6 +450,78 @@ class MapCnCard extends LitElement {
               ><ha-icon icon="mdi:image-filter-center-focus"></ha-icon
             ></ha-icon-button>
           </div>
+          ${
+            showToolbar
+              ? html`<div class="map-cn-toolbar" @click=${this._handleToolbarClick}>
+                  <button
+                    class="map-cn-tool ${activeProvider === "gaode" ? "active" : ""}"
+                    data-provider="gaode"
+                    title="高德地图（自动纠偏）"
+                  >
+                    <ha-icon icon="mdi:map"></ha-icon><span>高德</span>
+                  </button>
+                  <button
+                    class="map-cn-tool ${activeProvider === "tencent" ? "active" : ""}"
+                    data-provider="tencent"
+                    title="腾讯地图（自动纠偏）"
+                  >
+                    <ha-icon icon="mdi:map-marker-radius"></ha-icon><span>腾讯</span>
+                  </button>
+                  <button
+                    class="map-cn-tool ${activeProvider === "tianditu" ? "active" : ""}"
+                    data-provider="tianditu"
+                    title="天地图（不偏移，需 Key）"
+                  >
+                    <ha-icon icon="mdi:map-outline"></ha-icon><span>天地图</span>
+                  </button>
+                  <span class="map-cn-sep"></span>
+                  <button
+                    class="map-cn-tool ${this._styleName === "satellite" ? "active" : ""}"
+                    data-action="satellite"
+                    title="卫星影像"
+                  >
+                    <ha-icon icon="mdi:satellite-variant"></ha-icon>
+                  </button>
+                  <button
+                    class="map-cn-tool ${this._config?.show_traffic ? "active" : ""}"
+                    data-action="traffic"
+                    title="实时路况（高德）"
+                  >
+                    <ha-icon icon="mdi:traffic-light"></ha-icon>
+                  </button>
+                  <button
+                    class="map-cn-tool ${isDark ? "active" : ""}"
+                    data-action="dark"
+                    title="暗色模式"
+                  >
+                    <ha-icon icon="mdi:theme-light-dark"></ha-icon>
+                  </button>
+                  <span class="map-cn-sep"></span>
+                  <button class="map-cn-tool" data-action="fit" title="显示全部">
+                    <ha-icon icon="mdi:fit-to-screen"></ha-icon>
+                  </button>
+                  <button class="map-cn-tool" data-action="settings" title="地图设置">
+                    <ha-icon icon="mdi:cog"></ha-icon>
+                  </button>
+                </div>
+                <div class="map-cn-legend">
+                  <span
+                    ><i
+                      style="background:${this._config?.show_zones === false
+                        ? "transparent"
+                        : "#03a9f4"}"
+                    ></i
+                    >${homeLabel}</span
+                  >
+                  <span><i style="background:#ff9800"></i>区域</span>
+                  <span><i style="background:${trackColor}"></i>轨迹</span>
+                </div>
+                <map-cn-settings
+                  id="settings"
+                  @map-cn-settings-save=${this._onSettingsSave}
+                ></map-cn-settings>`
+              : nothing
+          }
           ${
             panel && !this.preview
               ? html`<map-cn-overview
@@ -595,6 +717,192 @@ class MapCnCard extends LitElement {
       this._applyClustering();
     });
     this._mapInitializing = false;
+  }
+
+  // ---------- 面板工具栏 / 设置抽屉（借鉴 ha-china-map 交互，localStorage 持久化） ----------
+
+  _handleToolbarClick(ev) {
+    const btn = ev.target.closest(".map-cn-tool");
+    if (!btn) {
+      return;
+    }
+    if (btn.dataset.provider) {
+      this._setProvider(btn.dataset.provider);
+      return;
+    }
+    const action = btn.dataset.action;
+    if (action === "satellite") {
+      this._toggleSatellite();
+    } else if (action === "traffic") {
+      this._toggleTraffic();
+    } else if (action === "dark") {
+      this._cycleTheme();
+    } else if (action === "fit") {
+      this._fitAll();
+    } else if (action === "settings") {
+      this._openSettings();
+    }
+  }
+
+  _setProvider(provider) {
+    if (!TILE_PROVIDERS[provider]) {
+      return;
+    }
+    this._config.provider = provider;
+    this._saveRuntimeOptions();
+    this._rebuildTileLayers();
+    this.requestUpdate();
+  }
+
+  _toggleSatellite() {
+    this._config.style =
+      this._styleName === "satellite" ? "normal" : "satellite";
+    this._saveRuntimeOptions();
+    this._rebuildTileLayers();
+    this.requestUpdate();
+  }
+
+  _toggleTraffic() {
+    this._config.show_traffic = !this._config.show_traffic;
+    this._saveRuntimeOptions();
+    this._rebuildTileLayers();
+    this.requestUpdate();
+  }
+
+  _cycleTheme() {
+    const cur = this._config?.theme_mode;
+    this._config.theme_mode =
+      cur === "dark" ? "light" : cur === "light" ? "auto" : "dark";
+    this._saveRuntimeOptions();
+    this._applyDarkFilter();
+    this.requestUpdate();
+  }
+
+  _openSettings() {
+    const el = this.shadowRoot?.getElementById("settings");
+    if (el && typeof el.open === "function") {
+      el.open(this._config || {}, this.hass);
+    }
+  }
+
+  _onSettingsSave(ev) {
+    const opts = ev.detail || {};
+    this._config = { ...this._config, ...opts };
+    this._saveRuntimeOptions();
+    this._rebuildTileLayers();
+    this._updateAll();
+    this.requestUpdate();
+  }
+
+  _saveRuntimeOptions() {
+    const picked = {};
+    for (const k of RUNTIME_KEYS) {
+      if (this._config[k] !== undefined && this._config[k] !== null) {
+        picked[k] = this._config[k];
+      }
+    }
+    saveRuntimeOptions(picked);
+  }
+
+  // 运行时切换底图/样式/注记/路况：不重建 Map 实例（保留相机与覆盖物），
+  // 只重建瓦片相关 source/layer；坐标系变化后重建 markers/圈/路径。
+  _rebuildTileLayers() {
+    if (!this._map) {
+      return;
+    }
+    const config = this._config || {};
+    const provider =
+      TILE_PROVIDERS[config.provider] || TILE_PROVIDERS[DEFAULT_PROVIDER];
+    this._provider = provider;
+    const styleName =
+      provider.styles[config.style] && config.style
+        ? config.style
+        : DEFAULT_STYLE;
+    this._styleName = styleName;
+    this._coordinateSystem =
+      config.coordinate_system && config.coordinate_system !== "auto"
+        ? config.coordinate_system
+        : provider.coordinateSystem;
+
+    if (provider.requiresKey && !config.tianditu_key) {
+      this._error = {
+        code: "tianditu_key",
+        message: "天地图需要 tianditu_key（天地图官网免费申请）",
+      };
+      return;
+    }
+
+    // 移除旧瓦片/注记/路况层
+    for (const id of ["tiles", "labels", "traffic"]) {
+      try {
+        if (this._map.getLayer(id)) {
+          this._map.removeLayer(id);
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        if (this._map.getSource(id)) {
+          this._map.removeSource(id);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const styleConf = provider.styles[styleName];
+    const urls =
+      typeof styleConf.urls === "function"
+        ? styleConf.urls(config.tianditu_key)
+        : styleConf.urls;
+    const maxZoom = Math.min(
+      config.max_zoom || 18,
+      styleConf.maxzoom || 18
+    );
+    this._map.addSource("tiles", {
+      type: "raster",
+      tiles: urls,
+      tileSize: 256,
+      maxzoom: maxZoom,
+      attribution: provider.attribution,
+    });
+    this._map.addLayer({ id: "tiles", type: "raster", source: "tiles" });
+
+    // 天地图注记叠加层（show_labels 开关）
+    if (styleConf.labelUrls && config.show_labels !== false) {
+      const labelUrls =
+        typeof styleConf.labelUrls === "function"
+          ? styleConf.labelUrls(config.tianditu_key)
+          : styleConf.labelUrls;
+      this._map.addSource("labels", {
+        type: "raster",
+        tiles: labelUrls,
+        tileSize: 256,
+        maxzoom: maxZoom,
+        attribution: provider.attribution,
+      });
+      this._map.addLayer({ id: "labels", type: "raster", source: "labels" });
+    }
+
+    // 实时路况叠加层（仅高德 provider 提供）
+    if (config.show_traffic && provider.traffic) {
+      const tUrls =
+        typeof provider.traffic.urls === "function"
+          ? provider.traffic.urls(config.amap_key)
+          : provider.traffic.urls;
+      this._map.addSource("traffic", {
+        type: "raster",
+        tiles: tUrls,
+        tileSize: 256,
+        maxzoom: provider.traffic.maxzoom || 18,
+        attribution: "&copy; 高德交通",
+      });
+      this._map.addLayer({ id: "traffic", type: "raster", source: "traffic" });
+    }
+
+    this._applyDarkFilter();
+    // 坐标系可能变化（gcj02/wgs84），重建 markers/圈/路径
+    this._updateAll();
   }
 
   _applyDarkFilter() {
@@ -1115,6 +1423,10 @@ class MapCnCard extends LitElement {
       fitPoints.push([mapLng, mapLat]);
 
       if (computeDomain(entity.entity_id) === "zone") {
+        if (this._config?.show_zones === false) {
+          // 隐藏区域圈层：不绘制，旧圈由下方移除循环清理
+          continue;
+        }
         this._drawZone(entity, stateObj, [mapLng, mapLat], color);
         continue;
       }
@@ -1404,9 +1716,12 @@ class MapCnCard extends LitElement {
       circleEl.appendChild(icon);
     } else {
       const initials = document.createElement("span");
-      initials.textContent = zoneInitials(
-        entity.name || this._formatName(entityId, stateObj)
-      );
+      // home zone（zone.home）显示「家」标签（home_label 可自定义，借鉴 ha-china-map）
+      const zoneName =
+        entityId === "zone.home"
+          ? this._config?.home_label || "家"
+          : entity.name || this._formatName(entityId, stateObj);
+      initials.textContent = zoneInitials(zoneName);
       circleEl.appendChild(initials);
     }
     circleEl.addEventListener("click", (ev) => {
@@ -1578,7 +1893,9 @@ class MapCnCard extends LitElement {
         continue;
       }
       const stateObj = this.hass.states[entityId];
-      const color = this._entityColor(entityId, stateObj);
+      // track_color 配置可统一轨迹颜色（默认跟随实体颜色）
+      const color =
+        this._config?.track_color || this._entityColor(entityId, stateObj);
       const layerId = `path-${entityId}`;
       this._map.addSource(layerId, {
         type: "geojson",
@@ -1887,6 +2204,85 @@ class MapCnCard extends LitElement {
       left: auto;
       inset-inline-start: auto;
       inset-inline-end: 3px;
+    }
+    /* ---- 面板工具栏（借鉴 ha-china-map .hcm-toolbar） ---- */
+    .map-cn-toolbar {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      background: var(--card-background-color, #fff);
+      border-radius: 999px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+      padding: 4px 6px;
+      z-index: 10;
+      max-width: calc(100% - 24px);
+      overflow-x: auto;
+    }
+    .map-cn-tool {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: var(--primary-text-color, #212121);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .map-cn-tool:hover {
+      background: var(--secondary-background-color, #e0e0e0);
+    }
+    .map-cn-tool.active {
+      background: var(--primary-color, #03a9f4);
+      color: var(--text-primary-color, #fff);
+    }
+    .map-cn-tool ha-icon {
+      --mdc-icon-size: 18px;
+    }
+    .map-cn-sep {
+      width: 1px;
+      height: 20px;
+      background: var(--divider-color, #ccc);
+      margin: 0 2px;
+    }
+    /* ---- 图例 ---- */
+    .map-cn-legend {
+      position: absolute;
+      bottom: 20px;
+      left: 12px;
+      z-index: 9;
+      background: var(--card-background-color, #fff);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      padding: 6px 12px;
+      font-size: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .map-cn-legend i {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 4px;
+      vertical-align: -1px;
+    }
+    #root.rtl .map-cn-toolbar {
+      left: auto;
+      right: 50%;
+      transform: translateX(50%);
+    }
+    #root.rtl .map-cn-legend {
+      left: auto;
+      right: 12px;
     }
     /* ---- 实体标记（复刻官方 ha-entity-marker） ---- */
     .map-cn-marker-wrap {

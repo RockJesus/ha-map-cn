@@ -17,6 +17,11 @@ const amapSatellite = subdomains(
   ".is.autonavi.com/appmaptile"
 ).map((host) => `${host}?style=6&x={x}&y={y}&z={z}`);
 
+// 高德实时路况（透明 PNG 叠加层，GCJ-02 坐标系，随高德底图一起使用）
+const amapTraffic = [
+  "https://tm.amap.com/trafficengine/mapabc/traffictile?v=1.0&t=1&x={x}&y={y}&z={z}",
+];
+
 // 腾讯地图瓦片 y 轴为 TMS（从南到北），需在 transformRequest 里做 y' = 2^z - 1 - y 反转
 // （见 map-cn-card.js transformRequest）；URL 模板里 {y} 是 MapLibre 的 XYZ 值，仅作占位。
 const tencentTiles = (styleid) =>
@@ -43,6 +48,8 @@ export const TILE_PROVIDERS = {
       satellite: { urls: amapSatellite, maxzoom: 18 },
       dark: { urls: amapStyle(7), maxzoom: 18, darkFilter: true },
     },
+    // 高德实时路况叠加层（透明瓦片，provider=gaode 且 show_traffic 时启用）
+    traffic: { urls: amapTraffic, maxzoom: 18 },
   },
   tencent: {
     name: "腾讯地图",
