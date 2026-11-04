@@ -1,0 +1,6 @@
+# 影像底图（含注记层）
+type: map
+entities:
+  - person.me
+basemap: tianditu-satellite
+basemap_tianditu_key: 在此填入你的天地图Key

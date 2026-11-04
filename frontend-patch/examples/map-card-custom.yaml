@@ -1,0 +1,8 @@
+# 自建瓦片服务（TileServer-GL / Nginx 静态切片等）
+type: map
+entities:
+  - person.me
+basemap: custom
+basemap_tile_url: http://192.168.1.10:8080/tiles/{z}/{x}/{y}.png
+basemap_attribution: "© 自建 OSM 瓦片"
+basemap_max_zoom: 19

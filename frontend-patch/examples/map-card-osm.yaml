@@ -1,0 +1,5 @@
+# 显式回到官方底图（例如全局改了默认值后，单张卡片想用 OSM）
+type: map
+entities:
+  - person.me
+basemap: osm
