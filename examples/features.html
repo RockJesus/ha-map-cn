@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  body{margin:0;background:#111;font-family:system-ui,"PingFang SC",sans-serif;color:#eee}
+  #card{width:520px;margin:20px auto}
+  h3{text-align:center;font-size:12px;opacity:.5;font-weight:400}
+  #log{width:520px;margin:0 auto 20px;background:#0a0a0a;border-radius:8px;padding:10px;
+       font:11px/1.6 monospace;color:#7ee787;white-space:pre-wrap;min-height:40px}
+</style></head><body>
+<h3>卡片（含路况 / 轨迹 / 设置抽屉）</h3>
+<div id="card"></div>
+<h3>事件日志</h3>
+<div id="log">…</div>
+
+<script type="module" src="../ha-cn-map-card.js"></script>
+<script type="module">
+class FakeIcon extends HTMLElement {
+  static get observedAttributes(){return["icon"]}
+  connectedCallback(){this._p()}
+  attributeChangedCallback(){this._p()}
+  _p(){
+    const m={"mdi:account":"👤","mdi:cellphone-marker":"📱","mdi:home":"🏠","mdi:map-marker":"📍"};
+    this.textContent=m[this.getAttribute("icon")]||"●";
+  }
+}
+customElements.define("ha-icon",FakeIcon);
+customElements.define("ha-card",class extends HTMLElement{});
+
+const states = {
+  "zone.home":{entity_id:"zone.home",attributes:{friendly_name:"我的家",latitude:40.82598,longitude:111.71279,icon:"mdi:home"}},
+  "person.rockjesus":{entity_id:"person.rockjesus",attributes:{friendly_name:"RockJesus",latitude:40.82598,longitude:111.71279}},
+  "person.lulu":{entity_id:"person.lulu",attributes:{friendly_name:"lulu",latitude:40.82557,longitude:111.71354}},
+};
+
+// 模拟历史数据：一条从北京到廊坊的折线
+const now = Date.now();
+const mk = (lat,lng,i)=>({s:"home",a:{latitude:lat,longitude:lng},lu:(now-i*60000)/1000,lc:(now-i*60000)/1000});
+const historyPayload = {
+  states: {
+    "person.rockjesus": [
+      mk(40.8180,111.7000,50), mk(40.8200,111.7040,45), mk(40.8225,111.7080,40),
+      mk(40.8250,111.7100,35), mk(40.8270,111.7130,30), mk(40.8285,111.7165,25),
+      mk(40.8300,111.7200,20), mk(40.8315,111.7240,15), mk(40.8330,111.7280,10),
+      mk(40.8345,111.7310,5),  mk(40.8360,111.7340,0),
+    ],
+  },
+};
+
+let unsubCalled = false;
+const hass = {
+  states,
+  config:{latitude:40.8,longitude:111.7},
+  callService:()=>{},
+  connection:{
+    subscribeMessage(cb, msg){
+      document.getElementById("log").textContent =
+        "订阅: " + msg.type + "\n实体: " + msg.entity_ids.join(", ") + "\n起点: " + msg.start_time;
+      setTimeout(()=>cb(historyPayload), 300);
+      return Promise.resolve(()=>{ unsubCalled = true; });
+    }
+  }
+};
+
+const card = document.createElement("ha-cn-map-card");
+document.getElementById("card").appendChild(card);
+card.setConfig({
+  type:"custom:ha-cn-map-card", title:"家人位置",
+  show_all:true, show_zones:true, height:420, basemap:"amap",
+  hours_to_show:24, track_width:4, show_traffic:false,
+});
+card.hass = hass;
+window.__card = card;
+card.addEventListener("config-changed", e=>{
+  window.__lastCfg = e.detail.config;
+});
+console.log("ready");
+</script>
+</body></html>

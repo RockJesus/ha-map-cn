@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.6.0 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.7.0 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -21,10 +21,19 @@ class CnTileEngine extends EventTarget {
     this.labelLayer.className = "cmc-labels";
     this.markerLayer = document.createElement("div");
     this.markerLayer.className = "cmc-markers";
+    // 轨迹层：SVG 覆盖，位于瓦片之上、标记之下
+    this.pathLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    this.pathLayer.classList.add("cmc-paths");
+    this.pathLayer.style.cssText =
+      "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:hidden";
+    this.pathLayer.setAttribute("preserveAspectRatio", "none");
+    this._pathGroups = new Map(); // entityId -> <path>
+    this._paths = [];             // [{entityId, color, points}]
     this.attribution = document.createElement("div");
     this.attribution.className = "cmc-attribution";
     this.viewport.style.position = "absolute";
     this.viewport.style.inset = "0";
+    this.viewport.style.zIndex = "1";
     this.labelLayer.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden";
     this.markerLayer.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:5";
     this.attribution.style.cssText =
@@ -32,6 +41,7 @@ class CnTileEngine extends EventTarget {
     // 比例尺由卡片渲染在 shadow DOM，引擎通过 setScaleEl 拿到引用
     this.scaleEl = null;
     container.appendChild(this.viewport);
+    container.appendChild(this.pathLayer);
     container.appendChild(this.labelLayer);
     container.appendChild(this.markerLayer);
     container.appendChild(this.attribution);
@@ -77,6 +87,30 @@ class CnTileEngine extends EventTarget {
   removeTileSets() {
     this.tileSets.forEach((t) => t.layer.remove());
     this.tileSets = [];
+  }
+
+  /* 叠加层（如实时路况）：独立于底图，移除时不影响底图 */
+  setOverlay(id, spec) {
+    this._overlays = this._overlays || new Map();
+    const old = this._overlays.get(id);
+    if (old) {
+      old.tileSets.forEach((t) => t.layer.remove());
+      this.tileSets = this.tileSets.filter((t) => !old.tileSets.includes(t));
+      old.tileSets.forEach((t) => { t.els.forEach((i) => i.remove()); });
+      this._overlays.delete(id);
+    }
+    if (!spec) return;
+    const sets = spec.layers.map((l, i) => {
+      const ts = this.addTileSet({
+        url: l.template,
+        maxZoom: spec.maxZoom || 18,
+        opacity: l.opacity ?? 1,
+        zIndex: 20 + i,
+      });
+      return ts;
+    });
+    this._overlays.set(id, { tileSets: sets });
+    this.render();
   }
 
   render() {
@@ -136,6 +170,7 @@ class CnTileEngine extends EventTarget {
     });
 
     this._layoutMarkers(w, h);
+    this._layoutPaths(w, h);
     this._updateScale(w);
   }
 
@@ -179,6 +214,70 @@ class CnTileEngine extends EventTarget {
       return el;
     });
     this._layoutMarkers();
+  }
+
+  /* ---- 轨迹 ---- */
+  setPaths(paths) {
+    // paths: [{ entityId, color, points:[{lat,lng}] }]（坐标为最终投影所用坐标系）
+    this._paths = paths || [];
+    const keep = new Set();
+    this._paths.forEach((p) => {
+      let el = this._pathGroups.get(p.entityId);
+      if (!el) {
+        el = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        el.setAttribute("fill", "none");
+        el.setAttribute("stroke-linecap", "round");
+        el.setAttribute("stroke-linejoin", "round");
+        el.setAttribute("vector-effect", "non-scaling-stroke");
+        this.pathLayer.appendChild(el);
+        this._pathGroups.set(p.entityId, el);
+      }
+      el.setAttribute("stroke", p.color);
+      el.setAttribute("stroke-width", String(p.width || 3));
+      el.setAttribute("opacity", String(p.opacity ?? 0.85));
+      if (p.dashed) el.setAttribute("stroke-dasharray", "6 5");
+      else el.removeAttribute("stroke-dasharray");
+      keep.add(p.entityId);
+    });
+    this._pathGroups.forEach((el, id) => {
+      if (!keep.has(id)) { el.remove(); this._pathGroups.delete(id); }
+    });
+    const w = this.container.clientWidth || 400;
+    const h = this.container.clientHeight || 300;
+    this._layoutPaths(w, h);
+  }
+
+  clearPaths() {
+    this._pathGroups.forEach((el) => el.remove());
+    this._pathGroups.clear();
+    this._paths = [];
+  }
+
+  _layoutPaths(w, h) {
+    if (!this._paths.length) return;
+    const c = CnTileEngine.project(this.center.lat, this.center.lng);
+    const n = 2 ** this.zoom;
+    // 大范围时不划线而是靠 SVG 裁剪；只有极端遥远（跨半球）才断开避免坐标溢出
+    const margin = 4000;
+    this._paths.forEach((p) => {
+      const el = this._pathGroups.get(p.entityId);
+      if (!el) return;
+      let d = "";
+      let drawing = false;
+      for (const pt of p.points) {
+        const q = CnTileEngine.project(pt.lat, pt.lng);
+        const x = (q.x - c.x) * n * 256 + w / 2;
+        const y = (q.y - c.y) * n * 256 + h / 2;
+        // 超出视口太多时断线，避免坐标溢出画出跨屏长线
+        if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
+          drawing = false;
+          continue;
+        }
+        d += `${drawing ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
+        drawing = true;
+      }
+      el.setAttribute("d", d);
+    });
   }
 
   _layoutMarkers(w, h) {
@@ -349,6 +448,17 @@ const BASEMAPS = {
       { template: (x, y, z, tk) => `https://t${x % 8}.tianditu.gov.cn/DataServer?T=cia_w&x=${x}&y=${y}&l=${z}&tk=${tk}` },
     ],
   },
+  traffic: {
+    name: "实时路况",
+    attribution: "© 高德路况",
+    maxZoom: 18,
+    needsShift: false,
+    layers: [
+      { template: (x, y, z) =>
+          `https://tm.amap.com/trafficengine/mapabc/traffictile?v=1.0&t=1&x=${x}&y=${y}&z=${z}`,
+        opacity: 0.9 },
+    ],
+  },
   osm: {
     name: "OpenStreetMap",
     attribution: "© OpenStreetMap",
@@ -366,6 +476,9 @@ class HaCnMapCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    this._trackPoints = {};   // entityId -> [{lat,lng}]
+    this._trackUnsub = null;  // history 订阅取消函数
+    this._trackSig = "";      // 订阅参数签名，避免重复订阅
   }
 
   setConfig(config) {
@@ -374,7 +487,10 @@ class HaCnMapCard extends HTMLElement {
       basemap: "amap",            // amap | amap-satellite | tianditu | tianditu-satellite | osm
       tianditu_key: "",
       default_zoom: 12,
-      hours_to_show: 0,
+      hours_to_show: 0,          // >0 时绘制轨迹线
+      track_width: 3,
+      track_opacity: 0.85,
+      show_traffic: false,       // 高德实时路况叠加
       show_all: false,
       show_zones: false,
       fit_entities: true,
@@ -419,6 +535,29 @@ class HaCnMapCard extends HTMLElement {
           color:var(--primary-text-color,#111); border-bottom:1px solid rgba(0,0,0,.06);
         }
         .cmc-zoom { position:absolute; top:${cfg.title ? 44 : 10}px; left:10px; z-index:10; display:flex; flex-direction:column; gap:6px; }
+        .cmc-drawer {
+          position:absolute; right:0; top:0; bottom:0; width:230px; z-index:30;
+          background:var(--card-background-color,#fff); color:var(--primary-text-color,#212121);
+          box-shadow:-2px 0 12px rgba(0,0,0,.25); display:flex; flex-direction:column;
+          font-size:13px;
+        }
+        .cmc-drawer[hidden] { display:none; }
+        .cmc-drawer-h {
+          display:flex; align-items:center; justify-content:space-between;
+          padding:10px 12px; font-weight:600; border-bottom:1px solid rgba(128,128,128,.25);
+        }
+        .cmc-drawer-h button {
+          border:none; background:none; cursor:pointer; font-size:15px;
+          color:var(--primary-text-color,#212121);
+        }
+        .cmc-drawer-b { padding:10px 12px; display:flex; flex-direction:column; gap:12px; overflow:auto; }
+        .cmc-drawer-b label { display:flex; flex-direction:column; gap:5px; font-size:12px; }
+        .cmc-drawer-b label.chk { flex-direction:row; align-items:center; gap:8px; }
+        .cmc-drawer-b select, .cmc-drawer-b input[type=text] {
+          width:100%; box-sizing:border-box; padding:7px 8px; border-radius:7px;
+          border:1px solid rgba(128,128,128,.4); font-size:13px; font-family:inherit;
+          background:var(--card-background-color,#fff); color:var(--primary-text-color,#212121);
+        }
         .cmc-scale {
           position:absolute; left:10px; bottom:10px; z-index:8;
           font-size:10px; color:var(--primary-text-color,#333);
@@ -452,8 +591,47 @@ class HaCnMapCard extends HTMLElement {
           <button data-z="1" aria-label="放大">+</button>
           <button data-z="-1" aria-label="缩小">−</button>
           <button data-fit aria-label="显示全部" title="显示全部标记">⤢</button>
+          <button data-traffic aria-label="实时路况" title="实时路况">🚦</button>
+          <button data-gear aria-label="地图设置" title="地图设置">⚙</button>
         </div>
         <div class="cmc-scale" aria-hidden="true"></div>
+        <div class="cmc-drawer" hidden>
+          <div class="cmc-drawer-h">
+            <span>地图设置</span>
+            <button data-close aria-label="关闭">✕</button>
+          </div>
+          <div class="cmc-drawer-b">
+            <label>底图
+              <select data-d="basemap">
+                <option value="amap">高德地图</option>
+                <option value="amap-satellite">高德卫星</option>
+                <option value="tianditu">天地图</option>
+                <option value="tianditu-satellite">天地图卫星</option>
+                <option value="osm">OpenStreetMap</option>
+              </select>
+            </label>
+            <label data-d-row="tianditu tianditu-satellite">天地图 Key
+              <input type="text" data-d="tianditu_key" placeholder="粘贴 tk">
+            </label>
+            <label class="chk">
+              <input type="checkbox" data-d="show_traffic"> 实时路况（仅高德）
+            </label>
+            <label>轨迹时长
+              <select data-d="hours_to_show">
+                <option value="0">关闭</option>
+                <option value="1">1 小时</option>
+                <option value="6">6 小时</option>
+                <option value="12">12 小时</option>
+                <option value="24">24 小时</option>
+                <option value="48">48 小时</option>
+                <option value="168">7 天</option>
+              </select>
+            </label>
+            <label class="chk">
+              <input type="checkbox" data-d="show_zones"> 显示区域（家）
+            </label>
+          </div>
+        </div>
       </div>
     `;
 
@@ -474,6 +652,33 @@ class HaCnMapCard extends HTMLElement {
       const ent = this._hass?.states?.[e.detail.entityId];
       if (ent && this._hass) this._hass.callService("homeassistant", "more_info", { entity_id: e.detail.entityId });
     });
+    // 设置抽屉
+    const drawer = this.shadowRoot.querySelector(".cmc-drawer");
+    const openDrawer = () => {
+      drawer.hidden = false;
+      this._syncDrawer();
+    };
+    this.shadowRoot.querySelector("[data-gear]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      drawer.hidden ? openDrawer() : (drawer.hidden = true);
+    });
+    this.shadowRoot.querySelector("[data-close]")?.addEventListener("click", () => {
+      drawer.hidden = true;
+    });
+    drawer.querySelectorAll("[data-d]").forEach((el) => {
+      const evt = el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input";
+      el.addEventListener(evt, () => this._onDrawerChange(el));
+    });
+
+    // 路况快捷开关
+    this.shadowRoot.querySelector("[data-traffic]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cfg = { ...this._config, show_traffic: !this._config.show_traffic };
+      this._config = cfg;
+      this._render();
+      this._persistConfig(cfg);
+    });
+
     this.shadowRoot.querySelector("[data-fit]")?.addEventListener("click", () => {
       this._didFit = false;
       this._engine._userMoved = false;
@@ -482,6 +687,16 @@ class HaCnMapCard extends HTMLElement {
     this.shadowRoot.querySelectorAll(".cmc-zoom button[data-z]").forEach((b) => {
       b.addEventListener("click", () => this._engine.setZoom(this._engine.zoom + Number(b.dataset.z)));
     });
+
+    // 实时路况：仅高德底图支持（瓦片坐标系需为 GCJ-02）
+    const traffic = BASEMAPS.traffic;
+    const wantTraffic = cfg.show_traffic && String(cfg.basemap).startsWith("amap");
+    this._engine.setOverlay(
+      "traffic",
+      wantTraffic
+        ? { maxZoom: traffic.maxZoom, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) }
+        : null
+    );
 
     this._basemapShift = base.needsShift;
     if (this._hass) this._update(); else this._engine.render();
@@ -506,6 +721,139 @@ class HaCnMapCard extends HTMLElement {
       }));
     }
     return [...new Set(ids)].map((id) => hass.states[id]).filter(Boolean);
+  }
+
+  /* ---- 轨迹：订阅 history/stream，按实体画折线 ---- */
+  _syncTracks(states) {
+    const cfg = this._config;
+    const hours = Number(cfg.hours_to_show) || 0;
+    if (hours <= 0) {
+      if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
+      this._trackSig = "";
+      this._trackPoints = {};
+      this._engine.clearPaths();
+      return;
+    }
+    const ids = states.map((s) => s.entity_id).sort();
+    const sig = `${hours}|${ids.join(",")}`;
+    if (sig === this._trackSig) {
+      this._paintTracks();
+      return;
+    }
+    this._trackSig = sig;
+    if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
+
+    const conn = this._hass?.connection;
+    if (!conn || !conn.subscribeMessage) return;
+
+    const start = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+    this._trackPoints = {};
+    Promise.resolve(
+      conn.subscribeMessage(
+        (msg) => {
+          if (!msg?.states) return;
+          Object.entries(msg.states).forEach(([id, arr]) => {
+            const pts = (arr || [])
+              .map((st) => {
+                const lat = st.a?.latitude, lng = st.a?.longitude;
+                if (typeof lat !== "number" || typeof lng !== "number") return null;
+                return { lat, lng };
+              })
+              .filter(Boolean);
+            this._trackPoints[id] = pts;
+          });
+          this._paintTracks();
+        },
+        {
+          type: "history/stream",
+          entity_ids: ids,
+          start_time: start,
+          minimal_response: false,
+          significant_changes_only: false,
+          no_attributes: false,
+        }
+      )
+    )
+      .then((unsub) => { this._trackUnsub = unsub; })
+      .catch(() => { this._trackUnsub = null; });
+  }
+
+  _paintTracks() {
+    const cfg = this._config;
+    const shift = this._basemapShift;
+    const paths = [];
+    Object.entries(this._trackPoints).forEach(([id, pts]) => {
+      if (!pts || pts.length < 2) return;
+      const color =
+        (cfg.entities || []).find((e) => (typeof e === "object" ? e.entity : e) === id)?.color ||
+        this._hass?.states?.[id]?.attributes?.color ||
+        "#03a9f4";
+      paths.push({
+        entityId: id,
+        color,
+        width: Number(cfg.track_width) || 3,
+        opacity: cfg.track_opacity ?? 0.85,
+        points: pts.map((p) => {
+          if (!shift) return p;
+          const [gl, gn] = GCJ.wgs2gcj(p.lat, p.lng);
+          return { lat: gl, lng: gn };
+        }),
+      });
+    });
+    this._engine.setPaths(paths);
+  }
+
+  /* 抽屉：值同步 */
+  _syncDrawer() {
+    const d = this.shadowRoot.querySelector(".cmc-drawer");
+    if (!d) return;
+    const c = this._config;
+    d.querySelectorAll("[data-d]").forEach((el) => {
+      const k = el.dataset.d;
+      if (el.type === "checkbox") el.checked = !!c[k];
+      else if (k === "hours_to_show") el.value = String(Number(c[k]) || 0);
+      else el.value = c[k] === undefined ? "" : c[k];
+    });
+    const bm = c.basemap || "amap";
+    d.querySelectorAll("[data-d-row]").forEach((el) => {
+      el.style.display = el.dataset.dRow.split(" ").includes(bm) ? "" : "none";
+    });
+  }
+
+  /* 抽屉：改配置 → 立即重绘 + 通知外部持久化 */
+  _onDrawerChange(el) {
+    const k = el.dataset.d;
+    let v;
+    if (el.type === "checkbox") v = el.checked;
+    else if (k === "hours_to_show") v = Number(el.value) || 0;
+    else v = el.value;
+
+    const cfg = { ...this._config };
+    if (v === "" || v === false || v === 0) {
+      if (k === "hours_to_show") cfg[k] = 0;
+      else delete cfg[k];
+    } else {
+      cfg[k] = v;
+    }
+    this._config = cfg;
+    this._render();
+    this._syncDrawer();
+    this._persistConfig(cfg);
+  }
+
+  /* 卡片内改配置：如果 HA 给了 setConfig 能力就回写，否则只影响本次显示 */
+  _persistConfig(cfg) {
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: cfg },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  disconnectedCallback() {
+    if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
   }
 
   _update() {
@@ -551,6 +899,7 @@ class HaCnMapCard extends HTMLElement {
     }
 
     this._engine.setMarkers(markers);
+    this._syncTracks(states);
     // 只在首次、且用户还没手动拖动/缩放时自动适配视野
     if (cfg.fit_entities && pts.length && !this._didFit && !this._engine._userMoved) {
       this._engine.fitBounds(pts);
@@ -715,6 +1064,31 @@ class HaCnMapCardEditor extends HTMLElement {
             <label class="t">首次自动缩放到所有标记</label>
             <label class="switch"><input type="checkbox" data-k="fit_entities"><span class="slider"></span></label>
           </div>
+          <div class="row inline" style="margin-top:10px" data-only="amap amap-satellite">
+            <label class="t">实时路况（仅高德）</label>
+            <label class="switch"><input type="checkbox" data-k="show_traffic"><span class="slider"></span></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>轨迹</legend>
+          <div class="row">
+            <label class="t">显示多长时间的历史轨迹</label>
+            <select data-k="hours_to_show">
+              <option value="0">关闭</option>
+              <option value="1">1 小时</option>
+              <option value="6">6 小时</option>
+              <option value="12">12 小时</option>
+              <option value="24">24 小时</option>
+              <option value="48">48 小时</option>
+              <option value="168">7 天</option>
+            </select>
+            <div class="hint">开启后按实体画折线，需要该实体有历史记录。</div>
+          </div>
+          <div class="row" data-hide-when="hours_to_show_zero">
+            <label class="t">线宽</label>
+            <input type="number" data-k="track_width" min="1" max="10" step="1" placeholder="3">
+          </div>
         </fieldset>
 
         <div class="row" data-hide-when="show_all">
@@ -755,10 +1129,12 @@ class HaCnMapCardEditor extends HTMLElement {
     let value;
     if (el.type === "checkbox") value = el.checked;
     else if (el.type === "number") value = el.value === "" ? undefined : Number(el.value);
+    else if (el.dataset.k === "hours_to_show") value = Number(el.value) || 0;
     else value = el.value;
 
     const cfg = { ...this._config };
-    if (value === "" || value === undefined) delete cfg[key];
+    const keepZero = key === "hours_to_show";
+    if (value === "" || value === undefined || (value === 0 && !keepZero)) delete cfg[key];
     else cfg[key] = value;
 
     // 底图切到需要 Key 的类型但没 Key 时提示，但不阻止保存
@@ -860,8 +1236,10 @@ class HaCnMapCardEditor extends HTMLElement {
       if (el.type === "checkbox") {
         // fit_entities 默认为 true，其余默认为 false
         el.checked = c[k] === undefined ? k === "fit_entities" : !!c[k];
+      } else if (el.tagName === "SELECT") {
+        el.value = String(c[k] === undefined ? 0 : c[k]);
       } else {
-        el.value = c[k] === undefined ? el.dataset.k === "height" ? 360 : "" : c[k];
+        el.value = c[k] === undefined ? (el.dataset.k === "height" ? 360 : "") : c[k];
       }
     });
     const h = sr.querySelector('[data-k="height"]');
@@ -897,4 +1275,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card %c v0.6.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card %c v0.7.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

@@ -1,357 +1,234 @@
-# 中国地图仪表盘（China Map Dashboard）
+# ha-map-cn · 中国地图卡片
 
-[![HACS](https://img.shields.io/badge/HACS-Dashboard类别-41BDF5.svg)](https://github.com/hacs/integration)
-[![版本](https://img.shields.io/badge/版本-v0.4.5-blue.svg)](https://github.com/RockJesus/ha-map-cn/releases)
-[![HA 最低版本](https://img.shields.io/badge/HA-2024.1-orange.svg)]()
+> Home Assistant 地图卡片，国内底图直连。
+> **不改 HA 源码、不装代理、不需要服务器能翻墙**——瓦片由浏览器直接加载。
 
-Home Assistant 官方地图卡片在中国刷不出底图的替代方案——**功能与官方地图卡片一致，底图使用国内可达的高德 / 腾讯 / 天地图瓦片**。本项目是**仪表盘前端资源**（不是集成）：安装后即可通过 UI **从模板创建中国地图仪表盘**、在卡片界面可视化配置，**全程界面操作，不需要写任何 YAML / configuration.yaml**。
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
+
+## 安装（HACS，资源自动添加）
+
+1. HACS → 右上角 ⋮ → **自定义存储库**
+2. 填 `https://github.com/RockJesus/ha-map-cn`，类别选 **Lovelace / Dashboard**
+3. 搜索安装 → **重启 HA**（或刷新浏览器）
+4. **资源会自动注册**，无需手动添加
+
+> 自动注册依赖仓库根目录的 `hacs.json` 里 `"filename": "ha-cn-map-card.js"`。
+> 如果 HACS 版本较旧没自动加，手动加一条：`/hacsfiles/ha-map-cn/ha-cn-map-card.js`，类型 **JavaScript Module**。
+
+### 更新后看不到新功能？
+
+浏览器会缓存旧 JS，给资源 URL 加版本参数即可：
+
+```
+/hacsfiles/ha-map-cn/ha-cn-map-card.js?v=070
+```
+
+### 手动安装（不用 HACS）
+
+下载 `ha-cn-map-card.js` 放到 `/config/www/`，资源里加 `/local/ha-cn-map-card.js`，类型选 **JavaScript Module**。
 
 ## 为什么需要它
 
-HA 新版（2024.12+）地图卡片基于 MapLibre 渲染，底图瓦片全部经 HA core 内置 `map_tiles` 组件代理回源到 OpenStreetMap 服务器。在国内该回源不可达，地图显示为空白。
+HA 2026.9 起，官方地图改用 OSMF 矢量瓦片，且**瓦片请求由 HA 服务器发出**。国内服务器的出口访问不到 `vector.openstreetmap.org`，所以官方 `type: map` 卡片在全国范围都是纯色底——手机挂代理也没用，因为请求根本不经过手机。
 
-本卡片内置国内瓦片源，**无需修改任何官方文件、无需科学上网**，装完即用。
+这个卡片把底图换成**浏览器直连**的国内瓦片服务，绕开服务器出口问题。
 
-## 特性
+| | 官方 `type: map` | 本卡片 |
+|---|---|---|
+| 底图来源 | OSMF 矢量瓦片 | 高德 / 天地图 |
+| 请求发起方 | HA 服务器 | 你的浏览器 |
+| 国内可用 | 否（除非服务器能翻墙） | **是** |
+| 需要改 HA 源码 | — | 否 |
+| 安装方式 | 内置 | HACS / 手动放一个 js |
+| 标记偏移 | 无 | 高德自动 GCJ-02 纠偏 |
 
-- **仪表盘模板（与官方 Map 仪表盘一致）**：注册官方机制的 **dashboard strategy**——「设置 → 仪表盘 → 添加仪表盘」对话框直接可选**中国地图**，一键创建 Panel 视图的中国版地图仪表盘（UI，无需写代码）
-- **功能与官方 `map` 卡片一致**：
-  - `entities`（person / device_tracker / zone），支持自定义颜色、label 模式（name / state / attribute / icon）
-  - `show_all`、`geo_location_sources`（含 label/attribute/unit/focus）
-  - `auto_fit`、`fit_zones`、`show_zone_radius`、`default_zoom`
-  - `hours_to_show` 历史轨迹
-  - `dark_mode` / `theme_mode` 深浅色（深色自动滤镜）
-  - **`map_style` 渲染风格**（与官方选项一致：default / colorful / natural / muted / gray / toner）
-  - `cluster` 标记聚合（地图按钮可切换聚合/展开）
-  - `conditions` 条件显示、`scale_ruler` 比例尺、`aspect_ratio`、`title`
-  - zone 半径圈、GPS 精度圈
-- **Overview 抽屉（与官方最新 Map 仪表盘一致）**：Panel 布局下左侧/底部显示 **人 / 设备 / 区域** Tab 列表 + 实体详情页 + **24 小时活动时间线**（进出区域/状态变化，可展开全部）
-- **实体选择与聚焦**：点击地图标记或列表项选择实体（URL `entity_id` 参数与官方一致），自动聚焦并避开抽屉；聚焦缩放与官方一致——单点只放大到恰好清除最近标记（≤17 级），区域用球面圆边界整体纳入视野
-- **国内底图**：高德（默认）/ 腾讯 / 天地图 / OSM，样式含标准、浅色、卫星、深色
-- **坐标自动转换**：高德/腾讯（GCJ-02）自动把 WGS-84 实体坐标做火星坐标转换，位置不偏移；天地图/OSM 无需转换
-- **person 区域定位兜底**（与官方一致）：person 无 GPS 坐标时回退到其所在第一个非被动区域的坐标
-- **RTL 支持**：希伯来/阿拉伯等从右到左语言下抽屉与按钮自动换侧（与官方一致）
-- **网格布局选项**（与官方一致）：grid 布局下自动跨全列、占 4 行
-- **零外部依赖**：卡片为单文件自包含（已内置渲染引擎），国内无需任何 CDN
-- **纯前端资源**：不是集成，不占用集成列表、不需要安装到 custom_components
-- **全程 UI 配置**：添加卡片后所有选项（实体/颜色/底图/样式/轨迹/聚合/比例尺等）都在界面里可视化设置
+---
 
-## 快速开始（纯 UI，不需要写代码）
+## 安装
 
-1. **安装卡片 JS**（二选一）：
-   - **HACS（推荐）**：HACS → ⋮ → 自定义存储库 → 添加 `https://github.com/RockJesus/ha-map-cn`，**类别选「仪表盘」（Dashboard）** → 下载。HACS 2.x 界面里该类别名就叫 **Dashboard（仪表盘）**（旧名"前端" / Plugin）
-   - **手动**：把 `map-cn.js` 放到 `/config/www/ha-map-cn/`（Releases 下载即得单文件 js）
-2. **注册资源**：
-   - **HACS 装：无需手动注册**——HACS 下载后会**自动注册**资源 `/hacsfiles/ha-map-cn/map-cn.js`（设置 → 仪表盘 → ⋮ → 资源 里能看到）
-   - **手动装**：设置 → 仪表盘 → ⋮ → **资源** → 添加资源：URL `/local/ha-map-cn/map-cn.js`，类型选 **JavaScript 模块**
-3. **刷新浏览器**（Ctrl+F5）
-4. **创建中国地图仪表盘（UI，模板一键创建，推荐）**：设置 → 仪表盘 → **添加仪表盘** → 选择 **「中国地图」模板** → 输入名称（如"中国地图"）→ 创建。仪表盘即为 Panel 视图的中国版地图（顶部自动显示 人/设备/区域 Tab 与活动时间线）
-   - 或创建普通仪表盘后「添加卡片」→ 搜索 **地图** → 选 **中国地图卡片**
-5. **可视化设置（UI，可选）**：仪表盘右上角「编辑」→ 点击地图卡片 → 配置（底图供应商/样式/渲染风格下拉、实体选择器逐行选并设颜色、轨迹小时数、聚合、比例尺等）
-6. **完成**：保存即看到中国版地图；仪表盘整页显示（Panel）时，地图顶部自动出现 **人 / 设备 / 区域** 切换
+### HACS（推荐）
 
-## 仪表盘示例（可选参考）
+1. HACS → 前端 → 右上角 ⋮ → **自定义存储库**
+2. 填仓库地址，类别选 **Lovelace / Dashboard**
+3. 搜 `ha-cn-map-card` 安装 → 刷新页面
+4. 若没自动注册资源，手动加：设置 → 仪表盘 → ⋮ → 资源 → 添加
+   `/hacsfiles/ha-cn-map-card/ha-cn-map-card.js`，类型 **JavaScript Module**
 
-仓库内置 `dashboards/map-cn.yaml`（Panel 视图 + 地图卡片 + 概述 Tab），作为 YAML 方式的可选参考（不想写代码就按上面「快速开始」在 UI 里创建）：
+### 手动
 
-```yaml
-views:
-  - title: 地图
-    path: map
-    type: panel
-    cards:
-      - type: custom:map-cn
-        provider: gaode        # gaode | tencent | tianditu | osm
-        style: normal          # normal | light | satellite | dark
-        map_style: default     # default | colorful | natural | muted | gray | toner
-        auto_fit: true
-        fit_zones: true
-        show_zone_radius: true
-        hours_to_show: 24
-        theme_mode: auto
-        cluster: true
-        scale_ruler: true
-        show_all: true
-```
+把仓库根目录的 `ha-cn-map-card.js` 放到 `/config/www/`，然后资源里加 `/local/ha-cn-map-card.js`（类型 JavaScript Module）。
 
-YAML 模式引用方式（`configuration.yaml`）：
+---
+
+## 配置
+
+### 图形界面（推荐）
+
+在仪表盘编辑模式下点卡片的「编辑」，弹出的是**完整可视化编辑器**，无需写 YAML：
+
+| 表单区域 | 可设置 |
+|---|---|
+| 标题 | 卡片顶部标题，留空则不显示标题栏 |
+| 底图来源 | 高德 / 高德卫星 / 天地图 / 天地图卫星 / OSM（下拉选择） |
+| 天地图 Key | **仅当选天地图时出现**，自动联动 |
+| 显示哪些标记 | 自动显示全部 / 显示区域 / 首次自动缩放（三个开关） |
+| 指定实体 | 选 domain 过滤 → 下拉选实体 → 点「添加」；已添加的显示为标签可逐个删除。**关掉「自动显示全部」时才出现** |
+| 默认缩放级别 | 关掉「首次自动缩放」时生效 |
+| 卡片高度 | 像素值，改完预览实时变化 |
+
+所有改动即时通过 `config-changed` 回传，点「保存」才落盘。
+
+### YAML
+
+最小可用：
 
 ```yaml
-lovelace:
-  mode: storage
-  dashboards:
-    map-cn:
-      mode: yaml
-      title: 中国地图
-      icon: mdi:map
-      show_in_sidebar: true
-      filename: map-cn.yaml
+type: custom:ha-cn-map-card
+show_all: true
 ```
 
-## 全部配置项
+完整字段：
 
-| 配置项 | 类型 | 默认 | 说明 |
-|---|---|---|---|
-| `provider` | string | `gaode` | 底图供应商：`gaode` / `tencent` / `tianditu` / `osm` |
-| `style` | string | `normal` | 地图样式：`normal` / `light` / `satellite` / `dark` |
-| `map_style` | string | `default` | 渲染风格（与官方一致）：`default` / `colorful` / `natural` / `muted` / `gray` / `toner` |
-| `tianditu_key` | string | 空 | `tianditu` 必须填写（免费申请） |
-| `coordinate_system` | string | `auto` | `auto`（按供应商）/ `wgs84` / `gcj02`，实体坐标已是中国坐标时用 `gcj02` |
-| `entities` | list | - | 实体列表，字符串或对象（支持 `color` / `label_mode` / `attribute` / `unit` / `focus` / `name`） |
-| `show_all` | boolean | false | 显示全部有位置的实体（与 entities 二选一） |
-| `geo_location_sources` | list | - | geo_location 来源，字符串或对象（`source` / `label_mode` / `attribute` / `unit` / `focus`） |
-| `auto_fit` | boolean | false | 自动缩放视野到所有实体 |
-| `fit_zones` | boolean | false | 自动缩放时包含 zone |
-| `show_zone_radius` | boolean | true | 显示 zone 半径圈 |
-| `default_zoom` | number | 14 | 无自动缩放时的初始缩放 |
-| `hours_to_show` | number | 0 | 显示多少小时的历史轨迹（0 关闭） |
-| `dark_mode` | boolean | false | 强制深色（旧配置项） |
-| `theme_mode` | string | `auto` | `auto` / `light` / `dark` |
-| `cluster` | boolean | true | 标记聚合 |
-| `conditions` | list | - | 条件显示（与官方一致：state / numeric_state / and / or / not / time / user / screen / location） |
-| `scale_ruler` | boolean | false | 显示比例尺 |
-| `aspect_ratio` | string | 1:1 | 卡片宽高比，如 `16/9` |
-| `title` | string | - | 卡片标题 |
+```yaml
+type: custom:ha-cn-map-card
+title: 家人位置               # 可选，显示顶部标题栏
+height: 400                  # 卡片高度（px），默认 360
 
-## 底图供应商
+basemap: amap                # amap(默认) | amap-satellite | tianditu | tianditu-satellite | osm
+tianditu_key: ""             # 用天地图时必填
 
-| 供应商 | 坐标系 | 样式 | 是否需要 Key | 说明 |
+entities:                    # 指定实体；不填则配合 show_all
+  - person.me
+  - device_tracker.car
+show_all: false              # true = 自动列出所有 person./device_tracker./geo_location.
+show_zones: false            # true = 显示 zone.* 区域图标
+geo_location_sources: []     # 按 source 过滤 geo_location 实体
+
+fit_entities: true           # 首次自动缩放到所有实体
+default_zoom: 12             # fit_entities: false 时生效
+
+hours_to_show: 0             # >0 时绘制轨迹线（0=关闭，24=最近24小时）
+track_width: 3               # 轨迹线宽
+track_opacity: 0.85          # 轨迹不透明度
+show_traffic: false          # 高德实时路况叠加（仅 amap 底图）
+```
+
+### 底图对比
+
+| basemap | 需要 Key | 最大级别 | 偏移处理 | 说明 |
 |---|---|---|---|---|
-| 高德 | GCJ-02 | 标准 / 浅色 / 卫星 / 深色 | 否 | 默认推荐，瓦片国内直连 |
-| 腾讯 | GCJ-02 | 标准 / 浅色 / 卫星 / 深色 | 否 | |
-| 天地图 | CGCS2000（≈WGS-84） | 标准 / 卫星（含注记） | 是 | 国家地理信息公共服务平台，[免费申请](https://www.tianditu.gov.cn) |
-| OSM | WGS-84 | 标准 | 否 | 官方同源，国内一般不可达，备用 |
+| `amap` | 否 | 18 | 自动 GCJ-02 纠偏 | **默认**，免申请，国内速度最快 |
+| `amap-satellite` | 否 | 18 | 同上 | 高德卫星影像 + 路网标注 |
+| `tianditu` | **是** | 18 | 无需（CGCS2000≈WGS84） | 国家天地图矢量 + 中文注记，合规性最好 |
+| `tianditu-satellite` | **是** | 18 | 无需 | 天地图影像 + 注记 |
+| `osm` | 否 | 19 | 无需 | 海外或能翻墙时用 |
 
-> 坐标说明：HA 实体（GPS）坐标是 WGS-84；高德/腾讯底图使用 GCJ-02（火星坐标）。本卡片自动将实体坐标转换到底图坐标系显示，位置无偏移。若你的实体坐标本身就是 GCJ-02（如部分国内定位设备上报），可设 `coordinate_system: gcj02` 关闭转换。
+天地图 Key 免费申请：<https://console.tianditu.gov.cn/> → 创建应用 → 选「浏览器端」→ 复制 tk。免费额度约 1 万次/天。
+
+---
+
+## 轨迹线
+
+设置 `hours_to_show: 24`（或任意小时数）即可在地图上画出实体的历史轨迹：
+
+- 通过 WebSocket `history/stream` 订阅，数据实时推送，不用反复轮询 REST
+- 每个实体按颜色区分，颜色优先取卡片配置里的 `color`，其次实体属性，最后默认蓝
+- 高德底图下轨迹点自动做 GCJ-02 纠偏，**和标记一样不会偏移**
+- 轨迹超出视口时由 SVG 裁剪，不会画出跨省直线
+- 卡片从仪表盘移除时自动取消订阅，不留后台连接
+
+> 前提：实体有历史记录。刚装的 HA 或刚接入的设备需要等一段时间才有数据。
+
+## 实时路况
+
+`show_traffic: true` 会在高德底图上叠加实时路况瓦片（红黄绿线），或点卡片左上角 🚦 一键开关。
+
+- **仅支持 `amap` / `amap-satellite`**：路况瓦片和底图必须同一坐标系
+- 天地图/OSM 下该按钮无效，避免错位
+
+## 卡片内设置抽屉
+
+点卡片左上角 ⚙ 打开右侧抽屉，不用进编辑模式就能改：底图、天地图 Key、实时路况、轨迹时长、显示区域。
+
+改动即时生效，但**默认只在本次浏览有效**——要永久保存需在仪表盘编辑模式下改，或点保存。
+
+## 关于坐标偏移（重要）
+
+HA 里的实体坐标是 **WGS84**。高德底图使用 **GCJ-02**，两者在国内相差 **300~600 米**（北京约 556 米，方向东北）。
+
+本卡片在 `basemap: amap*` 时，会自动把标记坐标做 WGS84 → GCJ-02 转换，所以标记会精确落在高德底图的对应建筑上。天地图用 CGCS2000，与 WGS84 差异在米级，不需要转换。
+
+> 已实测：天安门 WGS84 (39.9087, 116.3975) 纠偏为 GCJ-02 (39.910103, 116.403744)，偏移 556 米，方向东北——与标准 GCJ-02 特性一致。
+
+---
 
 ## 常见问题
 
-**地图空白？**
-- 确认已注册资源并硬刷新浏览器（Ctrl+F5）
-- 确认网络可访问 `webrd01.is.autonavi.com`（高德）/ `rt1.map.gtimg.com`（腾讯）/ `t0.tianditu.gov.cn`（天地图）
-- 天地图未填 `tianditu_key` 时卡片会显示错误提示
+**底图还是不出来？**
+F12 打开开发者工具 → Network，看 `autonavi.com` 或 `tianditu.gov.cn` 的请求。若返回 4xx/被拦截，检查浏览器插件（广告拦截器可能误杀瓦片域名）。
 
-**标记位置有偏移？**
-- 默认 `coordinate_system: auto` 已按供应商自动转换，若实体坐标本就是 GCJ-02，请设 `coordinate_system: gcj02`
+**标记位置偏了几百米？**
+说明 `basemap` 是高德但 `needsShift` 没生效，或你自己在实体里存的就是 GCJ-02 坐标（部分国产 GPS 设备直接输出 GCJ-02）。后者请把 `basemap` 改成 `amap` 之外的值，或提 issue。
 
-**和官方地图卡片有什么区别？**
-- 底图换为国内瓦片源，其余功能（实体/轨迹/聚合/区域/条件/深浅色/概述 Tab）与官方一致
+**天地图返回 418？**
+Key 无效或未开通「浏览器端」类型。到控制台检查应用类型。
 
-## 隐私
+**能显示轨迹吗？**
+当前版本只显示当前位置标记，不含历史轨迹线。轨迹需要按 `hours_to_show` 请求历史 API，在开发计划里。
 
-- 底图瓦片请求仅包含地图瓦片坐标，**不包含任何实体数据**
-- 实体位置数据只在浏览器本地渲染，不上传任何第三方
+**标记图标为什么是方块/放大镜？**
+卡片按实体域给默认图标：`person.*` → 人像，`device_tracker.*` → 手机，其余 → 定位针。若实体自带 `icon` 属性会优先用它的。方块说明 HA 前端没加载出 MDI 图标字体，刷新页面即可。
+
+**左下角比例尺会跟着缩放变吗？**
+会。按当前纬度的墨卡托比例实时换算，自动取 1/2/5 × 10^n 的整齐距离。
+
+**左上角第三个按钮是什么？**
+「显示全部」——把视野重新适配到所有标记，拖动/缩放跑偏后一键复位。
+
+**性能和官方比如何？**
+纯 DOM + img 瓦片，无 WebGL。中低端手机反而比官方的 MapLibre 更流畅，但没有 3D 和矢量缩放平滑度。
+
+---
+
+## 开发
+
+```bash
+# 本地预览：起个静态服务器，打开仓库里的示例页
+python3 -m http.server 8931
+# http://localhost:8931/examples/card.html   卡片预览（mock hass）
+# http://localhost:8931/examples/editor.html 可视化编辑器
+# http://localhost:8931/examples/features.html 轨迹/路况/设置抽屉
+```
+
+文件结构：
+
+```
+ha-cn-map-card.js       # 全部代码，单文件，零依赖，约 50KB
+hacs.json               # HACS 元数据（filename 指向根目录的 js）
+examples/               # 本地预览页（含 mock hass 与模拟历史数据）
+  card.html
+  editor.html
+  features.html
+  example.yaml          # 配置示例
+.github/workflows/      # HACS 校验
+```
+
+---
 
 ## 版本历史
 
-<details open>
-<summary>v0.6.0（最新）</summary>
+- **v0.7.0**：合并旧 map-cn 的核心能力——**轨迹线**（history/stream 订阅）、**实时路况叠加**、**卡片内设置抽屉**；修复 SVG 图层尺寸导致的轨迹不显示
+- **v0.6.0**：新增完整可视化编辑器（无需 YAML）；新增比例尺；新增「显示全部」复位按钮；标记图标按实体域区分（person/device_tracker/其他）
+- **v0.1.0**：首个版本，高德/天地图底图、GCJ-02 自动纠偏、标记与区域显示
 
-- **`ha-cn-map-card` 新增完整可视化编辑器**：不再只有 YAML——仪表盘编辑模式下直接弹表单
-  - 标题、底图来源（下拉）、天地图 Key（**选天地图时才出现，自动联动**）
-  - 三个开关：自动显示全部 / 显示区域 / 首次自动缩放
-  - 实体选择器：按 domain 过滤 → 下拉选实体 → 添加；已加的显示为标签可逐个删除
-  - 默认缩放、卡片高度（改完预览实时变化）
-  - 所有改动即时 `config-changed` 回传，保存才落盘
-- **新增比例尺**：按墨卡托比例实时换算，自动取 1/2/5×10ⁿ 整齐距离
-- **新增「显示全部」按钮**：拖动/缩放跑偏后一键复位视野
-- **标记图标按实体域区分**：person → 人像，device_tracker → 手机，其余 → 定位针
-- 修复：v0.1.0 用 `ha-yaml-editor` 凑数导致「不支持可视化编辑器」报错
+## 已知限制
 
-</details>
+1. **单文件无构建**：代码未压缩，约 30KB。要发布 HACS 建议后续接 esbuild。
+2. **无聚合**：实体多时标记会重叠（旧 map-cn.js 有聚类，本卡片暂无）。
+3. **轨迹无方向箭头**：只画线，不标行进方向。
+4. **瓦片无本地缓存**：依赖浏览器 HTTP 缓存。
+5. **高德瓦片非官方 API**：用的是 `webrd0x.is.autonavi.com` 公开瓦片端点，无 SLA 保证。生产环境建议换天地图（有正式 Key 和配额）。
 
-<details>
-<summary>v0.5.0</summary>
+## License
 
-- **新增独立轻量卡片 `ha-cn-map-card`**（`ha-cn-map-card/` 目录）：零依赖 24KB 单文件，内置自研 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet/MapLibre
-  - 底图：高德（默认，免 Key）/ 高德卫星 / 天地图 / 天地图卫星 / OSM
-  - 高德底图**自动 GCJ-02 纠偏**（实测天安门偏移 556m，方向东北，与标准特性一致）；天地图免纠偏
-  - 瓦片由浏览器直连国内 CDN，**不经过 HA 服务器出口**——彻底解决国内官方地图纯色底问题，无需改源码、无需代理
-  - 支持 `show_all` 自动发现人员/设备、`show_zones` 区域、`fit_entities` 自动视野、标记点击弹详情
-  - 与 `map-cn.js` 的取舍：`map-cn.js` 功能全（轨迹/路况/设置抽屉，内嵌 MapLibre ~1.2MB）；`ha-cn-map-card` 极简轻量，适合只要"底图+标记"的场景
-- 安装：本仓库 HACS 安装后，将 `ha-cn-map-card/dist/ha-cn-map-card.js` 复制到 `/config/www/` 并添加 Lovelace 资源（HACS 的 filename 只发布 `map-cn.js`，新卡片需手动复制，或直接单独把 `ha-cn-map-card` 目录作为自定义存储库）
-
-</details>
-
-<details>
-<summary>v0.4.5</summary>
-
-- **面板工具栏（借鉴 ha-china-map v2.0.1 交互）**：中国地图仪表盘（panel 布局）顶部新增居中工具栏——底图一键切换（高德 / 腾讯 / 天地图）、卫星影像、实时路况（高德）、暗色模式、显示全部、⚙️ 地图设置；左下角新增图例（家 / 区域 / 轨迹）
-- **可视化设置抽屉（UI 设置，无需 YAML / 无需重启）**：工具栏 ⚙️ 打开「地图设置」抽屉，分类表单（地图 Key / 底图与显示 / 开关）——天地图 Key、高德 Key、底图服务商、地图样式（标准/卫星）、主题模式（自动/亮/暗）、默认缩放、最大瓦片级别、轨迹历史时长、家标签、轨迹颜色、实时路况、区域圈层、地图注记；保存即应用并本地持久化（localStorage），与卡片编辑器（Lovelace 可视化配置）双通道
-- **实时路况叠加（新功能）**：高德底图支持实时路况透明瓦片层（`show_traffic`），工具栏一键开关；非高德底图自动不叠加
-- **区域圈层 / 地图注记开关**：新增 `show_zones` / `show_labels` 配置（zone 圈层、天地图注记层可隐藏），编辑器同步提供表单
-- **家标签 / 轨迹颜色自定义**：新增 `home_label`（zone.home 显示「家」文案，可改）、`track_color`（统一轨迹颜色，默认跟随实体颜色）
-- **编辑器新增配置项**：区域圈层、地图注记、实时路况、家标签、轨迹颜色、高德 Key
-- **测试增补**：tiles.test.js 新增 traffic 瓦片 4 项断言（高德有/腾讯无/天地图无/URL 正确）；smoke.test.js 新增设置抽屉注册断言 + 运行时选项合并断言（localStorage 覆盖卡片配置，编辑器 preview 场景不合并）
-</details>
-<details>
-<summary>v0.4.4</summary>
-
-- **Overview 抽屉尺寸通知宿主（修复地图被抽屉遮挡）**：overview 组件通过 ResizeObserver + 渲染后主动发送 `map-overview-resize` 事件（含 width/height，手机端附 fitHeight）——宿主 `--overview-width` CSS 变量与 `_overviewPadding` 依赖该事件更新地图 inset，此前事件从未触发导致地图被左侧抽屉遮挡、聚焦/适配 padding 失效。对应官方 ha-snap-bottom-sheet 的 bottom-sheet-resized → map-overview-resize 链路
-- **auto_fit 选中暂停 / 取消恢复（对齐官方 #54774）**：选中实体时暂停自动适配（保持聚焦视野不被 _fitAll 覆盖）；点返回取消选中后恢复自动适配（重新 fit 全部实体，官方 `unpause_autofit` 语义）
-- **smoke.test.js 增补断言**：map-overview-resize 事件载荷、deselect 恢复 autofit 标志与 _updateAll 触发
-</details>
-<details>
-<summary>v0.4.3</summary>
-
-- **聚焦飞行语义对齐官方**：目标已在视野内时不飞行（`fly: !containsLocation`），直接跳转
-- **轨迹订阅失败自动重试**：订阅失败/未建立时相关 hass 变化触发 shouldUpdate 重试（对照官方「组件列表变化重试订阅」）
-</details>
-<details>
-<summary>v0.4.2</summary>
-
-- **精度圈/半径圈按选中态显示（对齐官方 `_decorateOverviewEntities`）**：panel 布局下未选中实体的 GPS 精度圈与 zone 半径圈原先始终显示（只要数据存在），官方语义是「只有选中实体显示精度圈，zone 半径圈仅选中/预览/配置显示/zones Tab 时显示」。修复：`_displayEntities` 携带 `hide_accuracy`/`hide_radius`/`selected` 装饰，`_drawEntityMarker`/`_drawZone` 按装饰创建/更新/移除圈；`_resizeCircles` 只负责尺寸计算，不再覆盖圈显示逻辑（避免配置 `show_zone_radius=false` 时把选中 zone 的半径圈也隐藏——选中实体恒显示）
-- **精度圈跟随选中态/`gps_accuracy` 实时增删**：抽取 `_syncAccuracyCircle`，marker 已存在分支同步处理圈创建/更新/移除（选中切换、精度变化即时生效，不再依赖重建）
-- **编辑器空实体行不再污染配置（v0.4.1 发现 dyc config 累积 6 个 `{"entity":""}` 空行）**：`_addEntity` 改为「待提交 pending 行」（不写 config），选好实体才提交；`_normalizeEntities` 过滤空 entity 行；`setConfig` 时清空 pending。editor.test.js 增补断言：添加不产出空行、pending 提交、空行过滤、清空实体过滤
-- **聚焦飞行语义对齐官方**：目标已在视野内时不飞行（`fly: !containsLocation`），直接跳转
-- **轨迹订阅失败自动重试**：订阅失败/未建立时相关 hass 变化触发 shouldUpdate 重试（对照官方「组件列表变化重试订阅」）
-</details>
-<details>
-<summary>v0.4.1</summary>
-
-- **修复实体聚焦中心缺 GCJ-02 纠偏（偏移约 600 米）**：`_focusEntity` 聚焦时 fitBounds 中心用的是原始 WGS-84 经纬度，而底图是 GCJ-02 坐标系——选中实体后视野中心偏离实体实际位置约 0.006 度（数百米）。修复：聚焦中心先 `toMapCoords` 纠偏为地图坐标再算球面圆边界/fitBounds；区域半径圈同样用纠偏后中心
-- **修复聚焦缩放像素距离坐标混算**：`_focusZoom` 计算「其他实体到聚焦中心像素距离」时，其他实体中心仍是 WGS-84，与纠偏后的聚焦中心混合运算导致缩放级数偏差。修复：两侧统一先转地图坐标再算距离
-- **默认中心点改为 GCJ-02 值**：`DEFAULT_CENTER`（未配置时的初始视野中心）WGS-84 [104, 35] → GCJ-02 [104.00251, 34.99908]，初始视野不再整体偏移
-- **修复 marker 标签不刷新**：`_drawEntityMarker` 已存在分支原先只更新位置和颜色，`label_mode=state` / `label_mode=attribute` 模式下实体状态或属性变化后，标记上的标签文本保持旧值（除非重建）。修复：已存在分支同步更新标签文本与悬停标题
-- **编辑器新增条件可视化配置（与官方 conditions 一致）**：新增「条件」面板——逐行选择实体 + 条件类型（状态等于 / 状态不等于 / 数值大于 / 数值小于）+ 条件值，支持全部满足（AND）/ 任一满足（OR）组合切换；条件行实体留空表示应用到所有实体；产出 `conditions` 数组（OR 组合为 `{ condition: "or", conditions: [...] }`）与运行时 `conditions.js` 语义一致
-- **性能优化：shouldUpdate 实体相关过滤（对照官方）**：layout/preview/config 变化必更新；`show_all` / `geo_location_sources` 模式任何 hass 变化更新（需跟踪全部实体）；配置实体模式仅当相关实体状态变化（或深色模式切换）才重建 marker——无关实体（如温度传感器）的状态变化不再触发地图重建
-- **editor.test.js 增补条件数据流断言**：above/state 解析、更新产物、state_not 组装、OR 切换、AND 回切、空行过滤、删除条件（全绿）
-</details>
-<details>
-<summary>v0.4.0</summary>
-
-- **区域活动时间线对齐官方最新 `map-activity.ts`（in_zones 属性判定）**：区域详情的活动时间线原用「person state 与区域名比较」判断进出区域——person 状态并非始终等于区域名（如 state 为 not_home 但 in_zones 属性记录实际所在区域），边界场景会漏记事件。修复：优先使用官方语义的 `attributes.in_zones` 数组判定进出（`entry.a.in_zones.includes(zoneId)`），无该属性的旧版 HA 自动回退原 state 比较；`arrived` 进出标记、窗口起点基线语义与官方逐行一致
-- **活动时间线逻辑抽为可测模块并导出**：`personActivity` / `zoneActivity` 从 overview 内部函数导出（对齐官方独立 `map-activity.ts` 结构），供单测直接断言
-- **新增 activity.test.js（13 项断言全绿）**：person 活动跳过 unavailable/unknown、窗口起点不算事件、newest first、20 条上限；zone 活动 in_zones 判定（人 A 进出区域事件）、state 回退（人 B 旧版 HA）、arrived 标记、时间倒序
-- **新增 entities.test.js（13 项断言全绿）**：show_all 实体收集（person 的 source tracker 排除、隐藏实体排除、geo_location 纳入）、geo_location_sources 过滤（all/指定 source/字符串归一化/label_mode 继承）、_mapEntities 结构
-- **GCJ-02 精度实测**：北京/上海/广州三点 WGS-84→GCJ-02 偏移（0.006241/0.001401 等）与往返误差（微米级 1e-5~1e-6 度）——坐标转换精度良好
-</details>
-<details>
-<summary>v0.3.9</summary>
-
-- **修复编辑器控件切换不刷新（UI 交互即时反馈）**：`_update` 只更新内部 `_config` 并派发 `config-changed`，未同步 lit property `config` → 切换底图供应商后样式下拉仍显示旧选项（含已不可用的"卫星"）、控件改动界面不刷新。修复：`_update` 同时更新 `this.config` 触发即时重渲染；切换腾讯时样式自动过滤为 标准/浅色/深色
-- **editor.test.js 增补断言**：`_update` 后 `config` property 同步（provider 切换即时生效）
-</details>
-<details>
-<summary>v0.3.8</summary>
-
-- **修正各底图样式语义（瓦片逐张实测）**：① 高德"浅色"原用 style=8（实测为纯地名标注层，无道路底图）→ 改为 style=7 标准底图；② 腾讯移除"卫星"样式（实测 styleid=4 是**深色夜景**而非卫星，腾讯卫星走官方私有 ImageMapType 无公开瓦片 URL），腾讯提供 标准/浅色/深色 三样式；③ 腾讯"深色"用 styleid=4 深色瓦片，加 `darkTile` 标记——暗色模式下不再叠反相滤镜（否则深色瓦片被反相成浅色），仅微调亮度
-- **编辑器样式选项按供应商过滤**：切换底图供应商时，地图样式下拉动态过滤（腾讯无卫星选项），并自动把已选但不可用的样式回退为标准
-- **新增 tiles.test.js 瓦片逻辑测试（20 项断言全绿）**：腾讯 TMS y 轴反转只作用于腾讯瓦片（高德/天地图不误匹配）、样式矩阵结构、darkTile 标记、默认供应商/样式
-</details>
-<details>
-<summary>v0.3.7</summary>
-
-- **修复腾讯地图底图全白（瓦片 y 轴方向错误）**：腾讯瓦片服务 y 轴为 **TMS（从南到北）**，与 MapLibre 请求的 XYZ（从北到南）相反——此前请求北京区域返回恒定的纯白占位瓦片（1712B JPEG），整个腾讯底图白屏。修复：`transformRequest` 对腾讯瓦片做 `y' = 2^z - 1 - y` 反转（仅腾讯域名，高德/天地图/OSM 为标准 XYZ 不改写）；实测北京 z14 瓦片反转后返回真实地图（非空白）
-- **瓦片服务可用性实测**（当前网络环境）：高德标准（PNG）/卫星（JPEG）正常；腾讯标准/卫星正常（Content-Type 为 application/octet-stream 但内容为有效 JPEG，MapLibre 可渲染）；天地图域名可达（需有效 key）；OSM 国内不可达（503，预期内）
-</details>
-<details>
-<summary>v0.3.6</summary>
-
-- **可视化编辑器端到端验证通过（真实 HA 2026.10.x 环境，dyc 实测）**：编辑模式打开中国地图卡片配置 → `map-cn-editor` 渲染全部配置项（底图供应商/地图样式/深浅模式/渲染风格 map_style/天地图 Key/实体选择/轨迹/高级选项）→ UI 保存 → 配置持久化到仪表盘，全程无 YAML
-- **对齐 HA 前端多版本编辑机制**：兼容 HA 前端 20260930.x（`hui-panel-view` 监听 `ll-edit-card`、path 为 `[viewIndex, cardIndex]`）与最新 main（`hui-view` 监听、path 为 `[viewIndex, "cards", cardIndex]`）两种卡片编辑打开方式——卡片/编辑器遵循官方协议（`setConfig` + `hassChanged` + `config-changed`）在两种版本均正常
-</details>
-<details>
-<summary>v0.3.5</summary>
-
-- **修复面板/网格视图下卡片宿主高度未撑满**（dyc 实测：错误分支已保留 ha-card 容器，但宿主 `:host` 未声明高度，百分比高度链在宿主层断裂 → 卡片仍 64px）——`map-cn` 元素补 `width:100%; height:100%`，穿透到面板视图容器（官方 hui-map-card 无显式宿主样式、靠逐层 auto 穿透；本项目显式声明更稳）
-</details>
-<details>
-<summary>v0.3.4</summary>
-
-- **修复地图加载失败时卡片塌陷成 64px 错误条**（dyc 实测发现）：地图初始化出错（WebGL 不可用/底图瓦片加载失败/天地图 key 无效等）时，错误分支丢弃了 ha-card 全屏容器、直接输出错误条，panel 视图下卡片只剩标题栏高度——与官方一致改为**错误也渲染在 ha-card 容器内**（容器保持 `height:100%` 全屏链，容器内显示错误提示）
-- **补全 ha-card 官方高度链**：v0.3.2 只在 `#card` 补了高度，漏了官方最关键的 `ha-card { height:100%; display:flex }`（百分比高度需穿透到 panel 视图容器），现完整对齐官方 hui-map-card 样式
-</details>
-<details>
-<summary>v0.3.3</summary>
-
-- **修复卡片打开即白屏/不渲染（show_all 路径崩溃）**：`_withMissingTracked` 补漏实体时把整个状态对象传给 `computeDomain`（应为 `entity_id`），模板求值即抛 `j.split is not a function`、卡片无法渲染——官方默认开启的 `show_all` 必触发
-- **修复可视化编辑器配置页打不开**：编辑器实现 HA 标准协议 `hassChanged()`（前端创建编辑器后依次调用 `setConfig` → `hassChanged`），此前缺失该方法导致 UI 配置界面报错
-</details>
-<details>
-<summary>v0.3.2</summary>
-
-- **修复 panel 布局下地图不铺满全屏（大片主题背景残留）**：对照官方 hui-map-card 样式，panel/grid 布局时卡片容器补 `height:100%` + flex 撑满，地图全屏显示
-</details>
-<details>
-<summary>v0.3.1</summary>
-
-- **修复卡片加载失败（`Custom element doesn't exist: map-cn`）**：HA 对自定义卡片的元素名规则 = 类型去掉 `custom:` 前缀（`map-cn`），此前注册为 `map-cn-card` 导致卡片永远找不到；同步修正可视化编辑器元素名（`map-cn-editor`）
-</details>
-<details>
-<summary>v0.3.0</summary>
-
-- **修复「中国地图」仪表盘打开报 `Unknown type: map-cn`**：策略模板生成的卡片 `type` 补上 `custom:` 前缀（`custom:map-cn`，HA 自定义卡片必需）；同步修正 README/YAML 示例与冒烟测试断言
-</details>
-<details>
-<summary>v0.2.9</summary>
-
-- **安装说明修正**：HACS 2.x 下载后**自动注册资源**（`/hacsfiles/ha-map-cn/map-cn.js`），删除错误的 `/hacommunity` 手动注册步骤与残留重复段落——此前按旧说明手动注册 `/hacommunity` 路径会 404 导致"卡片加载不出来"
-</details>
-<details>
-<summary>v0.2.8</summary>
-
-- **对齐 HA 最新官方源码（2026-10-20 dev）**：逐行核对 `hui-map-card.ts` / `map-engine.ts` / `get_entity_location.ts` 后修复——
-  - **聚焦缩放官方化**：`_focusZoom` 只放大到恰好清除最近标记（墨卡托像素距离计算，≤17 级）；区域用球面大圆角点 `circleBoundsPoints`（官方精确实现，替换原 8 点近似）
-  - **person 区域定位兜底**：person 无坐标时回退第一个非被动 in_zone 坐标（官方 `getEntityLocation(stateObj, states)`）
-  - **RTL 支持**：希伯来/阿拉伯等 RTL 语言下抽屉、按钮、视野 padding 自动换侧
-  - **地图空白点击取消选择**（官方 `_handleMapClicked`）；`_handleMarkerClick` 增加"非过滤实体不选择"检查（与官方一致）
-  - **`getGridOptions`**：grid 布局跨全列占 4 行（官方 full/rows 4）
-  - **抽屉交互对齐**：选中态下抽屉尺寸变化自动重新聚焦；单 Tab 时抽屉收窄为 300px（`single-tab` 属性）；panel 布局按钮移到抽屉对侧
-  - **Overview 装饰对齐**：未选中实体隐藏精度圈/半径圈（`hide_accuracy`/`hide_radius`/`selected`），区域 Tab 或配置显示时例外
-</details>
-<details>
-<summary>v0.2.7</summary>
-
-- **仪表盘模板**：注册官方 dashboard strategy——「设置 → 仪表盘 → 添加仪表盘」对话框直接选「中国地图」，一键创建中国版地图仪表盘（全程 UI，与官方 Map 仪表盘同构：Panel 视图 + `auto_fit/show_all`）
-- **Overview 抽屉对齐官方最新**：人/设备/区域 Tab 列表（自动只显有内容的 Tab）+ 实体详情页 + **24 小时活动时间线**（进出区域/状态变化，可展开）
-- **实体选择与聚焦**：点击标记/列表项选择实体（URL `entity_id`，与官方一致），自动聚焦避开抽屉
-- **`map_style` 渲染风格**（官方 6 预设：default/colorful/natural/muted/gray/toner）+ 编辑器下拉
-- show_all 补漏（后续定位的人/独立 tracker 自动出现）
-</details>
-<details>
-<summary>v0.2.6</summary>
-
-- 安装说明修正：HACS 2.x 中卡片资源类别名为 **「仪表盘」（Dashboard）**（旧名 前端/Plugin），安装时选该类别
-</details><details>
-<summary>v0.2.5</summary>
-
-- 形态回归：纯**前端资源（仪表盘）**形态——移除 custom_components 集成，HACS 类别改回「前端」；安装 = HACS 前端类别（或手动放 js）→ UI 添加资源 → UI 创建仪表盘 → UI 配置卡片，全程无需写代码
-</details>
-<details>
-<summary>v0.2.4</summary>
-
-- 文档重排：新增「快速开始（纯 UI）」——全程界面操作（仪表盘 UI 创建 + 卡片 UI 可视化设置），无需写任何 YAML；YAML 方式降级为可选
-</details>
-<details>
-<summary>v0.2.3</summary>
-
-- 概述 Tab：卡片实现官方 People/Devices/Zones 一致的 **人 / 设备 / 区域** 切换（Panel 布局自动显示、按类过滤实体）
-- 仪表盘模板：新增 `dashboards/map-cn.yaml`（按 HA 官方仪表盘规范，Panel 视图 + 地图卡片 + 概述 Tab）
-</details>
-<details>
-<summary>v0.2.2</summary>
-
-- 形态回归：轻量集成（custom_components/map_cn）——安装即**自动注册仪表盘资源**（`/ha-map-cn/map-cn.js`），无需手动添加资源；JS 目录/URL 统一使用 `ha-map-cn`
-</details>
-<details>
-<summary>v0.2.1</summary>
-
-- 发布物形态：Releases 的下载产物由 zip 包改为**单个 `map-cn.js` 文件**——手动下载即得 js（无需解压），HACS 前端类别下载同样直接取 js
-</details>
-<details>
-<summary>v0.2.0</summary>
-
-- 形态变更：从 HACS 集成（custom_components）改为**前端资源（Frontend plugin）**——纯仪表盘资源加载，无需安装集成、无需重启 HA；安装方式见上文
-</details>
-<details>
-<summary>v0.1.1</summary>
-
-- UI 可视化编辑器：实体逐行选择（ha-entity-picker，支持自定义颜色）、底图/样式/主题/轨迹/聚合/比例尺等全部选项可视化配置
-- 修复：编辑器模块未随单文件产物内联（动态 import 在单文件方案下运行时 404）
-</details>
-<details>
-<summary>v0.1.0</summary>
-
-- 首个版本：中国版地图卡片，支持高德/腾讯/天地图/OSM 底图、官方地图卡片全部核心功能、WGS-84/GCJ-02 坐标自动转换
-</details>
+MIT

@@ -1,6 +1,6 @@
 {
-  "name": "中国地图仪表盘 (China Map Dashboard)",
-  "filename": "map-cn.js",
+  "name": "中国地图卡片 (China Map Card)",
+  "filename": "ha-cn-map-card.js",
   "homeassistant": "2024.1.0",
   "render_readme": true
 }
