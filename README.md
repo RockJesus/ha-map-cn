@@ -145,7 +145,7 @@ lovelace:
 ## 版本历史
 
 <details open>
-<summary>v0.2.0（最新）</summary>
+<summary>v0.6.0（最新）</summary>
 
 - **`ha-cn-map-card` 新增完整可视化编辑器**：不再只有 YAML——仪表盘编辑模式下直接弹表单
   - 标题、底图来源（下拉）、天地图 Key（**选天地图时才出现，自动联动**）
