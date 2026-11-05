@@ -20,7 +20,7 @@
 浏览器会缓存旧 JS，给资源 URL 加版本参数即可：
 
 ```
-/hacsfiles/ha-map-cn/ha-cn-map-card.js?v=070
+/hacsfiles/ha-map-cn/ha-cn-map-card.js?v=080
 ```
 
 ### 手动安装（不用 HACS）
@@ -104,6 +104,9 @@ show_all: false              # true = 自动列出所有 person./device_tracker.
 show_zones: false            # true = 显示 zone.* 区域图标
 geo_location_sources: []     # 按 source 过滤 geo_location 实体
 
+show_cluster: true           # 标记聚合（默认开）；相近标记合并成气泡
+show_labels: true            # 标记下方显示名称
+persist: true                # 允许抽屉改动存到浏览器；false = 只在本次浏览有效
 fit_entities: true           # 首次自动缩放到所有实体
 default_zoom: 12             # fit_entities: false 时生效
 
@@ -148,9 +151,19 @@ show_traffic: false          # 高德实时路况叠加（仅 amap 底图）
 
 ## 卡片内设置抽屉
 
-点卡片左上角 ⚙ 打开右侧抽屉，不用进编辑模式就能改：底图、天地图 Key、实时路况、轨迹时长、显示区域。
+点卡片左上角 ⚙ 打开右侧抽屉，不用进编辑模式就能改：底图、天地图 Key、实时路况、轨迹时长、显示区域、**标记聚合**、**显示名称**。
 
-改动即时生效，但**默认只在本次浏览有效**——要永久保存需在仪表盘编辑模式下改，或点保存。
+改动即时生效，并**自动保存在浏览器本地**（`localStorage`）——刷新页面、切到别的视图再回来都还在。
+
+| 行为 | 说明 |
+|---|---|
+| 存储位置 | 浏览器 `localStorage`，键名 `ha-cn-map-card:<仪表盘路径>#v<视图>c<卡片序号>` |
+| 生效范围 | 仅当前浏览器，不同步到服务器、不影响其他设备 |
+| 与 YAML 的优先级 | 本地保存的值覆盖 YAML 里的同名键 |
+| 一键还原 | 抽屉底部「恢复默认」→ 清除本地记录，回到 YAML 配置 |
+| 关闭持久化 | 卡片配置里加 `persist: false`，抽屉改动就只在本次浏览有效 |
+
+> 为什么不用 HA 自己的保存？卡片点击 ⚙ 属于浏览态操作，直接写仪表盘配置要触发 `config-changed` 并由编辑模式接管，普通视图下点了会把整张仪表盘切进编辑态。用 `localStorage` 既能"记住我的选择"，又不会动到 `/config/.storage`。
 
 ## 关于坐标偏移（重要）
 
@@ -198,6 +211,7 @@ python3 -m http.server 8931
 # http://localhost:8931/examples/card.html   卡片预览（mock hass）
 # http://localhost:8931/examples/editor.html 可视化编辑器
 # http://localhost:8931/examples/features.html 轨迹/路况/设置抽屉
+# http://localhost:8931/examples/cluster.html  标记聚合
 ```
 
 文件结构：
@@ -217,6 +231,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v0.8.0**：新增**标记聚合**（相近标记合并成气泡，最多 3 个头像 + `+N`，点击放大拆开；家/区域不参与聚合）；新增**设置本地持久化**（抽屉改动写入 `localStorage`，刷新仍生效，可一键恢复默认）；新增「显示名称」开关；修复 `fitBounds` 在两枚标记重合时把缩放解到 18 级"贴脸"的问题（按卡片宽度封顶）；修复复选框关闭状态保存不进去、以及重置按钮误触发页面导航
 - **v0.7.0**：合并旧 map-cn 的核心能力——**轨迹线**（history/stream 订阅）、**实时路况叠加**、**卡片内设置抽屉**；修复 SVG 图层尺寸导致的轨迹不显示
 - **v0.6.0**：新增完整可视化编辑器（无需 YAML）；新增比例尺；新增「显示全部」复位按钮；标记图标按实体域区分（person/device_tracker/其他）
 - **v0.1.0**：首个版本，高德/天地图底图、GCJ-02 自动纠偏、标记与区域显示
@@ -224,7 +239,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 ## 已知限制
 
 1. **单文件无构建**：代码未压缩，约 30KB。要发布 HACS 建议后续接 esbuild。
-2. **无聚合**：实体多时标记会重叠（旧 map-cn.js 有聚类，本卡片暂无）。
+2. **聚合为屏幕像素贪心算法**：不做层级金字塔，缩放到不同级别时每次重算；实体过千会有明显卡顿（DOM 标记方案的天花板）。
 3. **轨迹无方向箭头**：只画线，不标行进方向。
 4. **瓦片无本地缓存**：依赖浏览器 HTTP 缓存。
 5. **高德瓦片非官方 API**：用的是 `webrd0x.is.autonavi.com` 公开瓦片端点，无 SLA 保证。生产环境建议换天地图（有正式 Key 和配额）。
