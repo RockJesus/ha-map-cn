@@ -167,6 +167,7 @@ show_traffic: false          # 高德实时路况叠加（仅 amap 底图）
 |---|---|
 | **panel（面板）** | 地图铺满整屏，右侧悬浮控件，左上角（手机为底部）概览面板 |
 | sections / masonry / grid | 按 `height` 给固定高度，底部抽屉默认收起 |
+| sections + `fill: true` | 地图以 `position:fixed` 铺满视口——**在 sections 视图里也能全屏**，不必改成面板视图 |
 | 任意（`fullscreen: true`） | 强制按全屏布局渲染 |
 
 | 手机（底部抽屉） | 桌面（左侧浮层） |
@@ -178,6 +179,14 @@ show_traffic: false          # 高德实时路况叠加（仅 amap 底图）
 ```yaml
 type: custom:ha-cn-map-card
 layout: full      # full=铺满 | compact=固定高度；不填则自动判断
+```
+
+**你的视图是 sections（网格）类型、卡片被困在固定高度的格子里？** 加一行 `fill: true` 即可，
+卡片会脱离文档流直接铺满整个视口（含 `--header-height` 让出顶栏）：
+
+```yaml
+type: custom:ha-cn-map-card
+fill: true
 ```
 
 ### 概览面板（对齐官方 hui-map-overview）
@@ -291,6 +300,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v0.9.1**：新增 **`fill: true`**——sections（网格）视图里也能真正全屏（`position:fixed` 铺满视口，突破 grid 格子的固定高度限制）；sections 视图自动判定改回紧凑（之前会误判为全屏）；`layout: compact` 在 panel 视图下高度被外部拉伸为整屏的 bug（内联样式压过宿主拉伸）
 - **v0.9.0**：UI 与交互对齐官方 `hui-map-card`——**panel 视图自动铺满全屏**；新增**概览面板**（人/设备/区域三标签、头像+状态+相对时间、点击开 more-info、手机底部抽屉/桌面左侧浮层）；控件改为官方图标样式与顺序（`+`/`−` 成组、右上定位）；比例尺改官方白底样式并避让抽屉；标记改 44px 圆形头像 + 名称胶囊；全屏按钮。修复：`fitPadding` 未 clamp 导致初始缩放被压到 3 级（比例尺显示 1000 km）、`entity_picture` 含引号时 innerHTML 拼断导致图片不显示（改 DOM 构建）、路况叠加在重构中丢失初始化
 - **v0.8.0**：新增**标记聚合**（相近标记合并成气泡，最多 3 个头像 + `+N`，点击放大拆开；家/区域不参与聚合）；新增**设置本地持久化**（抽屉改动写入 `localStorage`，刷新仍生效，可一键恢复默认）；新增「显示名称」开关；修复 `fitBounds` 在两枚标记重合时把缩放解到 18 级"贴脸"的问题（按卡片宽度封顶）；修复复选框关闭状态保存不进去、以及重置按钮误触发页面导航
 - **v0.7.0**：合并旧 map-cn 的核心能力——**轨迹线**（history/stream 订阅）、**实时路况叠加**、**卡片内设置抽屉**；修复 SVG 图层尺寸导致的轨迹不显示
