@@ -1,0 +1,36 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>body{margin:0;background:#111;font-family:system-ui;color:#eee}#card{width:520px;margin:16px auto}</style>
+</head><body><div id="card"></div>
+<script type="module" src="http://localhost:8934/ha-cn-map-card.js"></script>
+<script type="module">
+class FakeIcon extends HTMLElement {
+  connectedCallback(){this._p()}
+  _p(){const m={"mdi:account":"A","mdi:cellphone-marker":"P","mdi:home":"H","mdi:map-marker":"M"};
+       this.textContent=m[this.getAttribute("icon")]||"*"}
+}
+customElements.define("ha-icon",FakeIcon);
+const states = {
+  "zone.home":{entity_id:"zone.home",attributes:{friendly_name:"我的家",latitude:40.82598,longitude:111.71279,icon:"mdi:home"}},
+  "person.rockjesus":{entity_id:"person.rockjesus",attributes:{friendly_name:"RockJesus",latitude:40.82598,longitude:111.71279}},
+};
+// 8 个几乎重合的追踪器（0.0002 度 ≈ 22 米，屏幕上完全叠在一起）
+for (let i=1;i<=8;i++){
+  states["device_tracker.d"+i]={entity_id:"device_tracker.d"+i,attributes:{
+    friendly_name:"设备"+i, latitude:40.82600+i*0.00002, longitude:111.71280+i*0.00002}};
+}
+const hass={states,callService:()=>{},connection:{subscribeMessage:()=>Promise.resolve(()=>{})}};
+window.__states = states;
+window.__hass = hass;
+window.__mk = (cfg)=>{
+  const old = document.querySelector("#card ha-cn-map-card");
+  if (old) old.remove();
+  const c = document.createElement("ha-cn-map-card");
+  document.getElementById("card").appendChild(c);
+  c.setConfig(Object.assign({type:"custom:ha-cn-map-card", basemap:"amap", height:420,
+    default_zoom:14, entities:[], show_zones:false}, cfg));
+  c.hass = hass;
+  window.__card = c;
+  return c;
+};
+window.__mk({show_all:true});
+</script></body></html>
