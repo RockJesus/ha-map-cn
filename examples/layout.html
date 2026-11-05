@@ -1,0 +1,44 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;padding:0;background:#111;font-family:system-ui,'PingFang SC',sans-serif}ha-cn-map-card{display:block}</style>
+</head><body><div id="host"></div>
+<script type="module" src="http://localhost:8934/ha-cn-map-card.js"></script>
+<script type="module">
+
+class FakeIcon extends HTMLElement {
+  connectedCallback(){ this.textContent = '●'; }
+}
+customElements.define('ha-icon', FakeIcon);
+const now = Date.now();
+const states = {
+  'person.rockjesus': { entity_id:'person.rockjesus', state:'not_home', last_updated: new Date(now-4*60000).toISOString(),
+    attributes:{ friendly_name:'我', latitude:39.90923, longitude:116.397428, entity_picture:'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%234a6"/></svg>' } },
+  'person.lulu': { entity_id:'person.lulu', state:'home', last_updated: new Date(now-10*60000).toISOString(),
+    attributes:{ friendly_name:'lulu', latitude:39.91723, longitude:116.407428, entity_picture:'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%23a63"/></svg>' } },
+  'device_tracker.car': { entity_id:'device_tracker.car', state:'not_home', last_updated: new Date(now-60000).toISOString(),
+    attributes:{ friendly_name:'锐E车', latitude:39.9050, longitude:116.3950 } },
+  'device_tracker.macbook': { entity_id:'device_tracker.macbook', state:'home', last_updated: new Date(now-2*3600000).toISOString(),
+    attributes:{ friendly_name:'MacBook Pro', latitude:39.9075, longitude:116.3980 } },
+  'zone.home': { entity_id:'zone.home', state:'2', last_updated:new Date(now).toISOString(),
+    attributes:{ friendly_name:'我的家', latitude:39.9095, longitude:116.3975, radius:100, passive:false } },
+};
+const hass = { states, callService:(d,s,data)=>{ window.__lastService=[d,s,data]; }, connection:{ subscribeMessage:()=>Promise.resolve(()=>{}) }, config:{latitude:39.9,longitude:116.39} };
+window.__hass = hass; window.__states = states;
+
+window.__mount = (mode, cfg) => {
+  const host = document.getElementById('host');
+  host.innerHTML = '';
+  if (mode === 'panel') {
+    host.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;height:100vh';
+  } else {
+    host.style.cssText = 'width:480px;margin:12px auto;display:block';
+  }
+  const card = document.createElement('ha-cn-map-card');
+  host.appendChild(card);
+  card.setConfig(Object.assign({ type:'custom:ha-cn-map-card', basemap:'amap', show_all:true, show_zones:true }, cfg||{}));
+  card.hass = hass;
+  window.__card = card;
+  return card;
+};
+
+window.__ready = true;
+</script></body></html>

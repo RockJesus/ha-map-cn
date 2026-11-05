@@ -2,6 +2,7 @@
 
 > Home Assistant 地图卡片，国内底图直连。
 > **不改 HA 源码、不装代理、不需要服务器能翻墙**——瓦片由浏览器直接加载。
+> 交互与布局对齐官方 `hui-map-card`：panel 视图自动铺满 + 底部/侧边概览面板。
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
 
@@ -24,10 +25,10 @@
 **手动安装：** 浏览器会缓存旧 JS，升级后给资源 URL 加版本参数强制刷新：
 
 ```
-/local/ha-cn-map-card.js?v=080
+/local/ha-cn-map-card.js?v=090
 ```
 
-每升一版把 `080` 递增即可（如 `090`）。
+每升一版把 `090` 递增即可（如 `100`）。
 
 ### 手动安装（不用 HACS）
 
@@ -110,6 +111,8 @@ show_all: false              # true = 自动列出所有 person./device_tracker.
 show_zones: false            # true = 显示 zone.* 区域图标
 geo_location_sources: []     # 按 source 过滤 geo_location 实体
 
+layout: auto                 # auto(默认) | full | compact
+fullscreen: true             # 等价 layout: full
 show_cluster: true           # 标记聚合（默认开）；相近标记合并成气泡
 show_labels: true            # 标记下方显示名称
 persist: true                # 允许抽屉改动存到浏览器；false = 只在本次浏览有效
@@ -155,13 +158,50 @@ show_traffic: false          # 高德实时路况叠加（仅 amap 底图）
 - **仅支持 `amap` / `amap-satellite`**：路况瓦片和底图必须同一坐标系
 - 天地图/OSM 下该按钮无效，避免错位
 
+## 布局：自动全屏 / 占满仪表盘
+
+把卡片放进 **panel 视图**（仪表盘 → 编辑 → 视图类型选「面板」），它会自动铺满整屏，
+行为和官方地图卡片一致。
+
+| 视图类型 | 卡片表现 |
+|---|---|
+| **panel（面板）** | 地图铺满整屏，右侧悬浮控件，左上角（手机为底部）概览面板 |
+| sections / masonry / grid | 按 `height` 给固定高度，底部抽屉默认收起 |
+| 任意（`fullscreen: true`） | 强制按全屏布局渲染 |
+
+| 手机（底部抽屉） | 桌面（左侧浮层） |
+|---|---|
+| ![phone](examples/layout-phone.jpg) | ![desktop](examples/layout-desktop.jpg) |
+
+判定逻辑：卡片会测宿主容器高度，超过视口 55% 就认为在 panel 视图里。想强制指定用 `layout`：
+
+```yaml
+type: custom:ha-cn-map-card
+layout: full      # full=铺满 | compact=固定高度；不填则自动判断
+```
+
+### 概览面板（对齐官方 hui-map-overview）
+
+| 特性 | 说明 |
+|---|---|
+| 三个标签 | **人 / 设备 / 区域**，只显示有内容的标签 |
+| 列表项 | 头像或首字母 + 名称 + 「在 某区域 · 4 分钟前」 |
+| 点击列表项 | 打开该实体的 more-info 弹窗 |
+| 展开/收起 | 点手柄或底部那条遮罩；手机上是底部抽屉，桌面是左上浮层 |
+| 缩放自适应 | 自动适配视野时会把面板占的区域让出来，标记不会被盖住 |
+
+### 控件（对齐官方）
+
+右侧竖排：`+` / `−` 成组 → 显示全部 → 聚合开关 → 路况 → 设置。
+按压缩放控件位置：panel 全屏在**右侧**（官方行为，避开左侧概览面板），紧凑卡片在**左侧**。
+
 ## 标记聚合
 
 相近的标记会自动合并成一个气泡，避免 8 个设备叠在同一个点上只见最上面那个。
 
 | | 关闭聚合 | 开启聚合 |
 |---|---|---|
-| 效果 | ![off](examples/cluster-off.png) | ![on](examples/cluster-on.png) |
+| 效果 | ![off](examples/cluster-off.jpg) | ![on](examples/cluster-on.jpg) |
 
 - 屏幕上 **60px 内**的标记归为一组，气泡最多 3 个头像（边框用实体配色），超出显示 `+N`
 - **点击气泡**以点击位置为锚点放大两级，成员就地拆开
@@ -231,6 +271,7 @@ python3 -m http.server 8931
 # http://localhost:8931/examples/editor.html 可视化编辑器
 # http://localhost:8931/examples/features.html 轨迹/路况/设置抽屉
 # http://localhost:8931/examples/cluster.html  标记聚合
+# http://localhost:8931/examples/layout.html   布局（panel 全屏 / 紧凑）
 ```
 
 文件结构：
@@ -250,6 +291,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v0.9.0**：UI 与交互对齐官方 `hui-map-card`——**panel 视图自动铺满全屏**；新增**概览面板**（人/设备/区域三标签、头像+状态+相对时间、点击开 more-info、手机底部抽屉/桌面左侧浮层）；控件改为官方图标样式与顺序（`+`/`−` 成组、右上定位）；比例尺改官方白底样式并避让抽屉；标记改 44px 圆形头像 + 名称胶囊；全屏按钮。修复：`fitPadding` 未 clamp 导致初始缩放被压到 3 级（比例尺显示 1000 km）、`entity_picture` 含引号时 innerHTML 拼断导致图片不显示（改 DOM 构建）、路况叠加在重构中丢失初始化
 - **v0.8.0**：新增**标记聚合**（相近标记合并成气泡，最多 3 个头像 + `+N`，点击放大拆开；家/区域不参与聚合）；新增**设置本地持久化**（抽屉改动写入 `localStorage`，刷新仍生效，可一键恢复默认）；新增「显示名称」开关；修复 `fitBounds` 在两枚标记重合时把缩放解到 18 级"贴脸"的问题（按卡片宽度封顶）；修复复选框关闭状态保存不进去、以及重置按钮误触发页面导航
 - **v0.7.0**：合并旧 map-cn 的核心能力——**轨迹线**（history/stream 订阅）、**实时路况叠加**、**卡片内设置抽屉**；修复 SVG 图层尺寸导致的轨迹不显示
 - **v0.6.0**：新增完整可视化编辑器（无需 YAML）；新增比例尺；新增「显示全部」复位按钮；标记图标按实体域区分（person/device_tracker/其他）
@@ -257,7 +299,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 已知限制
 
-1. **单文件无构建**：代码未压缩，约 30KB。要发布 HACS 建议后续接 esbuild。
+1. **单文件无构建**：代码未压缩，约 65KB。要发布 HACS 建议后续接 esbuild。
 2. **聚合为屏幕像素贪心算法**：不做层级金字塔，缩放到不同级别时每次重算；实体过千会有明显卡顿（DOM 标记方案的天花板）。
 3. **轨迹无方向箭头**：只画线，不标行进方向。
 4. **瓦片无本地缓存**：依赖浏览器 HTTP 缓存。

@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.8.0 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.0 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -119,6 +119,8 @@ class CnTileEngine extends EventTarget {
   }
 
   render() {
+    // 尺寸还没量出来时用兜底值会让比例尺/瓦片算错，等一帧再来
+    if (!this.container.clientWidth || !this.container.clientHeight) this._scheduleRenderRetry();
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
     const c = CnTileEngine.tileXY(this.center.lat, this.center.lng, this.zoom);
@@ -179,6 +181,16 @@ class CnTileEngine extends EventTarget {
     this._updateScale(w);
   }
 
+  /* 容器还没有尺寸时（0×0，常见于刚挂载/切视图），等下一帧再画 */
+  _scheduleRenderRetry() {
+    if (this._retryTimer) return;
+    this._retryTimer = setTimeout(() => {
+      this._retryTimer = null;
+      if (!this.container.isConnected) return;
+      if (this.container.clientWidth > 0 && this.container.clientHeight > 0) this.render();
+    }, 120);
+  }
+
   /* 比例尺：取一个整齐的距离，换算成屏幕像素宽度 */
   _updateScale(w) {
     if (!this.scaleEl) return;
@@ -209,7 +221,42 @@ class CnTileEngine extends EventTarget {
       el.className = "cmc-marker";
       el.style.cssText =
         "position:absolute;transform:translate(-50%,-100%);pointer-events:auto;cursor:pointer;text-align:center";
-      el.innerHTML = m.html || "";
+      // 用 DOM 构建，避免 entity_picture 里的引号把 innerHTML 拼断
+      if (m.home) {
+        const hm = document.createElement("div");
+        hm.className = "cmc-home";
+        const hic = document.createElement("ha-icon");
+        hic.setAttribute("icon", m.icon || "mdi:home");
+        hm.appendChild(hic);
+        el.appendChild(hm);
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.dispatchEvent(new CustomEvent("marker-click", { detail: { entityId: m.entityId } }));
+        });
+        this.markerLayer.appendChild(el);
+        return el;
+      }
+      if (m.picture) {
+        const img = document.createElement("img");
+        img.src = m.picture;
+        img.referrerPolicy = "no-referrer";
+        img.alt = "";
+        el.appendChild(img);
+      } else {
+        const fb = document.createElement("div");
+        fb.className = "cmc-fallback";
+        if (m.color) fb.style.background = m.color;
+        const ic = document.createElement("ha-icon");
+        ic.setAttribute("icon", m.icon || "mdi:map-marker");
+        fb.appendChild(ic);
+        el.appendChild(fb);
+      }
+      if (m.label) {
+        const lb = document.createElement("div");
+        lb.className = "cmc-label";
+        lb.textContent = m.label;
+        el.appendChild(lb);
+      }
       if (m.entityId) {
         el.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -573,6 +620,25 @@ function saveRuntime(key, opts) {
 const CLUSTER_RADIUS_PX = 60;  // 屏幕像素距离内合并
 const CLUSTER_MAX_AVATAR = 3;  // 气泡里最多显示几个头像
 
+/* ---- 布局模式（对齐官方 hui-map-card 的 layout 语义） ----
+   official：仪表盘把我放在 panel 视图（或全屏）里 → 地图铺满、右下角抽屉面板
+   compact ：sections / masonry / grid 里 → 固定高度
+   full   ：卡片自己占满视口（fullscreen: true）                              */
+const LAYOUT = { OFFICIAL: "official", COMPACT: "compact", FULL: "full" };
+
+/* 官方 MDI 图标路径（16 进制），避免额外请求图标字体 */
+const ICONS = {
+  plus: "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z",
+  minus: "M19,13H5V11H19V13Z",
+  focus: "M10,20V14H4V10H10V4H14V10H20V14H14V20H10Z",
+  cluster: "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4Z",
+  cog: "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z",
+  traffic: "M20,5H4A2,2 0 0,0 2,7V17A2,2 0 0,0 4,19H20A2,2 0 0,0 22,17V7A2,2 0 0,0 20,5M7,15A2.5,2.5 0 0,1 4.5,12.5A2.5,2.5 0 0,1 7,10A2.5,2.5 0 0,1 9.5,12.5A2.5,2.5 0 0,1 7,15M17,15A2.5,2.5 0 0,1 14.5,12.5A2.5,2.5 0 0,1 17,10A2.5,2.5 0 0,1 19.5,12.5A2.5,2.5 0 0,1 17,15M13,13H11V11H13V13M13,10H11V8H13V10Z",
+  chevronLeft: "M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z",
+  fullscreen: "M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z",
+  fullscreenExit: "M5,16H8V19H10V16A2,2 0 0,0 8,14H5V16M16,16V19H14V16A2,2 0 0,1 16,14H19V16H16M10,5V8A2,2 0 0,1 8,10H5V8H8V5H10M14,5H16V8H19V10H16A2,2 0 0,1 14,8V5Z",
+};
+
 /* ---- 底图源 ---- */
 const BASEMAPS = {
   amap: {
@@ -635,6 +701,11 @@ const BASEMAPS = {
     layers: [{ template: (x, y, z) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png` }],
   },
 };
+
+/* ---- HTML 转义（列表项直接拼字符串，实体名可能带特殊字符） ---- */
+const escapeHtml = (v) =>
+  String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const escapeAttr = (v) => escapeHtml(v);
 
 /* ---- 卡片 ---- */
 class HaCnMapCard extends HTMLElement {
@@ -708,157 +779,329 @@ class HaCnMapCard extends HTMLElement {
     saveRuntime(this._lsKey || storageKey(this._rawConfig), out);
   }
 
+  /* 解析布局：官方 panel 视图 / sections 紧凑 / 自定义全屏 */
+  _resolveLayout() {
+    const cfg = this._config;
+    if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel") return LAYOUT.FULL;
+    if (cfg.layout === "compact") return LAYOUT.COMPACT;
+    if (cfg.fullscreen === false) return LAYOUT.COMPACT;
+    // 自动：探测宿主。HA 的 panel 视图卡片会被 flex 撑满，且没有父级 card。
+    if (typeof window !== "undefined" && this.isConnected) {
+      const host = this.parentElement;
+      if (host) {
+        const hostH = host.getBoundingClientRect().height;
+        const viewH = window.innerHeight || 800;
+        // 宿主高度接近视口（>55%）→ 认为在 panel 视图里
+        if (hostH > viewH * 0.55) return LAYOUT.FULL;
+      }
+    }
+    return LAYOUT.COMPACT;
+  }
+
   _render() {
     const cfg = this._config;
     const base = BASEMAPS[cfg.basemap] || BASEMAPS.amap;
+    const layout = this._layout = this._resolveLayout();
+    const isFull = layout === LAYOUT.FULL;
+    // 官方在 panel 布局把缩放控件放右上、其它情况左上
+    const zoomSide = isFull ? "right" : "left";
+    const h = isFull ? "100%" : `${cfg.height || 360}px`;
+    this._isFull = isFull;
+    this._zoomSide = zoomSide;
+
     const titleHtml = cfg.title
       ? `<div class="cmc-title">${cfg.title}</div>` : "";
+    const overlayOpen = this._panelOpen === true;
+
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display:block; height:${cfg.height || 360}px; }
-        .cmc-card {
-          width:100%;
-          position:relative; overflow:hidden; border-radius:var(--ha-card-border-radius,12px);
-          background:var(--card-background-color,#fff);
-          border:1px solid var(--ha-card-border-color,rgba(0,0,0,.12));
-          height:100%; box-sizing:border-box;
+        :host {
+          display:block;
+          height:${h};
+          ${isFull ? "min-height:0;" : ""}
+          --cmc-radius: var(--ha-card-border-radius, 12px);
+          --cmc-surface: var(--card-background-color, #fff);
+          --cmc-text: var(--primary-text-color, #111);
+          --cmc-sub: var(--secondary-text-color, #666);
+          --cmc-divider: var(--divider-color, rgba(128,128,128,.22));
+          --cmc-fill: var(--ha-color-fill-neutral-quiet-resting, rgba(128,128,128,.12));
+          --cmc-shadow: var(--ha-box-shadow-m, 0 2px 8px rgba(0,0,0,.22));
         }
-        .cmc-map { position:absolute; inset:${cfg.title ? "34px" : "0"} 0 0 0; overflow:hidden; cursor:grab; }
+        .cmc-card {
+          width:100%; height:100%; position:relative; overflow:hidden;
+          border-radius:var(--cmc-radius);
+          background:${isFull ? "var(--map-background-color, #121212)" : "var(--cmc-surface)"};
+          ${isFull ? "border:none;" : "border:1px solid var(--ha-card-border-color, rgba(0,0,0,.12));"}
+          box-sizing:border-box;
+        }
+        .cmc-map { position:absolute; inset:0; overflow:hidden; cursor:grab; }
         .cmc-map:active { cursor:grabbing; }
         .cmc-title {
-          position:absolute; top:0; left:0; right:0; height:34px; z-index:10;
-          display:flex; align-items:center; padding:0 12px; font-weight:600;
-          font-size:15px; background:var(--card-background-color,#fff);
-          color:var(--primary-text-color,#111); border-bottom:1px solid rgba(0,0,0,.06);
+          position:absolute; top:0; left:0; right:0; height:44px; z-index:12;
+          display:flex; align-items:center; padding:0 16px; font-weight:500;
+          font-size:18px; background:var(--cmc-surface); color:var(--cmc-text);
+          box-shadow:var(--cmc-shadow);
         }
-        .cmc-zoom { position:absolute; top:${cfg.title ? 44 : 10}px; left:10px; z-index:10; display:flex; flex-direction:column; gap:6px; }
-        .cmc-drawer {
-          position:absolute; right:0; top:0; bottom:0; width:230px; z-index:30;
-          background:var(--card-background-color,#fff); color:var(--primary-text-color,#212121);
-          box-shadow:-2px 0 12px rgba(0,0,0,.25); display:flex; flex-direction:column;
-          font-size:13px;
+        /* ---- 控件：官方 ha-icon-button 外形（48 圆、无底色、白底胶囊分组） ---- */
+        .cmc-ctrl {
+          position:absolute; z-index:14; display:flex; flex-direction:column; gap:6px;
+          top:${cfg.title ? 56 : 8}px;
+          ${zoomSide}:8px;
         }
-        .cmc-drawer[hidden] { display:none; }
-        .cmc-drawer-h {
-          display:flex; align-items:center; justify-content:space-between;
-          padding:10px 12px; font-weight:600; border-bottom:1px solid rgba(128,128,128,.25);
+        /* 官方：缩放组在最上，其余图标依次向下 */
+        .cmc-ctrl > .cmc-ctrl-group + button { margin-top:2px; }
+        .cmc-ctrl-group {
+          display:flex; flex-direction:column;
+          background:var(--cmc-surface); border-radius:24px;
+          box-shadow:var(--cmc-shadow); overflow:hidden;
         }
-        .cmc-drawer-h button {
-          border:none; background:none; cursor:pointer; font-size:15px;
-          color:var(--primary-text-color,#212121);
+        .cmc-ctrl-group > button + button { border-top:1px solid var(--cmc-divider); border-radius:0; }
+        .cmc-ctrl button {
+          width:40px; height:40px; border:none; background:var(--cmc-surface);
+          color:var(--cmc-text); cursor:pointer; display:flex; align-items:center;
+          justify-content:center; padding:0; border-radius:20px; box-shadow:var(--cmc-shadow);
+          transition:background .15s;
+          -webkit-tap-highlight-color:transparent;
         }
-        .cmc-drawer-b { padding:10px 12px; display:flex; flex-direction:column; gap:12px; overflow:auto; }
-        .cmc-drawer-b label { display:flex; flex-direction:column; gap:5px; font-size:12px; }
-        .cmc-drawer-b label.chk { flex-direction:row; align-items:center; gap:8px; }
-        .cmc-drawer-f {
-          margin-top:auto; padding:8px 12px; border-top:1px solid rgba(128,128,128,.25);
-          display:flex; align-items:center; justify-content:space-between; gap:8px;
-          font-size:11px; opacity:.8;
-        }
-        .cmc-drawer-f button {
-          border:1px solid rgba(128,128,128,.4); background:none; cursor:pointer;
-          border-radius:6px; padding:3px 8px; font-size:11px; font-family:inherit;
-          color:var(--primary-text-color,#212121);
-        }
-        .cmc-drawer-b select, .cmc-drawer-b input[type=text] {
-          width:100%; box-sizing:border-box; padding:7px 8px; border-radius:7px;
-          border:1px solid rgba(128,128,128,.4); font-size:13px; font-family:inherit;
-          background:var(--card-background-color,#fff); color:var(--primary-text-color,#212121);
-        }
+        .cmc-ctrl-group button { box-shadow:none; border-radius:0; }
+        .cmc-ctrl button:hover { background:var(--cmc-fill); }
+        .cmc-ctrl button[aria-pressed="true"] { color:var(--primary-color, #03a9f4); }
+        .cmc-ctrl svg { width:22px; height:22px; fill:currentColor; pointer-events:none; }
+        /* ---- 比例尺：官方左下角白底小块 ---- */
         .cmc-scale {
-          position:absolute; left:10px; bottom:10px; z-index:8;
-          font-size:10px; color:var(--primary-text-color,#333);
-          background:rgba(255,255,255,.75); padding:2px 6px; border-radius:4px;
+          position:absolute; left:8px; bottom:8px; z-index:9;
+          font-size:11px; color:#111; line-height:1;
+          background:rgba(255,255,255,.9); padding:4px 6px; border-radius:3px;
           pointer-events:none; font-variant-numeric:tabular-nums;
+          box-shadow:0 0 0 1px rgba(0,0,0,.12);
         }
-        .cmc-zoom button {
-          width:32px; height:32px; border:none; border-radius:16px; font-size:17px; cursor:pointer;
-          line-height:1; display:flex; align-items:center; justify-content:center;
-          background:var(--card-background-color,#fff); color:var(--primary-text-color,#111);
-          box-shadow:0 1px 4px rgba(0,0,0,.25);
+        .cmc-scale .bar { height:5px; margin-top:3px; border:1px solid #111; border-top:none; }
+        /* 底部抽屉展开时把比例尺顶上去，别被压住 */
+        .cmc-card:has(.cmc-panel.open.dock-bottom) .cmc-scale { bottom:45%; transition:bottom .28s ease; }
+        @media (max-width: 600px) {
+          .cmc-card:has(.cmc-panel.open.dock-auto) .cmc-scale { bottom:45%; }
         }
-        .cmc-marker img { width:34px; height:34px; border-radius:50%; border:3px solid #fff; box-shadow:0 1px 5px rgba(0,0,0,.5); object-fit:cover; }
+        /* ---- 标记：官方 48px 圆角方块 + 白边 ---- */
+        .cmc-marker img { width:44px; height:44px; border-radius:50%; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); object-fit:cover; display:block; }
         .cmc-marker .cmc-fallback {
-          width:30px; height:30px; margin:0 auto; border-radius:50%; border:3px solid #fff;
-          --mdc-icon-size:18px;
-          box-shadow:0 1px 5px rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center;
-          font-size:16px; background:#58a6f0; color:#fff;
+          width:44px; height:44px; margin:0 auto; border-radius:50%; border:3px solid #fff;
+          --mdc-icon-size:22px; box-sizing:border-box;
+          box-shadow:0 1px 4px rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center;
+          font-size:18px; background:#58a6f0; color:#fff;
         }
         .cmc-marker .cmc-label {
-          margin-top:2px; font-size:11px; color:#fff; text-shadow:0 0 3px rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.9);
-          white-space:nowrap;
+          margin-top:3px; font-size:11px; color:#fff; display:inline-block;
+          background:rgba(0,0,0,.55); padding:1px 6px; border-radius:8px;
+          white-space:nowrap; max-width:120px; overflow:hidden; text-overflow:ellipsis;
         }
-        .cmc-home { font-size:26px; --mdc-icon-size:26px; color:#ff7043; filter:drop-shadow(0 1px 3px rgba(0,0,0,.6)); }
+        .cmc-home { font-size:30px; --mdc-icon-size:30px; color:#ff9800; filter:drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
         .cmc-cluster-avatar {
-          width:30px; height:30px; border-radius:50%; border:3px solid #58a6f0;
-          box-sizing:border-box; background:var(--card-background-color,#fff);
+          width:34px; height:34px; border-radius:50%; border:3px solid #58a6f0;
+          box-sizing:border-box; background:var(--cmc-surface);
           display:flex; align-items:center; justify-content:center;
-          font-size:12px; font-weight:600; color:var(--primary-text-color,#111);
-          box-shadow:0 1px 4px rgba(0,0,0,.45); overflow:hidden;
+          font-size:13px; font-weight:600; color:var(--cmc-text);
+          box-shadow:0 1px 4px rgba(0,0,0,.4); overflow:hidden;
         }
         .cmc-cluster-count {
-          min-width:30px; height:30px; padding:0 6px; box-sizing:border-box; border-radius:15px;
-          background:#58a6f0; color:#fff; font-size:12px; font-weight:600;
+          min-width:34px; height:34px; padding:0 7px; box-sizing:border-box; border-radius:17px;
+          background:var(--cmc-surface); color:var(--cmc-text); font-size:13px; font-weight:600;
           display:flex; align-items:center; justify-content:center;
-          box-shadow:0 1px 4px rgba(0,0,0,.45); border:2px solid #fff;
+          box-shadow:0 1px 4px rgba(0,0,0,.4); border:2px solid var(--cmc-surface);
         }
-        .cmc-attribution { color:var(--primary-text-color,#eee); }
+        .cmc-attribution { color:var(--cmc-sub); }
+
+        /* ================= 概览面板（对齐官方 底部抽屉 / 左侧浮层） ================= */
+        .cmc-panel {
+          position:absolute; z-index:20; box-sizing:border-box;
+          background:var(--cmc-surface); color:var(--cmc-text);
+          box-shadow:var(--cmc-shadow);
+          display:flex; flex-direction:column;
+          transition:transform .28s ease, max-height .28s ease;
+        }
+        /* 桌面/面板视图：左侧浮层卡片 */
+        .cmc-panel.dock-auto {
+          top:12px; left:12px; width:min(340px, calc(100% - 24px));
+          max-height:calc(100% - 24px); border-radius:16px; overflow:hidden;
+          transform:translateX(calc(-100% - 16px));
+        }
+        .cmc-panel.dock-auto.open { transform:none; }
+        /* 官方：窄屏（手机）改成底部抽屉 */
+        @media (max-width: 600px) {
+          .cmc-panel.dock-auto {
+            top:auto; left:0; right:0; bottom:0; width:auto;
+            border-radius:16px 16px 0 0;
+            height:max(120px, min(280px, 62%));
+            transform:translateY(calc(100% - 52px));
+          }
+          .cmc-panel.dock-auto.open { transform:none; top:45%; height:auto; }
+        }
+        /* 底部抽屉（紧凑卡片 / 手机全屏共用）：高度不超过卡片 70% */
+        .cmc-panel.dock-bottom {
+          left:0; right:0; bottom:0; top:auto; border-radius:16px 16px 0 0;
+          height:max(120px, min(280px, 62%));
+        }
+        .cmc-panel.dock-bottom.open { top:45%; height:auto; }
+        .cmc-panel.dock-bottom:not(.open) { transform:translateY(calc(100% - 52px)); }
+        .cmc-panel-handle {
+          flex:none; height:20px; display:flex; align-items:center; justify-content:center;
+          cursor:pointer; touch-action:none;
+        }
+        .cmc-panel-handle::before {
+          content:""; width:32px; height:4px; border-radius:2px; background:var(--cmc-divider);
+        }
+        .cmc-panel-h {
+          flex:none; display:flex; align-items:center; gap:8px;
+          padding:0 12px 8px;
+        }
+        .cmc-tabs {
+          position:relative; flex:1; display:flex; gap:4px; padding:4px;
+          border-radius:12px; background:var(--cmc-fill);
+        }
+        .cmc-tabs .pill {
+          position:absolute; top:4px; bottom:4px; border-radius:9px;
+          background:var(--cmc-surface); box-shadow:0 1px 3px rgba(0,0,0,.18);
+          transition:left .2s ease, width .2s ease;
+        }
+        .cmc-tabs button {
+          position:relative; flex:1; min-width:0; border:none; margin:0; padding:8px 6px;
+          border-radius:9px; background:none; cursor:pointer; font-family:inherit;
+          font-size:14px; font-weight:500; color:var(--cmc-sub);
+          transition:color .18s; -webkit-tap-highlight-color:transparent;
+        }
+        .cmc-tabs button[aria-selected="true"] { color:var(--cmc-text); }
+        .cmc-tabs button:disabled { opacity:.4; cursor:default; }
+        .cmc-panel-close {
+          flex:none; width:36px; height:36px; border:none; background:none;
+          color:var(--cmc-sub); cursor:pointer; border-radius:18px; display:flex;
+          align-items:center; justify-content:center;
+        }
+        .cmc-panel-close:hover { background:var(--cmc-fill); }
+        .cmc-panel-close svg { width:20px; height:20px; fill:currentColor; }
+        .cmc-list { flex:1; min-height:0; overflow-y:auto; padding:0 8px 12px; -webkit-overflow-scrolling:touch; }
+        .cmc-item {
+          display:flex; align-items:center; gap:12px; width:100%; box-sizing:border-box;
+          padding:8px; border:none; background:none; cursor:pointer; text-align:left;
+          border-radius:12px; font-family:inherit; color:var(--cmc-text);
+          -webkit-tap-highlight-color:transparent;
+        }
+        .cmc-item:hover, .cmc-item:focus-visible { background:var(--cmc-fill); outline:none; }
+        .cmc-item-av {
+          flex:none; width:44px; height:44px; border-radius:12px; overflow:hidden;
+          display:flex; align-items:center; justify-content:center;
+          background:var(--cmc-fill); color:var(--cmc-sub);
+          font-size:16px; font-weight:600;
+        }
+        .cmc-item-av img { width:100%; height:100%; object-fit:cover; display:block; }
+        .cmc-item-tx { min-width:0; flex:1; display:flex; flex-direction:column; gap:2px; }
+        .cmc-item-nm {
+          font-size:15px; font-weight:500; white-space:nowrap;
+          overflow:hidden; text-overflow:ellipsis;
+        }
+        .cmc-item-sub {
+          font-size:13px; color:var(--cmc-sub); white-space:nowrap;
+          overflow:hidden; text-overflow:ellipsis;
+        }
+        .cmc-empty {
+          padding:28px 12px; text-align:center; font-size:13px; color:var(--cmc-sub);
+        }
+
+        /* ================= 设置面板（复用同一容器） ================= */
+        .cmc-set-b { flex:1; min-height:0; overflow-y:auto; padding:4px 14px 14px; display:flex; flex-direction:column; gap:12px; }
+        .cmc-set-b label { display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--cmc-sub); }
+        .cmc-set-b label.chk { flex-direction:row; align-items:center; justify-content:space-between; gap:8px; font-size:14px; color:var(--cmc-text); }
+        .cmc-set-b label.chk input { width:18px; height:18px; accent-color:var(--primary-color,#03a9f4); }
+        .cmc-set-b select, .cmc-set-b input[type=text] {
+          width:100%; box-sizing:border-box; padding:9px 10px; border-radius:10px;
+          border:1px solid var(--cmc-divider); font-size:14px; font-family:inherit;
+          background:var(--cmc-surface); color:var(--cmc-text);
+        }
+        .cmc-set-f {
+          flex:none; padding:10px 14px; border-top:1px solid var(--cmc-divider);
+          display:flex; align-items:center; justify-content:space-between; gap:8px;
+          font-size:11px; color:var(--cmc-sub);
+        }
+        .cmc-set-f button {
+          border:1px solid var(--cmc-divider); background:none; cursor:pointer;
+          border-radius:8px; padding:5px 10px; font-size:12px; font-family:inherit;
+          color:var(--cmc-text);
+        }
       </style>
       <div class="cmc-card">
         ${titleHtml}
         <div class="cmc-map"></div>
-        <div class="cmc-zoom">
-          <button data-z="1" aria-label="放大">+</button>
-          <button data-z="-1" aria-label="缩小">−</button>
-          <button data-fit aria-label="显示全部" title="显示全部标记">⤢</button>
-          <button data-traffic aria-label="实时路况" title="实时路况">🚦</button>
-          <button data-gear aria-label="地图设置" title="地图设置">⚙</button>
-        </div>
-        <div class="cmc-scale" aria-hidden="true"></div>
-        <div class="cmc-drawer" hidden>
-          <div class="cmc-drawer-h">
-            <span>地图设置</span>
-            <button data-close aria-label="关闭">✕</button>
+
+        <div class="cmc-ctrl">
+          <div class="cmc-ctrl-group">
+            <button data-z="1" aria-label="放大"><svg viewBox="0 0 24 24"><path d="${ICONS.plus}"/></svg></button>
+            <button data-z="-1" aria-label="缩小"><svg viewBox="0 0 24 24"><path d="${ICONS.minus}"/></svg></button>
           </div>
-          <div class="cmc-drawer-b">
-            <label>底图
-              <select data-d="basemap">
-                <option value="amap">高德地图</option>
-                <option value="amap-satellite">高德卫星</option>
-                <option value="tianditu">天地图</option>
-                <option value="tianditu-satellite">天地图卫星</option>
-                <option value="osm">OpenStreetMap</option>
-              </select>
-            </label>
-            <label data-d-row="tianditu tianditu-satellite">天地图 Key
-              <input type="text" data-d="tianditu_key" placeholder="粘贴 tk">
-            </label>
-            <label class="chk">
-              <input type="checkbox" data-d="show_traffic"> 实时路况（仅高德）
-            </label>
-            <label>轨迹时长
-              <select data-d="hours_to_show">
-                <option value="0">关闭</option>
-                <option value="1">1 小时</option>
-                <option value="6">6 小时</option>
-                <option value="12">12 小时</option>
-                <option value="24">24 小时</option>
-                <option value="48">48 小时</option>
-                <option value="168">7 天</option>
-              </select>
-            </label>
-            <label class="chk">
-              <input type="checkbox" data-d="show_zones"> 显示区域（家）
-            </label>
-            <label class="chk">
-              <input type="checkbox" data-d="show_cluster"> 标记聚合
-            </label>
-            <label class="chk">
-              <input type="checkbox" data-d="show_labels"> 显示名称
-            </label>
-            <div class="cmc-drawer-f">
-              <span>设置会保存在本浏览器</span>
-              <button data-reset title="恢复为 YAML 配置">恢复默认</button>
+          <button data-fit aria-label="显示全部" title="显示全部"><svg viewBox="0 0 24 24"><path d="${ICONS.focus}"/></svg></button>
+          <button data-cluster aria-label="标记聚合" title="标记聚合" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.cluster}"/></svg></button>
+          <button data-traffic aria-label="实时路况" title="实时路况" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.traffic}"/></svg></button>
+          <button data-gear aria-label="地图设置" title="地图设置"><svg viewBox="0 0 24 24"><path d="${ICONS.cog}"/></svg></button>
+          ${isFull ? "" : `<button data-fs aria-label="全屏" title="全屏"><svg viewBox="0 0 24 24"><path d="${ICONS.fullscreen}"/></svg></button>`}
+        </div>
+
+        <div class="cmc-scale" aria-hidden="true"></div>
+
+        <div class="cmc-panel dock-${isFull ? "auto" : "bottom"}${overlayOpen ? " open" : ""}" data-panel>
+          <div class="cmc-panel-handle" data-handle></div>
+          <div data-view="list">
+            <div class="cmc-panel-h">
+              ${isFull ? `<button class="cmc-panel-close" data-back aria-label="收起面板">
+                <svg viewBox="0 0 24 24"><path d="${ICONS.chevronLeft}"/></svg>
+              </button>` : ""}
+              <div class="cmc-tabs" role="tablist">
+                <span class="pill"></span>
+                <button role="tab" data-tab="people">人</button>
+                <button role="tab" data-tab="devices">设备</button>
+                <button role="tab" data-tab="zones">区域</button>
+              </div>
+              <button class="cmc-panel-close" data-panel-close aria-label="收起">
+                <svg viewBox="0 0 24 24"><path d="${ICONS.minus}"/></svg>
+              </button>
+            </div>
+            <div class="cmc-list" data-list></div>
+          </div>
+          <div data-view="settings" hidden>
+            <div class="cmc-panel-h">
+              <span style="flex:1;font-size:16px;font-weight:500">地图设置</span>
+              <button class="cmc-panel-close" data-set-close aria-label="返回">
+                <svg viewBox="0 0 24 24"><path d="${ICONS.minus}"/></svg>
+              </button>
+            </div>
+            <div class="cmc-set-b">
+              <label>底图
+                <select data-d="basemap">
+                  <option value="amap">高德地图</option>
+                  <option value="amap-satellite">高德卫星</option>
+                  <option value="tianditu">天地图</option>
+                  <option value="tianditu-satellite">天地图卫星</option>
+                  <option value="osm">OpenStreetMap</option>
+                </select>
+              </label>
+              <label data-d-row="tianditu tianditu-satellite">天地图 Key
+                <input type="text" data-d="tianditu_key" placeholder="粘贴 tk">
+              </label>
+              <label class="chk"><span>标记聚合</span><input type="checkbox" data-d="show_cluster"></label>
+              <label class="chk"><span>显示名称</span><input type="checkbox" data-d="show_labels"></label>
+              <label class="chk"><span>显示区域（家）</span><input type="checkbox" data-d="show_zones"></label>
+              <label class="chk"><span>实时路况（仅高德）</span><input type="checkbox" data-d="show_traffic"></label>
+              <label>轨迹时长
+                <select data-d="hours_to_show">
+                  <option value="0">关闭</option>
+                  <option value="1">1 小时</option>
+                  <option value="6">6 小时</option>
+                  <option value="12">12 小时</option>
+                  <option value="24">24 小时</option>
+                  <option value="48">48 小时</option>
+                  <option value="168">7 天</option>
+                </select>
+              </label>
+            </div>
+            <div class="cmc-set-f">
+              <span>设置保存在本浏览器</span>
+              <button data-reset type="button">恢复默认</button>
             </div>
           </div>
         </div>
@@ -882,53 +1125,132 @@ class HaCnMapCard extends HTMLElement {
       const ent = this._hass?.states?.[e.detail.entityId];
       if (ent && this._hass) this._hass.callService("homeassistant", "more_info", { entity_id: e.detail.entityId });
     });
-    // 设置抽屉
-    const drawer = this.shadowRoot.querySelector(".cmc-drawer");
-    const openDrawer = () => {
-      drawer.hidden = false;
-      this._syncDrawer();
-    };
-    this.shadowRoot.querySelector("[data-gear]")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      drawer.hidden ? openDrawer() : (drawer.hidden = true);
-    });
-    this.shadowRoot.querySelector("[data-close]")?.addEventListener("click", () => {
-      drawer.hidden = true;
-    });
     // 卡片里的按钮默认是 type=submit 语义，放在宿主表单/链接里会触发跳转
     this.shadowRoot.querySelectorAll("button").forEach((btn) => btn.setAttribute("type", "button"));
-    drawer.querySelectorAll("[data-d]").forEach((el) => {
+
+    /* ---- 概览面板（人 / 设备 / 区域）与设置面板共用一个容器 ---- */
+    const panel = this.shadowRoot.querySelector("[data-panel]");
+    const listView = panel.querySelector('[data-view="list"]');
+    const setView = panel.querySelector('[data-view="settings"]');
+    this._panelEl = panel;
+    this._panelView = this._panelView || "list";
+
+    const showView = (v) => {
+      this._panelView = v;
+      listView.hidden = v !== "list";
+      setView.hidden = v !== "settings";
+      if (v === "settings") this._syncDrawer();
+    };
+    const setOpen = (open) => {
+      this._panelOpen = open;
+      panel.classList.toggle("open", open);
+      if (open) showView(this._panelView || "list");
+    };
+    this._setPanelOpen = setOpen;
+    this._setPanelView = showView;
+
+    // 默认：全屏布局展开列表，紧凑布局收起
+    setOpen(overlayOpen || (this._isFull && this._panelView !== "settings" && this._panelUserClosed !== true));
+
+    panel.querySelectorAll("[data-tab]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._tab = b.dataset.tab;
+        this._renderList();
+      });
+    });
+    panel.querySelector("[data-handle]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setOpen(!this._panelOpen);
+      if (!this._panelOpen) this._panelUserClosed = true;
+    });
+    panel.querySelector("[data-back]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setOpen(false);
+      this._panelUserClosed = true;
+    });
+    panel.querySelector("[data-panel-close]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setOpen(false);
+      this._panelUserClosed = true;
+    });
+    panel.querySelector("[data-set-close]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showView("list");
+      this._renderList();
+    });
+
+    this.shadowRoot.querySelector("[data-gear]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this._isFull && this._panelOpen && this._panelView === "settings") {
+        showView("list");
+        this._renderList();
+      } else {
+        showView("settings");
+        setOpen(true);
+      }
+    });
+
+    panel.querySelectorAll("[data-d]").forEach((el) => {
       const evt = el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input";
       el.addEventListener(evt, () => this._onDrawerChange(el));
     });
     // 恢复为 YAML 配置（清掉本浏览器存的设置）
     this.shadowRoot.querySelector("[data-reset]")?.addEventListener("click", (e) => {
       e.stopPropagation();
-      e.preventDefault();           // 按钮在卡片里，别让它触发宿主页面的默认行为
-      if (this._resetting) return;  // setConfig → _render 会重建按钮，防止重入
+      e.preventDefault();
+      if (this._resetting) return;
       this._resetting = true;
       try {
         const raw = { ...this._rawConfig };
         delete raw.persist;
         try { window.localStorage.removeItem(this._lsKey || storageKey(raw)); } catch { /* 忽略 */ }
-        this.setConfig(raw);        // 重新按 YAML 计算（setConfig 内部会 _render）
+        this.setConfig(raw);
       } finally {
         this._resetting = false;
       }
       this._didFit = false;
-      this.shadowRoot.querySelector(".cmc-drawer")?.removeAttribute("hidden");
-      this._syncDrawer();
       if (this._hass) this._update();
     });
 
+    // 聚合快捷开关
+    const clusterBtn = this.shadowRoot.querySelector("[data-cluster]");
+    if (clusterBtn) {
+      clusterBtn.setAttribute("aria-pressed", String(cfg.show_cluster !== false));
+      clusterBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const next = !(this._config.show_cluster !== false);
+        this._config = { ...this._config, show_cluster: next };
+        this._saveRuntime();
+        clusterBtn.setAttribute("aria-pressed", String(next));
+        this._update();
+        this._persistConfig(this._config);
+      });
+    }
+
     // 路况快捷开关
-    this.shadowRoot.querySelector("[data-traffic]")?.addEventListener("click", (e) => {
+    const trafficBtn = this.shadowRoot.querySelector("[data-traffic]");
+    if (trafficBtn) {
+      trafficBtn.setAttribute(
+        "aria-pressed",
+        String(!!(cfg.show_traffic && String(cfg.basemap).startsWith("amap")))
+      );
+    }
+    trafficBtn?.addEventListener("click", (e) => {
       e.stopPropagation();
-      const cfg = { ...this._config, show_traffic: !this._config.show_traffic };
-      this._config = cfg;
+      const next = !this._config.show_traffic;
+      this._config = { ...this._config, show_traffic: next };
       this._saveRuntime();
-      this._render();
-      this._persistConfig(cfg);
+      trafficBtn.setAttribute("aria-pressed", String(next && String(this._config.basemap).startsWith("amap")));
+      // 路况是叠加层，不必重建整个卡片
+      const traffic = BASEMAPS.traffic;
+      const want = next && String(this._config.basemap).startsWith("amap");
+      this._engine.setOverlay(
+        "traffic",
+        want ? { maxZoom: traffic.maxZoom, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) } : null
+      );
+      this._syncDrawer();
+      this._persistConfig(this._config);
     });
 
     this.shadowRoot.querySelector("[data-fit]")?.addEventListener("click", () => {
@@ -936,13 +1258,26 @@ class HaCnMapCard extends HTMLElement {
       this._engine._userMoved = false;
       this._update();
     });
-    this.shadowRoot.querySelectorAll(".cmc-zoom button[data-z]").forEach((b) => {
-      b.addEventListener("click", () => this._engine.setZoom(this._engine.zoom + Number(b.dataset.z)));
+    this.shadowRoot.querySelectorAll("[data-z]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._engine.setZoom(this._engine.zoom + Number(b.dataset.z));
+      });
+    });
+    this.shadowRoot.querySelector("[data-fs]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (typeof this.requestFullscreen === "function") {
+        this.requestFullscreen?.().catch(() => {});
+      }
+    });
+    // 全屏时点地图空白处不收起面板（官方行为），只在面板外点按才收起
+    document.addEventListener("fullscreenchange", this._onFsChange = () => {
+      if (document.fullscreenElement === this) this._engine?.render();
     });
 
-    // 实时路况：仅高德底图支持（瓦片坐标系需为 GCJ-02）
+    // 实时路况：仅高德底图支持（路况瓦片与底图同属 GCJ-02 坐标系）
     const traffic = BASEMAPS.traffic;
-    const wantTraffic = cfg.show_traffic && String(cfg.basemap).startsWith("amap");
+    const wantTraffic = !!cfg.show_traffic && String(cfg.basemap).startsWith("amap");
     this._engine.setOverlay(
       "traffic",
       wantTraffic
@@ -952,6 +1287,7 @@ class HaCnMapCard extends HTMLElement {
 
     this._basemapShift = base.needsShift;
     if (this._hass) this._update(); else this._engine.render();
+    this._renderList();
   }
 
   _collectEntities() {
@@ -1057,7 +1393,7 @@ class HaCnMapCard extends HTMLElement {
 
   /* 抽屉：值同步 */
   _syncDrawer() {
-    const d = this.shadowRoot.querySelector(".cmc-drawer");
+    const d = this.shadowRoot.querySelector('[data-view="settings"]');
     if (!d) return;
     const c = this._config;
     d.querySelectorAll("[data-d]").forEach((el) => {
@@ -1099,8 +1435,11 @@ class HaCnMapCard extends HTMLElement {
     if (rebuild) {
       Promise.resolve().then(() => {
         this._render();
-        this.shadowRoot.querySelector(".cmc-drawer")?.removeAttribute("hidden");
-        this._syncDrawer();
+        // 重建后把面板恢复到"设置"页并保持展开，用户视角不跳
+        this._panelOpen = true;
+        this._panelUserClosed = false;
+        this._setPanelOpen?.(true);
+        this._setPanelView?.("settings");
       });
     } else {
       Promise.resolve().then(() => this._update());
@@ -1121,6 +1460,35 @@ class HaCnMapCard extends HTMLElement {
 
   disconnectedCallback() {
     if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
+    if (this._onFsChange) document.removeEventListener("fullscreenchange", this._onFsChange);
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+  }
+
+  connectedCallback() {
+    // panel 视图撑满容器后尺寸会变，重新算布局 + 重绘瓦片
+    if (typeof ResizeObserver === "function" && !this._ro) {
+      this._ro = new ResizeObserver(() => {
+        const layoutNow = this._resolveLayout();
+        if (layoutNow !== this._layout) {
+          const cfg = this._config;
+          const wasFull = this._isFull;
+          this._layout = layoutNow;
+          this._isFull = layoutNow === LAYOUT.FULL;
+          // 布局切换需要重建控件位置；保持视野不动
+          const view = this._engine ? { c: this._engine.center, z: this._engine.zoom } : null;
+          this._render();
+          if (view && this._engine) {
+            this._engine.center = view.c;
+            this._engine.zoom = view.z;
+            this._engine.render();
+          }
+          if (this._hass) this._update();
+        } else {
+          this._engine?.render();
+        }
+      });
+      this._ro.observe(this);
+    }
   }
 
   _update() {
@@ -1153,9 +1521,8 @@ class HaCnMapCard extends HTMLElement {
         color,
         short: name,
         clusterable: true,
-        html: `${pic ? `<img src="${pic}" referrerpolicy="no-referrer">`
-          : `<div class="cmc-fallback" style="background:${color}"><ha-icon icon="${icon}"></ha-icon></div>`}
-               ${cfg.show_labels === false ? "" : `<div class="cmc-label">${name}</div>`}`,
+        icon,
+        label: cfg.show_labels === false ? "" : name,
       });
       pts.push({ lat: latitude, lng: longitude }); // fitBounds 用原始坐标
     });
@@ -1168,9 +1535,11 @@ class HaCnMapCard extends HTMLElement {
         if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
         markers.push({
           lat, lng,
+          entityId: z.entity_id,
           short: friendly_name || z.entity_id,
           clusterable: false,   // 家/区域不参与聚合，永远单独显示
-          html: `<div class="cmc-home"><ha-icon icon="${z.attributes.icon || "mdi:home"}"></ha-icon></div>`,
+          home: true,
+          icon: z.attributes.icon || "mdi:home",
         });
         pts.push({ lat: latitude, lng: longitude });
       });
@@ -1180,11 +1549,156 @@ class HaCnMapCard extends HTMLElement {
     this._syncTracks(states);
     // 只在首次、且用户还没手动拖动/缩放时自动适配视野
     if (cfg.fit_entities && pts.length && !this._didFit && !this._engine._userMoved) {
-      this._engine.fitBounds(pts);
+      // 全屏时给概览面板留出空间，免得标记被面板盖住
+      this._engine.fitBounds(pts, this._fitPadding());
       this._didFit = true;
     } else if (!this._didFit) {
       this._engine.render();
     }
+    // 列表里的状态文字（"离家 · 4 分钟前"）需要跟着 hass 刷新
+    if (this._panelView !== "settings") this._renderList();
+  }
+
+  /* 自动适配时的内边距：全屏 + 面板展开时避开面板覆盖区
+     （padding 会从可用宽高里扣两次，所以必须 clamp，否则会算出负数把缩放压到 3 级） */
+  _fitPadding() {
+    const w = this._engine?.container.clientWidth || 400;
+    const h = this._engine?.container.clientHeight || 300;
+    const base = Math.round(Math.min(w, h) * 0.08);
+    if (!this._isFull || !this._panelOpen) return base;
+    const pad = window.innerWidth <= 600
+      ? Math.round(h * 0.26)          // 底部抽屉
+      : Math.round(w * 0.28) + 12;    // 左侧浮层
+    // 最多留 35%，保证剩余区域还能容纳标记
+    return Math.max(base, Math.min(pad, Math.floor(Math.min(w, h) * 0.35)));
+  }
+
+  /* ---- 概览列表（对齐官方 hui-map-overview 的分组与文案） ---- */
+  _listEntries() {
+    const hass = this._hass;
+    if (!hass) return { people: [], devices: [], zones: [] };
+    const ids = new Set(this._collectEntities().map((e) => e.entity_id));
+    const people = [], devices = [], zones = [];
+    ids.forEach((id) => {
+      const st = hass.states[id];
+      if (!st) return;
+      if (id.startsWith("person.")) people.push(st);
+      else if (id.startsWith("device_tracker.") || id.startsWith("geo_location.")) devices.push(st);
+    });
+    // 区域：该区域里有人时计数才有意义
+    Object.values(hass.states).forEach((st) => {
+      if (st.entity_id.startsWith("zone.") && !st.attributes.passive) zones.push(st);
+    });
+    const hasLoc = (st) => st.attributes.latitude != null;
+    people.sort((a, b) => (hasLoc(b) ? 1 : 0) - (hasLoc(a) ? 1 : 0));
+    devices.sort((a, b) => (hasLoc(b) ? 1 : 0) - (hasLoc(a) ? 1 : 0));
+    return { people, devices, zones };
+  }
+
+  _zoneForState(st, zones) {
+    if (!st || st.state === "not_home" || st.state === "unknown" || st.state === "unavailable") return null;
+    const inZone = zones.find((z) => z.attributes?.persons?.includes(st.entity_id));
+    if (inZone) return inZone;
+    return zones.find((z) => (z.attributes?.friendly_name || "").toLowerCase() === String(st.state).toLowerCase()) || null;
+  }
+
+  _relTime(iso) {
+    const t = typeof iso === "string" ? Date.parse(iso) : Number(iso);
+    if (!Number.isFinite(t)) return "";
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 60) return `${s} 秒前`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m} 分钟前`;
+    const h = Math.round(m / 60);
+    if (h < 24) return `${h} 小时前`;
+    return `${Math.round(h / 24)} 天前`;
+  }
+
+  /* 官方用 ha-state-icon 取实体图标；这里做轻量兜底，避免依赖内部组件 */
+  _icon(st) {
+    const a = st?.attributes || {};
+    if (a.icon) return a.icon;
+    const d = st?.entity_id?.split(".")[0];
+    if (d === "person") return "mdi:account";
+    if (d === "zone") return "mdi:map-marker-radius";
+    if (d === "device_tracker") return "mdi:cellphone-marker";
+    return "mdi:map-marker";
+  }
+
+  _initial(name) {
+    const n = String(name || "?").trim();
+    return n ? n.slice(0, 1).toUpperCase() : "?";
+  }
+
+  _renderList() {
+    const listEl = this.shadowRoot.querySelector("[data-list]");
+    const tabsEl = this.shadowRoot.querySelector(".cmc-tabs");
+    if (!listEl) return;
+    const g = this._listEntries();
+    const zones = g.zones;
+    const counts = { people: g.people.length, devices: g.devices.length, zones: zones.length };
+    const tabs = this._tab || (counts.people ? "people" : counts.devices ? "devices" : "zones");
+    this._tab = tabs;
+
+    // Tab 药丸位置
+    if (tabsEl) {
+      const btns = [...tabsEl.querySelectorAll("[data-tab]")];
+      const idx = btns.findIndex((b) => b.dataset.tab === tabs);
+      btns.forEach((b, i) => {
+        b.setAttribute("aria-selected", String(i === idx));
+        b.disabled = !counts[b.dataset.tab];
+      });
+      const pill = tabsEl.querySelector(".pill");
+      const active = btns[idx];
+      if (pill && active) {
+        tabsEl.style.setProperty("--n", String(btns.length));
+        pill.style.left = `${active.offsetLeft}px`;
+        pill.style.width = `${active.offsetWidth}px`;
+      }
+    }
+
+    const rows = [];
+    const mkRow = (st, name, sub, picture) => `
+      <button class="cmc-item" data-entity="${st.entity_id}" title="${escapeAttr(name)}">
+        <span class="cmc-item-av">${
+          picture ? `<img src="${escapeAttr(picture)}" referrerpolicy="no-referrer" alt="">`
+          : /^[a-z]+:/.test(this._icon(st)) ? `<ha-icon icon="${this._icon(st)}"></ha-icon>`
+          : this._initial(name)}</span>
+        <span class="cmc-item-tx">
+          <span class="cmc-item-nm">${escapeHtml(name)}</span>
+          <span class="cmc-item-sub">${escapeHtml(sub)}</span>
+        </span>
+      </button>`;
+
+    const items = tabs === "people" ? g.people : tabs === "devices" ? g.devices : zones;
+    items.forEach((st) => {
+      const name = st.attributes.friendly_name || st.entity_id;
+      if (tabs === "zones") {
+        const n = Number(st.state);
+        rows.push(mkRow(st, name, Number.isNaN(n) ? "" : `${n} 人在此`, null));
+        return;
+      }
+      const zone = this._zoneForState(st, zones);
+      let state;
+      if (zone) state = `在 ${zone.attributes.friendly_name || "区域"}`;
+      else if (st.state === "not_home") state = "离家";
+      else if (st.state === "home") state = "在家";
+      else state = st.state;
+      const sub = `${state} · ${this._relTime(st.last_updated)}`;
+      rows.push(mkRow(st, name, sub, st.attributes.entity_picture));
+    });
+
+    listEl.innerHTML = rows.length
+      ? rows.join("")
+      : `<div class="cmc-empty">暂无${{ people: "人员", devices: "设备", zones: "区域" }[tabs]}</div>`;
+
+    listEl.querySelectorAll("[data-entity]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = b.dataset.entity;
+        if (this._hass?.states?.[id]) this._hass.callService("homeassistant", "more_info", { entity_id: id });
+      });
+    });
   }
 
   getCardSize() { return Math.ceil((this._config?.height || 360) / 50) + 1; }
@@ -1557,4 +2071,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card %c v0.8.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
