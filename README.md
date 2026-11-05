@@ -144,8 +144,21 @@ lovelace:
 
 ## 版本历史
 
+<details open>
+<summary>v0.5.0（最新）</summary>
+
+- **新增独立轻量卡片 `ha-cn-map-card`**（`ha-cn-map-card/` 目录）：零依赖 24KB 单文件，内置自研 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet/MapLibre
+  - 底图：高德（默认，免 Key）/ 高德卫星 / 天地图 / 天地图卫星 / OSM
+  - 高德底图**自动 GCJ-02 纠偏**（实测天安门偏移 556m，方向东北，与标准特性一致）；天地图免纠偏
+  - 瓦片由浏览器直连国内 CDN，**不经过 HA 服务器出口**——彻底解决国内官方地图纯色底问题，无需改源码、无需代理
+  - 支持 `show_all` 自动发现人员/设备、`show_zones` 区域、`fit_entities` 自动视野、标记点击弹详情
+  - 与 `map-cn.js` 的取舍：`map-cn.js` 功能全（轨迹/路况/设置抽屉，内嵌 MapLibre ~1.2MB）；`ha-cn-map-card` 极简轻量，适合只要"底图+标记"的场景
+- 安装：本仓库 HACS 安装后，将 `ha-cn-map-card/dist/ha-cn-map-card.js` 复制到 `/config/www/` 并添加 Lovelace 资源（HACS 的 filename 只发布 `map-cn.js`，新卡片需手动复制，或直接单独把 `ha-cn-map-card` 目录作为自定义存储库）
+
+</details>
+
 <details>
-<summary>v0.4.5（最新）</summary>
+<summary>v0.4.5</summary>
 
 - **面板工具栏（借鉴 ha-china-map v2.0.1 交互）**：中国地图仪表盘（panel 布局）顶部新增居中工具栏——底图一键切换（高德 / 腾讯 / 天地图）、卫星影像、实时路况（高德）、暗色模式、显示全部、⚙️ 地图设置；左下角新增图例（家 / 区域 / 轨迹）
 - **可视化设置抽屉（UI 设置，无需 YAML / 无需重启）**：工具栏 ⚙️ 打开「地图设置」抽屉，分类表单（地图 Key / 底图与显示 / 开关）——天地图 Key、高德 Key、底图服务商、地图样式（标准/卫星）、主题模式（自动/亮/暗）、默认缩放、最大瓦片级别、轨迹历史时长、家标签、轨迹颜色、实时路况、区域圈层、地图注记；保存即应用并本地持久化（localStorage），与卡片编辑器（Lovelace 可视化配置）双通道
