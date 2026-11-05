@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>body{margin:0;background:#222;font-family:sans-serif}#card{width:500px;height:400px;margin:20px}</style>
+</head><body>
+<div id="card"></div>
+<script src="../dist/ha-cn-map-card.js"></script>
+<script>
+// 模拟 HA 环境
+class FakeHaIcon extends HTMLElement { connectedCallback(){ this.textContent="●"; } }
+customElements.define("ha-icon", FakeHaIcon);
+customElements.define("ha-card", class extends HTMLElement{});
+customElements.define("ha-yaml-editor", class extends HTMLElement{});
+
+const card = document.createElement("ha-cn-map-card");
+document.getElementById("card").appendChild(card);
+
+// 模拟两个人员 + 家（北京附近），picture 留空走 fallback 图标
+card.setConfig({ type:"custom:ha-cn-map-card", title:"家人位置", show_all:true, show_zones:true, height:400 });
+card.hass = {
+  states: {
+    "person.me":   { entity_id:"person.me", attributes:{ friendly_name:"我", latitude:39.9042, longitude:116.4074, icon:"mdi:account" }},
+    "person.wife": { entity_id:"person.wife", attributes:{ friendly_name:"家人", latitude:39.98, longitude:116.35, icon:"mdi:account" }},
+    "zone.home":   { entity_id:"zone.home", attributes:{ friendly_name:"家", latitude:39.92, longitude:116.44, icon:"mdi:home" }},
+  },
+  callService: (d,a,o)=>console.log("service",d,a,o),
+};
+window.__card = card;
+</script>
+</body></html>
