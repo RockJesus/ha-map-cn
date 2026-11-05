@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.0 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.1 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -625,6 +625,8 @@ const CLUSTER_MAX_AVATAR = 3;  // 气泡里最多显示几个头像
    compact ：sections / masonry / grid 里 → 固定高度
    full   ：卡片自己占满视口（fullscreen: true）                              */
 const LAYOUT = { OFFICIAL: "official", COMPACT: "compact", FULL: "full" };
+// 卡片能拿到的高度（px）；infinity 表示由祖先决定 */
+const VIEWPORT_H = () => (typeof window !== "undefined" ? window.innerHeight || 800 : 800);
 
 /* 官方 MDI 图标路径（16 进制），避免额外请求图标字体 */
 const ICONS = {
@@ -782,18 +784,32 @@ class HaCnMapCard extends HTMLElement {
   /* 解析布局：官方 panel 视图 / sections 紧凑 / 自定义全屏 */
   _resolveLayout() {
     const cfg = this._config;
-    if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel") return LAYOUT.FULL;
+    if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel" || cfg.fill === true) return LAYOUT.FULL;
     if (cfg.layout === "compact") return LAYOUT.COMPACT;
     if (cfg.fullscreen === false) return LAYOUT.COMPACT;
-    // 自动：探测宿主。HA 的 panel 视图卡片会被 flex 撑满，且没有父级 card。
-    if (typeof window !== "undefined" && this.isConnected) {
-      const host = this.parentElement;
-      if (host) {
-        const hostH = host.getBoundingClientRect().height;
-        const viewH = window.innerHeight || 800;
-        // 宿主高度接近视口（>55%）→ 认为在 panel 视图里
-        if (hostH > viewH * 0.55) return LAYOUT.FULL;
+    return this._autoLayout();
+  }
+
+  /* 自动判定：往上看几层，找真正给我分配高度的那个祖先。
+     HA 的嵌套关系不固定（panel 视图是 hui-panel-view > 卡片；
+     sections 视图是 hui-grid-section > 格子 > 卡片），所以逐层试。
+     判据：某个祖先的高度明显大于当前卡片高度，且接近视口 → 我方可以铺满。 */
+  _autoLayout() {
+    if (typeof window === "undefined" || !this.isConnected) return LAYOUT.COMPACT;
+    const viewH = window.innerHeight || document.documentElement.clientHeight || 800;
+    const selfH = this.getBoundingClientRect().height;
+    let el = this.parentElement;
+    for (let i = 0; el && i < 8; i++, el = el.parentElement) {
+      const r = el.getBoundingClientRect();
+      const tag = el.localName || "";
+      // sections 视图：卡片被困在固定高度的 grid 格子里，铺满没意义 → compact（想全屏请配 fill: true）
+      if (/^(hui-grid-section|hui-sections-view|hui-grid)$/.test(tag)) return LAYOUT.COMPACT;
+      // HA 的视图容器：说明卡片直接挂在视图上 → 官方 panel 布局
+      if (/^(hui-panel-view|hui-masonry-view|hui-grid-view)$/.test(tag)) {
+        return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
       }
+      // 过渡容器（hass-tabs-subpage / hui-view 等）：高度接近视口且明显高于我 → 可铺满
+      if (r.height > viewH * 0.8 && r.height > selfH * 1.5) return LAYOUT.FULL;
     }
     return LAYOUT.COMPACT;
   }
@@ -805,7 +821,11 @@ class HaCnMapCard extends HTMLElement {
     const isFull = layout === LAYOUT.FULL;
     // 官方在 panel 布局把缩放控件放右上、其它情况左上
     const zoomSide = isFull ? "right" : "left";
-    const h = isFull ? "100%" : `${cfg.height || 360}px`;
+    // fill：sections 视图里也铺满（用 vh 突破 grid 格子的固定高度）
+    const fill = cfg.fill === true;
+    const h = fill ? "100vh" : isFull ? "100%" : `${cfg.height || 360}px`;
+    // 内联压过外部对宿主元素的 height:100% 拉伸（panel 视图会这样干）
+    if (typeof this.style !== "undefined") this.style.height = (isFull || fill) ? "" : h;
     this._isFull = isFull;
     this._zoomSide = zoomSide;
 
@@ -818,7 +838,14 @@ class HaCnMapCard extends HTMLElement {
         :host {
           display:block;
           height:${h};
-          ${isFull ? "min-height:0;" : ""}
+          ${(isFull || fill) ? "min-height:0;" : ""}
+          /* fill：整体脱离文档流铺满视口，sections 视图里也能全屏 */
+          ${fill ? `position:fixed !important;
+          inset:0 !important;
+          top:var(--header-height, 0px) !important;
+          height:auto !important;
+          max-height:none !important;
+          z-index:5;` : ""}
           --cmc-radius: var(--ha-card-border-radius, 12px);
           --cmc-surface: var(--card-background-color, #fff);
           --cmc-text: var(--primary-text-color, #111);
@@ -2071,4 +2098,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
