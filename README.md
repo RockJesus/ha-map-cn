@@ -110,6 +110,7 @@ entities:                    # 指定实体；不填则配合 show_all
 show_all: false              # true = 自动列出所有 person./device_tracker./geo_location.
 show_zones: false            # true = 显示 zone.* 区域图标
 show_status: true            # 标记下方状态行（在家 / 离线 / 速度 / 电量），默认开
+show_accuracy: true          # 显示 gps_accuracy 精度圈（官方行为），默认开
 geo_location_sources: []     # 按 source 过滤 geo_location 实体
 
 layout: auto                 # auto(默认) | full | compact
@@ -148,9 +149,48 @@ show_traffic: false          # 高德实时路况叠加（仅 amap 底图）
 - 每个实体按颜色区分，颜色优先取卡片配置里的 `color`，其次实体属性，最后默认蓝
 - 高德底图下轨迹点自动做 GCJ-02 纠偏，**和标记一样不会偏移**
 - 轨迹超出视口时由 SVG 裁剪，不会画出跨省直线
+- 沿线每 90px 画一个小三角**指示行进方向**，随平移/缩放实时重算，带白色描边不与轨迹线混淆
 - 卡片从仪表盘移除时自动取消订阅，不留后台连接
 
 > 前提：实体有历史记录。刚装的 HA 或刚接入的设备需要等一段时间才有数据。
+
+## 交互（对齐官方 hui-map-card）
+
+![聚焦飞行 / 精度圈 / 轨迹方向箭头](examples/interact-official.jpg)
+
+### 点击标记 = 聚焦，再点 = 详情
+
+和官方一致，点击标记不再直接弹窗：
+
+| 操作 | 行为 |
+|---|---|
+| 第一次点标记 | 地图**平滑飞到**该实体（已在视野内则只平移不缩放），标记加主题色光环 |
+| 再点同一标记 | 打开 more-info 详情弹窗 |
+| 点地图空白处 / 按 `Esc` | 取消选中，光环消失 |
+| 点概览列表项 | 同上：首次聚焦，再次打开详情 |
+
+飞行时长 550ms，easeInOutQuad；**飞行途中用鼠标拖动或滚轮会立即接管**，不会和动画抢方向。
+全屏且面板展开时，飞行落点会往面板对侧偏移，保证标记不被遮挡。
+
+### 键盘快捷键
+
+地图获得焦点后（点一下地图即可）：
+
+| 按键 | 行为 |
+|---|---|
+| `+` / `-` | 放大 / 缩小一级 |
+| `方向键` | 平移（`Shift` + 方向键 = 大步） |
+| `Esc` | 取消选中 |
+
+### GPS 精度圈
+
+实体带 `gps_accuracy`（米）时自动画一圈半透明范围，和官方的精度可视化一致：
+
+- 半径按当前纬度实时换算成像素，缩放时跟着变
+- 颜色跟随实体配色（`entities[].color` → 属性 `color` → 按域默认色）
+- 高德底图下圆心与该实体标记一起做 GCJ-02 纠偏，不会和标记错位
+- `zone.*` 不画；半径小于 2px 或大到超出视口 3 倍时自动跳过
+- 关掉：设置抽屉关「GPS 精度圈」，或 YAML 写 `show_accuracy: false`
 
 ## 标记状态行
 
@@ -305,6 +345,7 @@ python3 -m http.server 8931
 # http://localhost:8931/examples/cluster.html  标记聚合
 # http://localhost:8931/examples/layout.html   布局（panel 全屏 / 紧凑）
 # http://localhost:8931/examples/status.html   标记状态行 / 离线灰显
+# http://localhost:8931/examples/interact.html 聚焦飞行 / 键盘 / 精度圈 / 轨迹箭头
 ```
 
 文件结构：
@@ -317,6 +358,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
   editor.html
   features.html
   status.html           # 标记状态行对照
+  interact.html         # 交互自测页（含可编程 API）
   example.yaml          # 配置示例
 .github/workflows/      # HACS 校验
 ```
@@ -325,6 +367,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v0.9.3**：交互与官方对齐——**点击标记/列表项=聚焦飞行+选中**（再次点击才开 more-info，点空白或 `Esc` 取消）；新增平滑飞行 `flyTo`（550ms easeInOutQuad，手势立即接管，全屏时落点避开面板）；新增**键盘快捷键**（`+`/`-` 缩放、方向键平移、`Esc` 取消）；新增 **GPS 精度圈**（`gps_accuracy`，`show_accuracy` 默认开）；**轨迹方向箭头**（沿折线每 90px 一个小三角，白描边避免与同色轨迹线糊在一起）。修复：`setMarkers` 首次调用时 `_markerEls` 未初始化导致 `forEach` 抛错（首屏标记不渲染）；`flyTo` 的小数 zoom 需对瓦片层级取整，否则瓦片 URL 出现小数 z
 - **v0.9.2**：**标记状态行**——名称下方新增一行短状态（区域名 / 在家 / 离家+相对时间 / 车速 / 电量），`unavailable`、`unknown` 实体整枚标记灰显并标「离线」；新增配置 `show_status`（默认开），设置抽屉与可视化编辑器同步支持。修复：状态行与名称被 `inline-block` 排在同一行、垂直居中 padding 叠加导致下层文字被地图瓦片遮住
 - **v0.9.1**：新增 **`fill: true`**——sections（网格）视图里也能真正全屏（`position:fixed` 铺满视口，突破 grid 格子的固定高度限制）；sections 视图自动判定改回紧凑（之前会误判为全屏）；`layout: compact` 在 panel 视图下高度被外部拉伸为整屏的 bug（内联样式压过宿主拉伸）
 - **v0.9.0**：UI 与交互对齐官方 `hui-map-card`——**panel 视图自动铺满全屏**；新增**概览面板**（人/设备/区域三标签、头像+状态+相对时间、点击开 more-info、手机底部抽屉/桌面左侧浮层）；控件改为官方图标样式与顺序（`+`/`−` 成组、右上定位）；比例尺改官方白底样式并避让抽屉；标记改 44px 圆形头像 + 名称胶囊；全屏按钮。修复：`fitPadding` 未 clamp 导致初始缩放被压到 3 级（比例尺显示 1000 km）、`entity_picture` 含引号时 innerHTML 拼断导致图片不显示（改 DOM 构建）、路况叠加在重构中丢失初始化
@@ -337,9 +380,8 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 1. **单文件无构建**：代码未压缩，约 65KB。要发布 HACS 建议后续接 esbuild。
 2. **聚合为屏幕像素贪心算法**：不做层级金字塔，缩放到不同级别时每次重算；实体过千会有明显卡顿（DOM 标记方案的天花板）。
-3. **轨迹无方向箭头**：只画线，不标行进方向。
-4. **瓦片无本地缓存**：依赖浏览器 HTTP 缓存。
-5. **高德瓦片非官方 API**：用的是 `webrd0x.is.autonavi.com` 公开瓦片端点，无 SLA 保证。生产环境建议换天地图（有正式 Key 和配额）。
+3. **瓦片无本地缓存**：依赖浏览器 HTTP 缓存。
+4. **高德瓦片非官方 API**：用的是 `webrd0x.is.autonavi.com` 公开瓦片端点，无 SLA 保证。生产环境建议换天地图（有正式 Key 和配额）。
 
 ## License
 

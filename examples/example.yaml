@@ -37,3 +37,10 @@
   show_all: true
   show_status: true          # 标记下方那行小字；false = 只显示名称
   show_labels: true
+
+# 示例 6：交互对齐官方（聚焦飞行 / 键盘 / 精度圈）
+- type: custom:ha-cn-map-card
+  title: 家人位置
+  show_all: true
+  show_accuracy: true        # gps_accuracy 精度圈
+  show_status: true          # 标记下方状态行

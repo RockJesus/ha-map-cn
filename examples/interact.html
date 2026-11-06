@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>交互：聚焦飞行 / 键盘 / 精度圈 / 轨迹箭头</title>
+<style>body{margin:0;background:#222;font-family:sans-serif}#a{width:900px;height:560px;margin:10px}ha-cn-map-card{display:block;height:560px}#log{color:#9c9;font:12px monospace;padding:4px 12px;white-space:pre-wrap}</style>
+</head><body>
+<div id="a"></div><div id="log"></div>
+<script type="module" src="../ha-cn-map-card.js?v=095"></script>
+<script type="module">
+class I extends HTMLElement{connectedCallback(){this.textContent="●";}}
+customElements.define("ha-icon",I); customElements.define("ha-card",class extends HTMLElement{});
+await customElements.whenDefined("ha-cn-map-card");
+const log=(...a)=>{document.getElementById("log").textContent+=a.join(" ")+"\n"};
+const now=Date.now();
+const mk=(lat,lng,i)=>({s:"home",a:{latitude:lat,longitude:lng},lu:(now-i*60000)/1000,lc:(now-i*60000)/1000});
+const states={
+ "person.me":{entity_id:"person.me",state:"work",last_updated:new Date(now-3*60000).toISOString(),
+   attributes:{friendly_name:"我",latitude:39.9042,longitude:116.4074,gps_accuracy:120,icon:"mdi:account"}},
+ "person.wife":{entity_id:"person.wife",state:"home",last_updated:new Date(now-9*60000).toISOString(),
+   attributes:{friendly_name:"家人",latitude:39.9214,longitude:116.4262,gps_accuracy:45}},
+ "device_tracker.car":{entity_id:"device_tracker.car",state:"not_home",last_updated:new Date(now-60000).toISOString(),
+   attributes:{friendly_name:"车",latitude:39.935,longitude:116.385,speed:14.2,gps_accuracy:65}},
+ "zone.work":{entity_id:"zone.work",state:"1",attributes:{friendly_name:"公司",latitude:39.9214,longitude:116.4262,radius:100}},
+ "zone.home":{entity_id:"zone.home",state:"1",attributes:{friendly_name:"家",latitude:39.9042,longitude:116.4074,radius:80}},
+};
+const track=[ /* 北京→东北 一条轨迹 */
+  [39.860,116.340],[39.866,116.348],[39.872,116.356],[39.878,116.364],[39.884,116.372],
+  [39.890,116.380],[39.896,116.388],[39.902,116.396],[39.9042,116.4074]];
+const hass={states,callService:(d,s,o)=>log("service:",d,s,JSON.stringify(o)),config:{latitude:39.9,longitude:116.39},
+ connection:{subscribeMessage(cb,msg){ setTimeout(()=>cb({states:{ "person.me": track.map((p,i)=>mk(p[0],p[1],(track.length-i)*3)) }}),200); return Promise.resolve(()=>{}); }}};
+const c=document.createElement("ha-cn-map-card");document.getElementById("a").appendChild(c);
+c.setConfig({type:"custom:ha-cn-map-card",title:"交互对齐官方",show_all:true,show_zones:true,show_cluster:false,hours_to_show:6,fit_entities:false,default_zoom:12,height:560});
+c.hass=hass; window.__c=c;
+c._engine.addEventListener("selection-cleared",()=>log("selection-cleared"));
+window.__api={
+  focus:(id)=>c.focusEntity(id),
+  sel:()=>c._engine._selectedEntity,
+  clear:()=>{c._engine.setSelected(null);},
+  zoom:()=>c._engine.zoom,
+  arrows:()=>c.shadowRoot.querySelectorAll(".cmc-marker, polygon").length,
+  polys:()=>c.shadowRoot.querySelectorAll("polygon").length,
+  circles:()=>c.shadowRoot.querySelectorAll("circle").length,
+  key:(k)=>c._engine.container.dispatchEvent(new KeyboardEvent("keydown",{key:k,bubbles:true})),
+  flyPending:()=>!!c._engine._fly,
+};
+log("ready");
+</script></body></html>
