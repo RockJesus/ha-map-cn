@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.4 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.5 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -639,7 +639,8 @@ class CnTileEngine extends EventTarget {
     });
     el.addEventListener("pointermove", (e) => {
       if (!dragging) return;
-      panBy(lastX - e.clientX, lastY - e.clientY);
+      // 地图跟随手势：往右拖内容往右走（和 Leaflet / 高德 / 官方 ha-map 一致）
+      panBy(e.clientX - lastX, e.clientY - lastY);
       lastX = e.clientX; lastY = e.clientY;
     });
     el.addEventListener("pointerup", () => (dragging = false));
@@ -666,11 +667,12 @@ class CnTileEngine extends EventTarget {
     el.style.outline = "none";
     el.addEventListener("keydown", (e) => {
       const step = e.shiftKey ? 10 : 4; // Shift+方向键 = 大步平移
+      // 方向键语义 = 视野朝该方向移动（按 → 看东边，内容往左滑），与拖拽/官方一致
       let dx = 0, dy = 0;
-      if (e.key === "ArrowLeft") dx = -step;
-      else if (e.key === "ArrowRight") dx = step;
-      else if (e.key === "ArrowUp") dy = -step;
-      else if (e.key === "ArrowDown") dy = step;
+      if (e.key === "ArrowLeft") dx = step;
+      else if (e.key === "ArrowRight") dx = -step;
+      else if (e.key === "ArrowUp") dy = step;
+      else if (e.key === "ArrowDown") dy = -step;
       else if (e.key === "+" || e.key === "=") { e.preventDefault(); this.setZoom(this.zoom + 1); return; }
       else if (e.key === "-" || e.key === "_") { e.preventDefault(); this.setZoom(this.zoom - 1); return; }
       else if (e.key === "Escape") {
@@ -2558,4 +2560,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
