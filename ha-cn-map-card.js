@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.6 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.7 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -1923,10 +1923,27 @@ class HaCnMapCard extends HTMLElement {
     if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
     if (this._onFsChange) document.removeEventListener("fullscreenchange", this._onFsChange);
     if (this._onKeyBleed) this.removeEventListener("keydown", this._onKeyBleed);
+    if (this._onDocKey) { document.removeEventListener("keydown", this._onDocKey); this._onDocKey = null; }
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
   }
 
   connectedCallback() {
+    // 全局 Esc：详情页退回列表（点标记后焦点不在引擎容器上，引擎那层键盘处理接不到）
+    if (!this._onDocKey) {
+      this._onDocKey = (e) => {
+        if (e.key !== "Escape") return;
+        if (this._panelView === "detail") {
+          this._engine?.setSelected(null);
+          this._setPanelView?.("list");
+          this._renderList?.();
+          e.preventDefault();
+        } else if (this.classList.contains("cmc-bleed") && this._bleedUser !== false) {
+          this._bleedUser = false;
+          this._applyBleed(false);
+        }
+      };
+      document.addEventListener("keydown", this._onDocKey);
+    }
     // panel 视图撑满容器后尺寸会变，重新算布局 + 重绘瓦片
     if (typeof ResizeObserver === "function" && !this._ro) {
       this._ro = new ResizeObserver(() => {
@@ -2817,4 +2834,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
