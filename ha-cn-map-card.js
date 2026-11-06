@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.1 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.2 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -211,7 +211,7 @@ class CnTileEngine extends EventTarget {
 
   /* ---- 标记 ---- */
   setMarkers(markers, opts) {
-    // markers: [{lat,lng,html,label,entityId,picture,color,clusterable}]
+    // markers: [{lat,lng,html,label,icon,sub,entityId,picture,color,home,clusterable,offline}]
     this._markers = markers;
     this._clusterOn = !!opts?.cluster;
     this.markerLayer.innerHTML = "";
@@ -255,7 +255,20 @@ class CnTileEngine extends EventTarget {
         const lb = document.createElement("div");
         lb.className = "cmc-label";
         lb.textContent = m.label;
+        // 灰显语义：实体失联（unavailable / unknown）时整枚标记降透明度
+        if (m.offline) {
+          el.classList.add("is-offline");
+          lb.style.opacity = ".55";
+          el.title = `${m.label}（离线）`;
+        }
         el.appendChild(lb);
+        // 状态行：官方 hui-map-marker 在名称下方给一行短状态（在家 / 5 分钟前 / 45 km/h）
+        if (m.sub) {
+          const sb = document.createElement("div");
+          sb.className = "cmc-label cmc-label-sub";
+          sb.textContent = m.sub;
+          el.appendChild(sb);
+        }
       }
       if (m.entityId) {
         el.addEventListener("click", (e) => {
@@ -304,33 +317,6 @@ class CnTileEngine extends EventTarget {
     this._pathGroups.forEach((el) => el.remove());
     this._pathGroups.clear();
     this._paths = [];
-  }
-
-  _layoutPaths(w, h) {
-    if (!this._paths.length) return;
-    const c = CnTileEngine.project(this.center.lat, this.center.lng);
-    const n = 2 ** this.zoom;
-    // 大范围时不划线而是靠 SVG 裁剪；只有极端遥远（跨半球）才断开避免坐标溢出
-    const margin = 4000;
-    this._paths.forEach((p) => {
-      const el = this._pathGroups.get(p.entityId);
-      if (!el) return;
-      let d = "";
-      let drawing = false;
-      for (const pt of p.points) {
-        const q = CnTileEngine.project(pt.lat, pt.lng);
-        const x = (q.x - c.x) * n * 256 + w / 2;
-        const y = (q.y - c.y) * n * 256 + h / 2;
-        // 超出视口太多时断线，避免坐标溢出画出跨屏长线
-        if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
-          drawing = false;
-          continue;
-        }
-        d += `${drawing ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
-        drawing = true;
-      }
-      el.setAttribute("d", d);
-    });
   }
 
   _layoutMarkers(w, h) {
@@ -451,7 +437,33 @@ class CnTileEngine extends EventTarget {
     return el;
   }
 
-  /* ---- 交互 ---- */
+  _layoutPaths(w, h) {
+    if (!this._paths.length) return;
+    const c = CnTileEngine.project(this.center.lat, this.center.lng);
+    const n = 2 ** this.zoom;
+    // 大范围时不划线而是靠 SVG 裁剪；只有极端遥远（跨半球）才断开避免坐标溢出
+    const margin = 4000;
+    this._paths.forEach((p) => {
+      const el = this._pathGroups.get(p.entityId);
+      if (!el) return;
+      let d = "";
+      let drawing = false;
+      for (const pt of p.points) {
+        const q = CnTileEngine.project(pt.lat, pt.lng);
+        const x = (q.x - c.x) * n * 256 + w / 2;
+        const y = (q.y - c.y) * n * 256 + h / 2;
+        // 超出视口太多时断线，避免坐标溢出画出跨屏长线
+        if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
+          drawing = false;
+          continue;
+        }
+        d += `${drawing ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
+        drawing = true;
+      }
+      el.setAttribute("d", d);
+    });
+  }
+
   _attachGestures() {
     let dragging = false, lastX = 0, lastY = 0, pinchDist = 0;
     const el = this.container;
@@ -584,6 +596,8 @@ const GCJ = (() => {
 
 /* ---- 运行时设置持久化（浏览器本地，不改 /config/.storage 里的仪表盘 YAML） ---- */
 const LS_PREFIX = "ha-cn-map-card:";
+// 实体处于这些状态时视为"无有效位置/失联"，标记灰显
+const OFFLINE_STATES = new Set(["unavailable", "unknown"]);
 // 设置抽屉 / 快捷按钮可写回本地的键
 const RUNTIME_KEYS = [
   "basemap",
@@ -593,6 +607,7 @@ const RUNTIME_KEYS = [
   "show_zones",
   "show_labels",
   "show_cluster",
+  "show_status",
   "height",
 ];
 // 同一张卡片在多个视图里会被实例化成多个实例；按「仪表盘路径 + 卡片顺序」生成稳定 id
@@ -736,6 +751,7 @@ class HaCnMapCard extends HTMLElement {
       show_all: false,
       show_zones: false,
       show_labels: true,
+      show_status: true,         // 标记下方状态行（在家 / 离线 / 速度 / 电量 / 相对时间）
       show_cluster: true,        // 标记聚合
       fit_entities: true,
       height: 360,
@@ -910,6 +926,10 @@ class HaCnMapCard extends HTMLElement {
         }
         /* ---- 标记：官方 48px 圆角方块 + 白边 ---- */
         .cmc-marker img { width:44px; height:44px; border-radius:50%; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); object-fit:cover; display:block; }
+        .cmc-marker.is-offline img,
+        .cmc-marker.is-offline .cmc-fallback { filter:grayscale(1); opacity:.6; }
+        /* 图标内部禁止 flex 拉伸：ha-icon / img 都会被父级叠加居中，压到文字行上 */
+        .cmc-marker > *:first-child { flex:0 0 auto; }
         .cmc-marker .cmc-fallback {
           width:44px; height:44px; margin:0 auto; border-radius:50%; border:3px solid #fff;
           --mdc-icon-size:22px; box-sizing:border-box;
@@ -921,6 +941,15 @@ class HaCnMapCard extends HTMLElement {
           background:rgba(0,0,0,.55); padding:1px 6px; border-radius:8px;
           white-space:nowrap; max-width:120px; overflow:hidden; text-overflow:ellipsis;
         }
+        /* 名称与状态各自成行：inline-block 会让两段文字并排，垂直居中的 padding 叠加后
+           下层被地图瓦片盖住（父级只有 44px 图标的视觉空间，靠容器自动高度撑开） */
+        .cmc-marker .cmc-label-sub {
+          display:block; width:fit-content; max-width:120px; margin:1px auto 0;
+          font-size:10px; line-height:1.35; padding:0 5px; border-radius:7px;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+          background:rgba(0,0,0,.42); opacity:.9;
+        }
+        .cmc-marker .cmc-label-sub:empty { display:none; }
         .cmc-home { font-size:30px; --mdc-icon-size:30px; color:#ff9800; filter:drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
         .cmc-cluster-avatar {
           width:34px; height:34px; border-radius:50%; border:3px solid #58a6f0;
@@ -1112,6 +1141,7 @@ class HaCnMapCard extends HTMLElement {
               </label>
               <label class="chk"><span>标记聚合</span><input type="checkbox" data-d="show_cluster"></label>
               <label class="chk"><span>显示名称</span><input type="checkbox" data-d="show_labels"></label>
+              <label class="chk"><span>标记显示状态</span><input type="checkbox" data-d="show_status"></label>
               <label class="chk"><span>显示区域（家）</span><input type="checkbox" data-d="show_zones"></label>
               <label class="chk"><span>实时路况（仅高德）</span><input type="checkbox" data-d="show_traffic"></label>
               <label>轨迹时长
@@ -1426,7 +1456,7 @@ class HaCnMapCard extends HTMLElement {
     d.querySelectorAll("[data-d]").forEach((el) => {
       const k = el.dataset.d;
       // 默认开启的开关：值缺省时按 true 显示
-      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels"].includes(k) : !!c[k];
+      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status"].includes(k) : !!c[k];
       else if (k === "hours_to_show") el.value = String(Number(c[k]) || 0);
       else el.value = c[k] === undefined ? "" : c[k];
     });
@@ -1550,6 +1580,8 @@ class HaCnMapCard extends HTMLElement {
         clusterable: true,
         icon,
         label: cfg.show_labels === false ? "" : name,
+        sub: cfg.show_status === false ? "" : this._markerSub(s, states),
+        offline: OFFLINE_STATES.has(String(s.state).toLowerCase()),
       });
       pts.push({ lat: latitude, lng: longitude }); // fitBounds 用原始坐标
     });
@@ -1620,6 +1652,33 @@ class HaCnMapCard extends HTMLElement {
     people.sort((a, b) => (hasLoc(b) ? 1 : 0) - (hasLoc(a) ? 1 : 0));
     devices.sort((a, b) => (hasLoc(b) ? 1 : 0) - (hasLoc(a) ? 1 : 0));
     return { people, devices, zones };
+  }
+
+  /* 标记下方的短状态行：对齐官方 hui-map-marker 的副标题语义
+     优先级：离线 > 区域名（在家/在公司）> 速度 > 电量 > 离家 > 相对时间 */
+  _markerSub(st, all) {
+    const state = String(st.state ?? "").toLowerCase();
+    if (OFFLINE_STATES.has(state)) return "离线";
+    const a = st.attributes || {};
+    if (st.entity_id.startsWith("zone.")) return "";
+    // 区域：person 的 state 就是 zone 的 object_id
+    if (state && state !== "not_home" && state !== "home") {
+      const z = all.find((s) => s.entity_id === `zone.${state}`);
+      if (z) return z.attributes?.friendly_name || state;
+    }
+    if (state === "home") return "在家";
+    const kmh = Number(a.speed);
+    if (Number.isFinite(kmh) && kmh > 0) {
+      const v = a.speed_unit === "mph" ? `${Math.round(kmh)} mph` : `${Math.round(kmh * 3.6)} km/h`;
+      return v;
+    }
+    const bat = Number(a.battery_level ?? a.battery);
+    if (Number.isFinite(bat) && bat >= 0 && bat <= 100 && a.battery_level != null) return `电量 ${Math.round(bat)}%`;
+    if (state === "not_home") {
+      const rel = this._relTime(st.last_updated || st.last_changed);
+      return rel ? `离家 · ${rel}` : "离家";
+    }
+    return this._relTime(st.last_updated || st.last_changed);
   }
 
   _zoneForState(st, zones) {
@@ -1884,6 +1943,10 @@ class HaCnMapCardEditor extends HTMLElement {
             <label class="switch"><input type="checkbox" data-k="show_cluster"><span class="slider"></span></label>
           </div>
           <div class="row inline" style="margin-top:10px">
+            <label class="t">标记下方显示状态（在家 / 离线 / 速度）</label>
+            <label class="switch"><input type="checkbox" data-k="show_status"><span class="slider"></span></label>
+          </div>
+          <div class="row inline" style="margin-top:10px">
             <label class="t">首次自动缩放到所有标记</label>
             <label class="switch"><input type="checkbox" data-k="fit_entities"><span class="slider"></span></label>
           </div>
@@ -2058,7 +2121,7 @@ class HaCnMapCardEditor extends HTMLElement {
       const k = el.dataset.k;
       if (el.type === "checkbox") {
         // fit_entities 默认为 true，其余默认为 false
-        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster"].includes(k) : !!c[k];
+        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
         el.value = String(c[k] === undefined ? 0 : c[k]);
       } else {
@@ -2098,4 +2161,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

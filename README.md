@@ -78,7 +78,7 @@ HA 2026.9 起，官方地图改用 OSMF 矢量瓦片，且**瓦片请求由 HA �
 | 标题 | 卡片顶部标题，留空则不显示标题栏 |
 | 底图来源 | 高德 / 高德卫星 / 天地图 / 天地图卫星 / OSM（下拉选择） |
 | 天地图 Key | **仅当选天地图时出现**，自动联动 |
-| 显示哪些标记 | 自动显示全部 / 显示区域 / 首次自动缩放（三个开关） |
+| 显示哪些标记 | 自动显示全部 / 显示区域 / 标记聚合 / 标记状态行 / 首次自动缩放 |
 | 指定实体 | 选 domain 过滤 → 下拉选实体 → 点「添加」；已添加的显示为标签可逐个删除。**关掉「自动显示全部」时才出现** |
 | 默认缩放级别 | 关掉「首次自动缩放」时生效 |
 | 卡片高度 | 像素值，改完预览实时变化 |
@@ -109,6 +109,7 @@ entities:                    # 指定实体；不填则配合 show_all
   - device_tracker.car
 show_all: false              # true = 自动列出所有 person./device_tracker./geo_location.
 show_zones: false            # true = 显示 zone.* 区域图标
+show_status: true            # 标记下方状态行（在家 / 离线 / 速度 / 电量），默认开
 geo_location_sources: []     # 按 source 过滤 geo_location 实体
 
 layout: auto                 # auto(默认) | full | compact
@@ -150,6 +151,25 @@ show_traffic: false          # 高德实时路况叠加（仅 amap 底图）
 - 卡片从仪表盘移除时自动取消订阅，不留后台连接
 
 > 前提：实体有历史记录。刚装的 HA 或刚接入的设备需要等一段时间才有数据。
+
+## 标记状态行
+
+每个标记下方除了名称，还有一行**短状态**，一眼看出谁在哪、设备还有没有电：
+
+![标记状态行](examples/marker-status.jpg)
+
+| 实体状态 | 标记显示 |
+|---|---|
+| 在某个 `zone.*` 里 | 区域名，如 `在家` / `公司` |
+| `home` | `在家` |
+| `not_home` 且无速度 | `离家 · 4 分钟前` |
+| 有 `speed` 属性 | `51 km/h`（属性为 mph 时显示 mph） |
+| 有 `battery_level` 属性 | `电量 23%` |
+| `unavailable` / `unknown` | `离线` + **整个头像灰显半透明** |
+
+判定优先级：离线 > 区域名 > 速度 > 电量 > 离家 > 相对时间（`last_updated`，取不到时退回 `last_changed`）。区域类标记（家/公司图标）不显示状态行。
+
+关掉：抽屉里取消「标记显示状态」，或 YAML 写 `show_status: false`。
 
 ## 实时路况
 
@@ -255,7 +275,10 @@ F12 打开开发者工具 → Network，看 `autonavi.com` 或 `tianditu.gov.cn`
 Key 无效或未开通「浏览器端」类型。到控制台检查应用类型。
 
 **能显示轨迹吗？**
-当前版本只显示当前位置标记，不含历史轨迹线。轨迹需要按 `hours_to_show` 请求历史 API，在开发计划里。
+能。配置 `hours_to_show: 24`（或抽屉里选轨迹时长）即按 `history/stream` 订阅历史并画折线，详见「轨迹线」章节。
+
+**标记下面那行小字是什么？**
+实体状态摘要：在家 / 区域名 / 离家+时间 / 车速 / 电量，失联实体显示「离线」并灰显。不想要就设 `show_status: false`，详见「标记状态行」。
 
 **标记图标为什么是方块/放大镜？**
 卡片按实体域给默认图标：`person.*` → 人像，`device_tracker.*` → 手机，其余 → 定位针。若实体自带 `icon` 属性会优先用它的。方块说明 HA 前端没加载出 MDI 图标字体，刷新页面即可。
@@ -281,6 +304,7 @@ python3 -m http.server 8931
 # http://localhost:8931/examples/features.html 轨迹/路况/设置抽屉
 # http://localhost:8931/examples/cluster.html  标记聚合
 # http://localhost:8931/examples/layout.html   布局（panel 全屏 / 紧凑）
+# http://localhost:8931/examples/status.html   标记状态行 / 离线灰显
 ```
 
 文件结构：
@@ -292,6 +316,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
   card.html
   editor.html
   features.html
+  status.html           # 标记状态行对照
   example.yaml          # 配置示例
 .github/workflows/      # HACS 校验
 ```
@@ -300,6 +325,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v0.9.2**：**标记状态行**——名称下方新增一行短状态（区域名 / 在家 / 离家+相对时间 / 车速 / 电量），`unavailable`、`unknown` 实体整枚标记灰显并标「离线」；新增配置 `show_status`（默认开），设置抽屉与可视化编辑器同步支持。修复：状态行与名称被 `inline-block` 排在同一行、垂直居中 padding 叠加导致下层文字被地图瓦片遮住
 - **v0.9.1**：新增 **`fill: true`**——sections（网格）视图里也能真正全屏（`position:fixed` 铺满视口，突破 grid 格子的固定高度限制）；sections 视图自动判定改回紧凑（之前会误判为全屏）；`layout: compact` 在 panel 视图下高度被外部拉伸为整屏的 bug（内联样式压过宿主拉伸）
 - **v0.9.0**：UI 与交互对齐官方 `hui-map-card`——**panel 视图自动铺满全屏**；新增**概览面板**（人/设备/区域三标签、头像+状态+相对时间、点击开 more-info、手机底部抽屉/桌面左侧浮层）；控件改为官方图标样式与顺序（`+`/`−` 成组、右上定位）；比例尺改官方白底样式并避让抽屉；标记改 44px 圆形头像 + 名称胶囊；全屏按钮。修复：`fitPadding` 未 clamp 导致初始缩放被压到 3 级（比例尺显示 1000 km）、`entity_picture` 含引号时 innerHTML 拼断导致图片不显示（改 DOM 构建）、路况叠加在重构中丢失初始化
 - **v0.8.0**：新增**标记聚合**（相近标记合并成气泡，最多 3 个头像 + `+N`，点击放大拆开；家/区域不参与聚合）；新增**设置本地持久化**（抽屉改动写入 `localStorage`，刷新仍生效，可一键恢复默认）；新增「显示名称」开关；修复 `fitBounds` 在两枚标记重合时把缩放解到 18 级"贴脸"的问题（按卡片宽度封顶）；修复复选框关闭状态保存不进去、以及重置按钮误触发页面导航

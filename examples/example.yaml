@@ -30,3 +30,10 @@
     - person.me
   fit_entities: false
   default_zoom: 14
+
+# 示例 5：标记状态行（在家 / 离线 / 车速 / 电量），默认开启，可关掉
+- type: custom:ha-cn-map-card
+  title: 家人位置
+  show_all: true
+  show_status: true          # 标记下方那行小字；false = 只显示名称
+  show_labels: true
