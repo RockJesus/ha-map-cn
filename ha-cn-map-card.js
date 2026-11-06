@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.7 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.8 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -836,6 +836,7 @@ const ICONS = {
   history: "M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 1,1 13,19C11.07,19 9.36,18.16 8.19,16.85L6.77,18.27A9,9 0 1,0 13,3Z",
   fullscreen: "M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z",
   fullscreenExit: "M5,16H8V19H10V16A2,2 0 0,0 8,14H5V16M16,16V19H14V16A2,2 0 0,1 16,14H19V16H16M10,5V8A2,2 0 0,1 8,10H5V8H8V5H10M14,5H16V8H19V10H16A2,2 0 0,1 14,8V5Z",
+  people: "M16,13C15.71,13 15.38,13 15.03,13.05C16.19,13.89 17,15 17,16.5V19H23V16.5C23,14.17 18.33,13 16,13M8,13C5.67,13 1,14.17 1,16.5V19H15V16.5C15,14.17 10.33,13 8,13M8,11C9.66,11 11,9.66 11,8C11,6.34 9.66,5 8,5C6.34,5 5,6.34 5,8C5,9.66 6.34,11 8,11M16,11C17.66,11 19,9.66 19,8C19,6.34 17.66,5 16,5C14.34,5 13,6.34 13,8C13,9.66 14.34,11 16,11Z",
 };
 
 /* ---- 底图源 ---- */
@@ -1274,6 +1275,22 @@ class HaCnMapCard extends HTMLElement {
           display:flex; align-items:center; justify-content:center;
           box-shadow:0 1px 4px rgba(0,0,0,.4); border:2px solid var(--cmc-surface);
         }
+        .cmc-panel-btn {
+          position:absolute; z-index:19; top:12px; left:12px;
+          width:44px; height:44px; border-radius:22px; border:none;
+          background:var(--cmc-surface); color:var(--cmc-text);
+          box-shadow:var(--cmc-shadow); cursor:pointer;
+          display:flex; align-items:center; justify-content:center;
+          padding:0; transition:opacity .2s ease, transform .28s ease;
+        }
+        .cmc-panel-btn svg { width:22px; height:22px; fill:currentColor; }
+        .cmc-panel-btn.hide { opacity:0; pointer-events:none; transform:scale(.6); }
+        .cmc-panel-btn:hover { filter:brightness(1.08); }
+        /* 手机：抽屉收起后底部留 52px 条，按钮放条上方左侧 */
+        @media (max-width: 600px) {
+          .cmc-panel-btn { top:auto; bottom:62px; left:10px; }
+        }
+
         .cmc-attribution { color:var(--cmc-sub); }
 
         /* ================= 概览面板（对齐官方 底部抽屉 / 左侧浮层） ================= */
@@ -1446,8 +1463,10 @@ class HaCnMapCard extends HTMLElement {
 
         <div class="cmc-scale" aria-hidden="true"></div>
 
-        <div class="cmc-panel dock-${isFull ? "auto" : "bottom"}${overlayOpen ? " open" : ""}" data-panel>
-          <div class="cmc-panel-handle" data-handle></div>
+        <button class="cmc-panel-btn${overlayOpen ? " hide" : ""}" data-panel-btn aria-label="打开面板" title="打开面板">
+          <svg viewBox="0 0 24 24"><path d="${ICONS.people}"/></svg>
+        </button>
+        <div class="cmc-panel dock-${isFull ? "auto" : "bottom"}${overlayOpen ? " open" : ""}" data-panel>          <div class="cmc-panel-handle" data-handle></div>
           <div data-view="list">
             <div class="cmc-panel-h">
               ${isFull ? `<button class="cmc-panel-close" data-back aria-label="收起面板">
@@ -1594,6 +1613,8 @@ class HaCnMapCard extends HTMLElement {
     const setOpen = (open) => {
       this._panelOpen = open;
       panel.classList.toggle("open", open);
+      // 折叠后没有可点的东西会再也打不开（桌面 dock-auto 整个滑出屏幕），用悬浮按钮兜底
+      panel.parentElement?.querySelector("[data-panel-btn]")?.classList.toggle("hide", open);
       if (open) showView(this._panelView || "list");
     };
     this._setPanelOpen = setOpen;
@@ -1613,6 +1634,12 @@ class HaCnMapCard extends HTMLElement {
       e.stopPropagation();
       setOpen(!this._panelOpen);
       if (!this._panelOpen) this._panelUserClosed = true;
+    });
+    // 折叠后的悬浮弹出按钮（桌面全屏面板折叠后会整体滑出屏幕）
+    panel.parentElement?.querySelector("[data-panel-btn]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._panelUserClosed = false;
+      setOpen(true);
     });
     panel.querySelector("[data-back]")?.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2834,4 +2861,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
