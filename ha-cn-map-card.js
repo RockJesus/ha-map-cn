@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.5 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.6 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -833,6 +833,7 @@ const ICONS = {
   cog: "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z",
   traffic: "M20,5H4A2,2 0 0,0 2,7V17A2,2 0 0,0 4,19H20A2,2 0 0,0 22,17V7A2,2 0 0,0 20,5M7,15A2.5,2.5 0 0,1 4.5,12.5A2.5,2.5 0 0,1 7,10A2.5,2.5 0 0,1 9.5,12.5A2.5,2.5 0 0,1 7,15M17,15A2.5,2.5 0 0,1 14.5,12.5A2.5,2.5 0 0,1 17,10A2.5,2.5 0 0,1 19.5,12.5A2.5,2.5 0 0,1 17,15M13,13H11V11H13V13M13,10H11V8H13V10Z",
   chevronLeft: "M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z",
+  history: "M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 1,1 13,19C11.07,19 9.36,18.16 8.19,16.85L6.77,18.27A9,9 0 1,0 13,3Z",
   fullscreen: "M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z",
   fullscreenExit: "M5,16H8V19H10V16A2,2 0 0,0 8,14H5V16M16,16V19H14V16A2,2 0 0,1 16,14H19V16H16M10,5V8A2,2 0 0,1 8,10H5V8H8V5H10M14,5H16V8H19V10H16A2,2 0 0,1 14,8V5Z",
 };
@@ -1306,6 +1307,8 @@ class HaCnMapCard extends HTMLElement {
           height:max(120px, min(280px, 62%));
         }
         .cmc-panel.dock-bottom.open { top:45%; height:auto; }
+        /* 详情页（最近活动）内容更高：紧凑卡片里也把抽屉抬高一点，别只剩两行 */
+        .cmc-panel.dock-bottom.open.is-detail { top:18%; }
         .cmc-panel.dock-bottom:not(.open) { transform:translateY(calc(100% - 52px)); }
         .cmc-panel-handle {
           flex:none; height:20px; display:flex; align-items:center; justify-content:center;
@@ -1317,6 +1320,10 @@ class HaCnMapCard extends HTMLElement {
         .cmc-panel-h {
           flex:none; display:flex; align-items:center; gap:8px;
           padding:0 12px 8px;
+        }
+        /* 面板内的每个子视图自己撑满并滚动（列表 / 详情 / 设置） */
+        .cmc-panel > [data-view]:not([hidden]) {
+          display:flex; flex-direction:column; flex:1; min-height:0;
         }
         .cmc-tabs {
           position:relative; flex:1; display:flex; gap:4px; padding:4px;
@@ -1368,6 +1375,36 @@ class HaCnMapCard extends HTMLElement {
         }
         .cmc-empty {
           padding:28px 12px; text-align:center; font-size:13px; color:var(--cmc-sub);
+        }
+
+        /* ================= 实体详情 + 最近活动（对齐官方 hui-map-overview） ================= */
+        .cmc-det-hd { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+        .cmc-det-name { font-size:15px; font-weight:600; color:var(--cmc-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .cmc-det-sub { font-size:12px; color:var(--cmc-sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .cmc-act { flex:1; min-height:0; padding:0 14px 12px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+        .cmc-act-h {
+          display:flex; align-items:center; gap:8px; padding:10px 0 6px;
+          font-size:13px; font-weight:600; color:var(--cmc-sub);
+        }
+        .cmc-act-h svg { width:16px; height:16px; fill:currentColor; }
+        .cmc-act-body { display:flex; flex-direction:column; }
+        .cmc-act-empty { font-size:12.5px; color:var(--cmc-sub); padding:4px 0 8px; }
+        .cmc-act-row {
+          display:flex; align-items:center; gap:10px; padding:8px 0;
+        }
+        .cmc-act-row + .cmc-act-row { border-top:1px solid var(--cmc-divider); }
+        .cmc-act-av {
+          flex:none; width:32px; height:32px; border-radius:50%; overflow:hidden;
+          display:flex; align-items:center; justify-content:center;
+          background:var(--cmc-fill); color:var(--cmc-sub); font-size:13px; font-weight:600;
+        }
+        .cmc-act-av img { width:100%; height:100%; object-fit:cover; display:block; }
+        .cmc-act-tx { min-width:0; display:flex; flex-direction:column; gap:1px; }
+        .cmc-act-hl { font-size:13.5px; color:var(--cmc-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .cmc-act-when { font-size:11.5px; color:var(--cmc-sub); font-variant-numeric:tabular-nums; }
+        .cmc-act-more {
+          border:none; background:none; cursor:pointer; font-family:inherit;
+          color:var(--primary-color, #03a9f4); font-size:13px; padding:8px 0 4px; text-align:left;
         }
 
         /* ================= 设置面板（复用同一容器） ================= */
@@ -1427,6 +1464,27 @@ class HaCnMapCard extends HTMLElement {
               </button>
             </div>
             <div class="cmc-list" data-list></div>
+          </div>
+          <div data-view="detail" hidden>
+            <div class="cmc-panel-h">
+              <button class="cmc-panel-close" data-detail-back aria-label="返回列表">
+                <svg viewBox="0 0 24 24"><path d="${ICONS.chevronLeft}"/></svg>
+              </button>
+              <span class="cmc-det-hd">
+                <span class="cmc-det-name" data-det-name></span>
+                <span class="cmc-det-sub" data-det-sub></span>
+              </span>
+              <button class="cmc-panel-close" data-det-close aria-label="收起">
+                <svg viewBox="0 0 24 24"><path d="${ICONS.minus}"/></svg>
+              </button>
+            </div>
+            <div class="cmc-act">
+              <div class="cmc-act-h">
+                <svg viewBox="0 0 24 24"><path d="${ICONS.history}"/></svg>
+                <span>最近活动</span>
+              </div>
+              <div class="cmc-act-body" data-activity></div>
+            </div>
           </div>
           <div data-view="settings" hidden>
             <div class="cmc-panel-h">
@@ -1495,7 +1553,7 @@ class HaCnMapCard extends HTMLElement {
       const id = e.detail.entityId;
       const ent = this._hass?.states?.[id];
       if (!ent || !this._hass) return;
-      // 官方交互：第一次点击=聚焦飞行+选中，第二次点同一标记才打开 more-info
+      // 官方交互：第一次点击=聚焦飞行+选中（打开最近活动详情），第二次点同一标记才打开 more-info
       if (this._focusOnMarkerClick) {
         const wasSelected = this._engine._selectedEntity === id;
         if (wasSelected) {
@@ -1507,6 +1565,13 @@ class HaCnMapCard extends HTMLElement {
         this._hass.callService("homeassistant", "more_info", { entity_id: id });
       }
     });
+    // 点空白处/Esc 取消选中时：详情页退回列表（官方行为）
+    this._engine.addEventListener("selection-cleared", () => {
+      if (this._panelView === "detail") {
+        this._setPanelView?.("list");
+        this._renderList();
+      }
+    });
     // 卡片里的按钮默认是 type=submit 语义，放在宿主表单/链接里会触发跳转
     this.shadowRoot.querySelectorAll("button").forEach((btn) => btn.setAttribute("type", "button"));
 
@@ -1514,6 +1579,7 @@ class HaCnMapCard extends HTMLElement {
     const panel = this.shadowRoot.querySelector("[data-panel]");
     const listView = panel.querySelector('[data-view="list"]');
     const setView = panel.querySelector('[data-view="settings"]');
+    const detView = panel.querySelector('[data-view="detail"]');
     this._panelEl = panel;
     this._panelView = this._panelView || "list";
 
@@ -1521,6 +1587,8 @@ class HaCnMapCard extends HTMLElement {
       this._panelView = v;
       listView.hidden = v !== "list";
       setView.hidden = v !== "settings";
+      detView.hidden = v !== "detail";
+      panel.classList.toggle("is-detail", v === "detail");
       if (v === "settings") this._syncDrawer();
     };
     const setOpen = (open) => {
@@ -1547,6 +1615,17 @@ class HaCnMapCard extends HTMLElement {
       if (!this._panelOpen) this._panelUserClosed = true;
     });
     panel.querySelector("[data-back]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setOpen(false);
+      this._panelUserClosed = true;
+    });
+    // 详情页返回列表
+    panel.querySelector("[data-detail-back]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showView("list");
+      this._renderList();
+    });
+    panel.querySelector("[data-det-close]")?.addEventListener("click", (e) => {
       e.stopPropagation();
       setOpen(false);
       this._panelUserClosed = true;
@@ -1887,6 +1966,8 @@ class HaCnMapCard extends HTMLElement {
     if (!st || typeof st.attributes.latitude !== "number") return;
     let lat = st.attributes.latitude, lng = st.attributes.longitude;
     this._engine.setSelected(entityId);
+    // 选中即打开详情（最近活动），对齐官方 hui-map-overview 的聚焦语义
+    this._showDetail(entityId);
     const z = Math.max(zoom ?? 0, this._engine.zoom, 13);
     let offX = 0, offY = 0; // 像素偏移：面板 dock 在哪侧就把中心往对侧挪
     if (this._isFull && this._panelOpen) {
@@ -1899,6 +1980,181 @@ class HaCnMapCard extends HTMLElement {
     const mPerLng = 360 / (2 ** z * 256);
     const mPerLat = mPerLng / Math.cos((lat * Math.PI) / 180);
     this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z);
+  }
+
+  /* ---- 实体详情（最近活动）---- */
+  _showDetail(entityId) {
+    if (!this._hass?.states?.[entityId]) return;
+    const changed = this._detailEntity !== entityId;
+    this._detailEntity = entityId;
+    this._setPanelView?.("detail");
+    this._setPanelOpen?.(true);
+    this._panelUserClosed = false;
+    this._renderDetailHeader();
+    // 同一实体只拉一次历史；切到别的实体重新拉
+    if (changed || !this._actEntries) this._loadActivity(entityId);
+  }
+
+  _renderDetailHeader() {
+    const st = this._hass?.states?.[this._detailEntity];
+    if (!st) return;
+    const nameEl = this.shadowRoot.querySelector("[data-det-name]");
+    const subEl = this.shadowRoot.querySelector("[data-det-sub]");
+    if (!nameEl || !subEl) return;
+    nameEl.textContent = st.attributes.friendly_name || this._detailEntity;
+    const rel = this._relTime(st.last_updated || st.last_changed);
+    let state;
+    if (this._detailEntity.startsWith("zone.")) {
+      const n = Number(st.state);
+      state = Number.isNaN(n) ? "" : `${n} 人在此`;
+    } else if (OFFLINE_STATES.has(String(st.state).toLowerCase())) {
+      state = "离线";
+    } else {
+      const z = this._zoneForState(st, this._listEntries().zones);
+      state = z ? `在 ${z.attributes.friendly_name || "区域"}` : st.state === "not_home" ? "离家" : st.state === "home" ? "在家" : st.state;
+    }
+    subEl.textContent = rel && state ? `${state} · ${rel}` : state || rel;
+  }
+
+  /* 最近 24h 活动时间线：官方 ACTIVITY_HOURS=24 / 最多 20 条 / 默认显示 5 条 */
+  static ACTIVITY_MAX = 20;
+  async _loadActivity(entityId) {
+    const req = (this._actReq = (this._actReq || 0) + 1);
+    const bodyEl = this.shadowRoot.querySelector("[data-activity]");
+    if (!bodyEl) return;
+    this._actFailed = false;
+    this._actEntries = null;
+    this._actExpanded = false;
+    bodyEl.innerHTML = `<div class="cmc-act-empty">加载中…</div>`;
+    const isZone = entityId.startsWith("zone.");
+    // zone 详情 = 全部人员进出该区域；实体详情 = 自己的状态变化
+    const ids = isZone ? this._listEntries().people.map((s) => s.entity_id) : [entityId];
+    if (!ids.length) {
+      this._actEntries = [];
+      this._renderActivity();
+      return;
+    }
+    let history = null;
+    try {
+      // 与官方 fetchDateWS 同一条 WebSocket 消息
+      history = await this._hass.callWS({
+        type: "history/history_during_period",
+        start_time: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+        end_time: new Date().toISOString(),
+        entity_ids: ids,
+        minimal_response: false,
+        no_attributes: false,
+      });
+    } catch {
+      history = null;
+    }
+    if (req !== this._actReq) return; // 加载期间用户切到了别的实体
+    this._actFailed = history === null;
+    this._actEntries = this._computeActivity(entityId, history, isZone, ids);
+    this._renderActivity();
+  }
+
+  _computeActivity(entityId, history, isZone, personIds) {
+    const NO_LOC = ["unavailable", "unknown"];
+    const since = Date.now() - 24 * 3600 * 1000;
+    const out = [];
+    if (isZone) {
+      for (const pid of personIds) {
+        const person = this._hass?.states?.[pid];
+        let wasIn;
+        for (const e of history?.[pid] || []) {
+          if (NO_LOC.includes(e.s)) continue;
+          const inZone = Array.isArray(e.a?.in_zones) ? e.a.in_zones.includes(entityId) : false;
+          // 窗口开始时的第一帧不算事件；只有进/出的变化才算
+          const isEvent = wasIn === undefined ? inZone : inZone !== wasIn;
+          if (isEvent && e.lu * 1000 >= since) {
+            out.push({ entityId: pid, name: person?.attributes?.friendly_name || pid, picture: person?.attributes?.entity_picture, when: e.lu * 1000, arrived: inZone });
+          }
+          wasIn = inZone;
+        }
+      }
+      out.sort((a, b) => b.when - a.when);
+    } else {
+      let prev;
+      for (const e of history?.[entityId] || []) {
+        if (NO_LOC.includes(e.s)) continue;
+        if (e.s === prev) continue; // 只留状态变化
+        prev = e.s;
+        if (e.lu * 1000 < since) continue;
+        out.push({ entityId, state: e.s, when: e.lu * 1000 });
+      }
+      out.reverse(); // 最新在前
+    }
+    return out.slice(0, HaCnMapCard.ACTIVITY_MAX);
+  }
+
+  _renderActivity() {
+    const bodyEl = this.shadowRoot.querySelector("[data-activity]");
+    if (!bodyEl) return;
+    if (this._actFailed) {
+      bodyEl.innerHTML = `<div class="cmc-act-empty">活动记录不可用</div>`;
+      return;
+    }
+    const list = this._actEntries;
+    if (!list || !list.length) {
+      bodyEl.innerHTML = `<div class="cmc-act-empty">最近 24 小时没有活动</div>`;
+      return;
+    }
+    const shown = this._actExpanded ? list : list.slice(0, 5);
+    const hhmm = (t) => {
+      const d = new Date(t);
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    };
+    const rows = shown.map((en) => {
+      let hl, prefix = "";
+      if (en.arrived !== undefined) {
+        // 区域详情：谁进入 / 离开
+        hl = escapeHtml(en.name);
+        prefix = en.arrived ? "进入" : "离开";
+      } else {
+        hl = escapeHtml(this._activityHeadline(en.state));
+      }
+      const ent = this._hass?.states?.[en.entityId];
+      const nm = en.name || ent?.attributes?.friendly_name || en.entityId;
+      const pic = en.picture || ent?.attributes?.entity_picture;
+      const av = pic
+        ? `<img src="${escapeAttr(pic)}" referrerpolicy="no-referrer" alt="">`
+        : this._initial(nm);
+      return `<div class="cmc-act-row">
+        <span class="cmc-act-av" data-i="${escapeAttr(this._initial(nm))}">${av}</span>
+        <span class="cmc-act-tx">
+          <span class="cmc-act-hl">${hl}</span>
+          <span class="cmc-act-when">${prefix ? `${prefix} · ` : ""}${hhmm(en.when)} · ${escapeHtml(this._relTime(en.when) || "刚刚")}</span>
+        </span>
+      </div>`;
+    });
+    bodyEl.innerHTML = `<div class="cmc-act-body-inner">${rows.join("")}</div>${
+      list.length > shown.length
+        ? `<button class="cmc-act-more" data-act-more type="button">显示全部 ${list.length} 条</button>`
+        : ""
+    }`;
+    bodyEl.querySelector("[data-act-more]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._actExpanded = true;
+      this._renderActivity();
+    });
+    // 头像加载失败（离线/失效的 entity_picture）→ 回落到首字母
+    bodyEl.querySelectorAll(".cmc-act-av img").forEach((img) => {
+      img.addEventListener("error", () => {
+        const box = img.parentElement;
+        box.textContent = box.dataset.i || "?";
+      });
+    });
+  }
+
+  /* 状态值 → 人话：zone object_id / home / not_home / 其它 */
+  _activityHeadline(state) {
+    const s = String(state);
+    if (s === "home") return "在家";
+    if (s === "not_home") return "离家";
+    const z = this._hass?.states?.[`zone.${s}`];
+    if (z) return `在 ${z.attributes?.friendly_name || s}`;
+    return s;
   }
 
   _update() {
@@ -1988,7 +2244,8 @@ class HaCnMapCard extends HTMLElement {
       this._engine.render();
     }
     // 列表里的状态文字（"离家 · 4 分钟前"）需要跟着 hass 刷新
-    if (this._panelView !== "settings") this._renderList();
+    if (this._panelView === "detail") this._renderDetailHeader();
+    else if (this._panelView !== "settings") this._renderList();
   }
 
   /* 自动适配时的内边距：全屏 + 面板展开时避开面板覆盖区
@@ -2560,4 +2817,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
