@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.2 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.3 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -77,6 +77,43 @@ class CnTileEngine extends EventTarget {
     this.render();
   }
 
+  /* 平滑飞行：官方点击标记 / 点击列表项时地图以动画平移+缩放到目标。
+     线性插值 zoom（对数尺度视觉上更匀），经纬度按已走进度插值；
+     期间用户任何手势立即接管（取消动画），避免"抢方向盘"的手感 */
+  flyTo(lat, lng, zoom, duration = 550) {
+    if (typeof window === "undefined" || !window.requestAnimationFrame) {
+      this.setView(lat, lng, zoom);
+      return;
+    }
+    const from = { lat: this.center.lat, lng: this.center.lng, z: this.zoom };
+    const toZ = Math.max(3, Math.min(18, zoom ?? this.zoom));
+    // 视野里已经能看到目标时不缩放，只平移（官方 #54774 的"聚焦飞行语义"）
+    const w = this.container.clientWidth || 400;
+    const h = this.container.clientHeight || 300;
+    const c = CnTileEngine.tileXY(from.lat, from.lng, from.z);
+    const p = CnTileEngine.project(lat, lng);
+    const n = 2 ** from.z;
+    const px = (p.x - c.x) * n * 256 + w / 2;
+    const py = (p.y - c.y) * n * 256 + h / 2;
+    const targetZ = (px > 40 && px < w - 40 && py > 60 && py < h - 40) ? from.z : toZ;
+    if (targetZ === from.z && Math.hypot(px - w / 2, py - h / 2) < 2) return; // 已居中，不动画
+    const t0 = performance.now();
+    this._fly?.cancel?.();
+    let raf = 0;
+    const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (1 - t) * (2 - 2 * t)); // easeInOutQuad
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / duration);
+      const e = ease(k);
+      this.center = { lat: from.lat + (lat - from.lat) * e, lng: from.lng + (lng - from.lng) * e };
+      this.zoom = Math.round((from.z + (targetZ - from.z) * e) * 100) / 100; // 小数 zoom，render 支持
+      this.render();
+      if (k < 1 && !this._fly?.cancelled) raf = requestAnimationFrame(step);
+      else this._fly = null;
+    };
+    this._fly = { cancelled: false, cancel: () => { this._fly.cancelled = true; cancelAnimationFrame(raf); } };
+    raf = requestAnimationFrame(step);
+  }
+
   addTileSet({ url, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "" }) {
     const ts = { url, maxZoom, zIndex, opacity, els: new Map(), id: ++this._tileSeq };
     const layer = document.createElement("div");
@@ -128,7 +165,8 @@ class CnTileEngine extends EventTarget {
     const cy = c.y * 256;
 
     this.tileSets.forEach((ts) => {
-      const z = Math.min(this.zoom, ts.maxZoom);
+      // flyTo 会产生小数 zoom：瓦片只能取整数级放大显示，标记/轨迹仍用精确值
+      const z = Math.min(Math.floor(this.zoom), ts.maxZoom);
       const scale = 2 ** (this.zoom - z);   // 缩放级差：z 级瓦片放到 zoom 级要放大几倍
       const n = 2 ** z;
       // 当前视口在 z 级瓦片坐标系里的浮点范围（c 是 zoom 级，除回去）
@@ -178,6 +216,7 @@ class CnTileEngine extends EventTarget {
 
     this._layoutMarkers(w, h);
     this._layoutPaths(w, h);
+    this._layoutCircles();
     this._updateScale(w);
   }
 
@@ -211,8 +250,11 @@ class CnTileEngine extends EventTarget {
 
   /* ---- 标记 ---- */
   setMarkers(markers, opts) {
-    // markers: [{lat,lng,html,label,icon,sub,entityId,picture,color,home,clusterable,offline}]
+    // markers: [{lat,lng,html,label,icon,sub,entityId,picture,color,home,clusterable,offline,selected}]
     this._markers = markers;
+    // 首次调用时 _markerEls 还没建过，不能直接 forEach
+    (this._markerEls || []).forEach((el) => el.classList.remove("is-selected"));
+    this._selectedEntity = null;
     this._clusterOn = !!opts?.cluster;
     this.markerLayer.innerHTML = "";
     this.labelLayer.innerHTML = "";
@@ -279,7 +321,21 @@ class CnTileEngine extends EventTarget {
       this.markerLayer.appendChild(el);
       return el;
     });
+    // 选中态在 setMarkers 重建 DOM 后要补回来（_update 每次都重建）
+    if (this._selectedEntity) {
+      const idx = this._markers.findIndex((m) => m.entityId === this._selectedEntity);
+      if (idx >= 0) this._markerEls[idx]?.classList.add("is-selected");
+      else this._selectedEntity = null;
+    }
     this._layoutMarkers();
+  }
+
+  /* 选中 / 取消选中实体：官方聚焦语义，标记加光环 */
+  setSelected(entityId) {
+    this._selectedEntity = entityId || null;
+    this._markerEls.forEach((el, i) => {
+      el.classList.toggle("is-selected", !!entityId && this._markers[i]?.entityId === entityId);
+    });
   }
 
   /* ---- 轨迹 ---- */
@@ -313,10 +369,123 @@ class CnTileEngine extends EventTarget {
     this._layoutPaths(w, h);
   }
 
+  /* ---- 精度圈：官方按 gps_accuracy 画的半透明圆（WGS84 半径，米） ---- */
+  setAccuracyCircles(circles) {
+    // circles: [{entityId, lat, lng, radius(m), color}]
+    this._accCircles = circles || [];
+    this._layoutCircles();
+  }
+
+  _layoutCircles() {
+    this._circleGroup?.remove();
+    const list = this._accCircles;
+    if (!list || !list.length) return;
+    const w = this.container.clientWidth || 400;
+    const h = this.container.clientHeight || 300;
+    const c = CnTileEngine.project(this.center.lat, this.center.lng);
+    const n = 2 ** this.zoom;
+    const group = this._circleGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    this.pathLayer.appendChild(group);
+    for (const ci of list) {
+      const q = CnTileEngine.project(ci.lat, ci.lng);
+      const x = (q.x - c.x) * n * 256 + w / 2;
+      const y = (q.y - c.y) * n * 256 + h / 2;
+      // 米 → 像素：当前纬度下 1 像素的米数
+      const mPerPx = (156543.03392 * Math.cos((ci.lat * Math.PI) / 180)) / n;
+      const r = ci.radius / mPerPx;
+      if (r < 2 || r > Math.max(w, h) * 3) continue; // 半径太小画不清、太大没意义
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      el.setAttribute("cx", x.toFixed(1));
+      el.setAttribute("cy", y.toFixed(1));
+      el.setAttribute("r", r.toFixed(1));
+      el.setAttribute("fill", ci.color || "#03a9f4");
+      el.setAttribute("fill-opacity", "0.10");
+      el.setAttribute("stroke", ci.color || "#03a9f4");
+      el.setAttribute("stroke-opacity", "0.30");
+      el.setAttribute("stroke-width", "1.5");
+      group.appendChild(el);
+    }
+  }
+
   clearPaths() {
     this._pathGroups.forEach((el) => el.remove());
     this._pathGroups.clear();
     this._paths = [];
+  }
+
+  _layoutPaths(w, h) {
+    if (!this._paths.length) {
+      this._arrowGroup?.remove();
+      return;
+    }
+    const c = CnTileEngine.project(this.center.lat, this.center.lng);
+    const n = 2 ** this.zoom;
+    // 大范围时不划线而是靠 SVG 裁剪；只有极端遥远（跨半球）才断开避免坐标溢出
+    const margin = 4000;
+    // 方向箭头（已知限制 #3 的补齐）：沿轨迹每隔 ~90px 放一个小三角，随平移缩放重算
+    this._arrowGroup?.remove();
+    const arrowGroup = this._arrowGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    this.pathLayer.appendChild(arrowGroup);
+    const SPACING = 90, ARROW = 7; // 箭头半边长 px（6px 以下在高分屏上几乎看不见）
+    this._paths.forEach((p) => {
+      const el = this._pathGroups.get(p.entityId);
+      if (!el) return;
+      let d = "";
+      let drawing = false;
+      const screen = []; // [{x,y}] 供箭头取点
+      for (const pt of p.points) {
+        const q = CnTileEngine.project(pt.lat, pt.lng);
+        const x = (q.x - c.x) * n * 256 + w / 2;
+        const y = (q.y - c.y) * n * 256 + h / 2;
+        // 超出视口太多时断线，避免坐标溢出画出跨屏长线
+        if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
+          drawing = false;
+          screen.length = 0;
+          continue;
+        }
+        screen.push({ x, y });
+        d += `${drawing ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
+        drawing = true;
+      }
+      el.setAttribute("d", d);
+      // 沿折线按累计弧长取点放箭头；点太少或全在屏外则跳过
+      if (screen.length < 2) return;
+      const segs = [];
+      let total = 0;
+      for (let i = 1; i < screen.length; i++) {
+        const len = Math.hypot(screen[i].x - screen[i-1].x, screen[i].y - screen[i-1].y);
+        if (len > 0.5) { segs.push({ a: screen[i-1], b: screen[i], len }); total += len; }
+      }
+      if (total < SPACING) return;
+      let placed = 0;
+      for (const s of segs) {
+        while (placed + SPACING / 2 < total) {
+          const target = placed + SPACING / 2;
+          // 找到 target 落在的线段
+          let acc = 0, seg = null, t = 0;
+          for (const sg of segs) {
+            if (acc + sg.len >= target) { seg = sg; t = (target - acc) / sg.len; break; }
+            acc += sg.len;
+          }
+          if (!seg) break;
+          const x = seg.a.x + (seg.b.x - seg.a.x) * t;
+          const y = seg.a.y + (seg.b.y - seg.a.y) * t;
+          const ang = Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) * 180 / Math.PI;
+          const tri = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          tri.setAttribute("points", `${ARROW},0 ${-ARROW * 0.7},${-ARROW * 0.8} ${-ARROW * 0.7},${ARROW * 0.8}`);
+          tri.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${ang.toFixed(1)})`);
+          tri.setAttribute("fill", p.color);
+          // 描一圈底图同色的边，避免箭头和同色轨迹线糊在一起
+          tri.setAttribute("stroke", "rgba(255,255,255,.85)");
+          tri.setAttribute("stroke-width", "1");
+          tri.setAttribute("opacity", String(Math.min(1, (p.opacity ?? 0.85) + 0.1)));
+          arrowGroup.appendChild(tri);
+          placed += SPACING;
+          if (placed >= total) break;
+        }
+        break; // 只遍历一次，placed 累计到 total 即止
+      }
+    });
   }
 
   _layoutMarkers(w, h) {
@@ -437,37 +606,20 @@ class CnTileEngine extends EventTarget {
     return el;
   }
 
-  _layoutPaths(w, h) {
-    if (!this._paths.length) return;
-    const c = CnTileEngine.project(this.center.lat, this.center.lng);
-    const n = 2 ** this.zoom;
-    // 大范围时不划线而是靠 SVG 裁剪；只有极端遥远（跨半球）才断开避免坐标溢出
-    const margin = 4000;
-    this._paths.forEach((p) => {
-      const el = this._pathGroups.get(p.entityId);
-      if (!el) return;
-      let d = "";
-      let drawing = false;
-      for (const pt of p.points) {
-        const q = CnTileEngine.project(pt.lat, pt.lng);
-        const x = (q.x - c.x) * n * 256 + w / 2;
-        const y = (q.y - c.y) * n * 256 + h / 2;
-        // 超出视口太多时断线，避免坐标溢出画出跨屏长线
-        if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
-          drawing = false;
-          continue;
-        }
-        d += `${drawing ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
-        drawing = true;
-      }
-      el.setAttribute("d", d);
-    });
-  }
-
+  /* ---- 交互 ---- */
   _attachGestures() {
     let dragging = false, lastX = 0, lastY = 0, pinchDist = 0;
     const el = this.container;
     el.style.touchAction = "none";
+    // 点空白处（没点在标记/聚合上）取消选中：官方语义
+    el.addEventListener("click", (e) => {
+      if (e.target === el || e.target.classList?.contains("cmc-viewport") || e.target.tagName === "IMG") {
+        if (this._selectedEntity) {
+          this.setSelected(null);
+          this.dispatchEvent(new CustomEvent("selection-cleared"));
+        }
+      }
+    });
 
     const panBy = (dx, dy) => {
       this._userMoved = true;
@@ -481,6 +633,8 @@ class CnTileEngine extends EventTarget {
 
     el.addEventListener("pointerdown", (e) => {
       dragging = true; lastX = e.clientX; lastY = e.clientY;
+      // 用户手势立即接管，取消进行中的飞行动画（官方"抢方向盘"行为）
+      this._fly?.cancel?.(); this._fly = null;
       el.setPointerCapture(e.pointerId);
     });
     el.addEventListener("pointermove", (e) => {
@@ -506,6 +660,30 @@ class CnTileEngine extends EventTarget {
       }
     }, { passive: true });
     el.addEventListener("touchend", () => (pinchDist = 0));
+
+    // 键盘快捷键（对齐官方 ha-map）：+/- 缩放、方向键平移、Esc 清除选中
+    el.tabIndex = 0;
+    el.style.outline = "none";
+    el.addEventListener("keydown", (e) => {
+      const step = e.shiftKey ? 10 : 4; // Shift+方向键 = 大步平移
+      let dx = 0, dy = 0;
+      if (e.key === "ArrowLeft") dx = -step;
+      else if (e.key === "ArrowRight") dx = step;
+      else if (e.key === "ArrowUp") dy = -step;
+      else if (e.key === "ArrowDown") dy = step;
+      else if (e.key === "+" || e.key === "=") { e.preventDefault(); this.setZoom(this.zoom + 1); return; }
+      else if (e.key === "-" || e.key === "_") { e.preventDefault(); this.setZoom(this.zoom - 1); return; }
+      else if (e.key === "Escape") {
+        if (this._selectedEntity) {
+          this.setSelected(null);
+          this.dispatchEvent(new CustomEvent("selection-cleared"));
+          e.preventDefault();
+        }
+        return;
+      } else return;
+      e.preventDefault();
+      panBy(dx, dy);
+    });
   }
 
   setZoom(z, opts) {
@@ -608,6 +786,7 @@ const RUNTIME_KEYS = [
   "show_labels",
   "show_cluster",
   "show_status",
+  "show_accuracy",
   "height",
 ];
 // 同一张卡片在多个视图里会被实例化成多个实例；按「仪表盘路径 + 卡片顺序」生成稳定 id
@@ -735,6 +914,8 @@ class HaCnMapCard extends HTMLElement {
     this._trackPoints = {};   // entityId -> [{lat,lng}]
     this._trackUnsub = null;  // history 订阅取消函数
     this._trackSig = "";      // 订阅参数签名，避免重复订阅
+    // 官方交互：首次点标记 = 聚焦飞行 + 选中；设 false 恢复"直接弹 more-info"
+    this._focusOnMarkerClick = true;
   }
 
   setConfig(config) {
@@ -752,6 +933,7 @@ class HaCnMapCard extends HTMLElement {
       show_zones: false,
       show_labels: true,
       show_status: true,         // 标记下方状态行（在家 / 离线 / 速度 / 电量 / 相对时间）
+      show_accuracy: true,       // GPS 精度圈（gps_accuracy，对齐官方）
       show_cluster: true,        // 标记聚合
       fit_entities: true,
       height: 360,
@@ -928,6 +1110,12 @@ class HaCnMapCard extends HTMLElement {
         .cmc-marker img { width:44px; height:44px; border-radius:50%; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); object-fit:cover; display:block; }
         .cmc-marker.is-offline img,
         .cmc-marker.is-offline .cmc-fallback { filter:grayscale(1); opacity:.6; }
+        /* 选中高亮：官方聚焦实体时标记带主题色光环 */
+        .cmc-marker.is-selected img,
+        .cmc-marker.is-selected .cmc-fallback {
+          border-color:var(--primary-color, #03a9f4);
+          box-shadow:0 0 0 5px color-mix(in srgb, var(--primary-color, #03a9f4) 30%, transparent), 0 1px 4px rgba(0,0,0,.4);
+        }
         /* 图标内部禁止 flex 拉伸：ha-icon / img 都会被父级叠加居中，压到文字行上 */
         .cmc-marker > *:first-child { flex:0 0 auto; }
         .cmc-marker .cmc-fallback {
@@ -1142,6 +1330,7 @@ class HaCnMapCard extends HTMLElement {
               <label class="chk"><span>标记聚合</span><input type="checkbox" data-d="show_cluster"></label>
               <label class="chk"><span>显示名称</span><input type="checkbox" data-d="show_labels"></label>
               <label class="chk"><span>标记显示状态</span><input type="checkbox" data-d="show_status"></label>
+              <label class="chk"><span>GPS 精度圈</span><input type="checkbox" data-d="show_accuracy"></label>
               <label class="chk"><span>显示区域（家）</span><input type="checkbox" data-d="show_zones"></label>
               <label class="chk"><span>实时路况（仅高德）</span><input type="checkbox" data-d="show_traffic"></label>
               <label>轨迹时长
@@ -1179,8 +1368,20 @@ class HaCnMapCard extends HTMLElement {
     this._engine.attribution.textContent = base.attribution;
     this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     this._engine.addEventListener("marker-click", (e) => {
-      const ent = this._hass?.states?.[e.detail.entityId];
-      if (ent && this._hass) this._hass.callService("homeassistant", "more_info", { entity_id: e.detail.entityId });
+      const id = e.detail.entityId;
+      const ent = this._hass?.states?.[id];
+      if (!ent || !this._hass) return;
+      // 官方交互：第一次点击=聚焦飞行+选中，第二次点同一标记才打开 more-info
+      if (this._focusOnMarkerClick) {
+        const wasSelected = this._engine._selectedEntity === id;
+        if (wasSelected) {
+          this._hass.callService("homeassistant", "more_info", { entity_id: id });
+        } else {
+          this.focusEntity(id);
+        }
+      } else {
+        this._hass.callService("homeassistant", "more_info", { entity_id: id });
+      }
     });
     // 卡片里的按钮默认是 type=submit 语义，放在宿主表单/链接里会触发跳转
     this.shadowRoot.querySelectorAll("button").forEach((btn) => btn.setAttribute("type", "button"));
@@ -1456,7 +1657,7 @@ class HaCnMapCard extends HTMLElement {
     d.querySelectorAll("[data-d]").forEach((el) => {
       const k = el.dataset.d;
       // 默认开启的开关：值缺省时按 true 显示
-      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status"].includes(k) : !!c[k];
+      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status", "show_accuracy"].includes(k) : !!c[k];
       else if (k === "hours_to_show") el.value = String(Number(c[k]) || 0);
       else el.value = c[k] === undefined ? "" : c[k];
     });
@@ -1548,6 +1749,27 @@ class HaCnMapCard extends HTMLElement {
     }
   }
 
+  /* 聚焦实体：官方点击标记 / 点击列表项的"选中 + 飞行"语义。
+     全屏且面板展开时，把目标点放在让开面板后的可视区域中心 */
+  focusEntity(entityId, zoom) {
+    const st = this._hass?.states?.[entityId];
+    if (!st || typeof st.attributes.latitude !== "number") return;
+    let lat = st.attributes.latitude, lng = st.attributes.longitude;
+    this._engine.setSelected(entityId);
+    const z = Math.max(zoom ?? 0, this._engine.zoom, 13);
+    let offX = 0, offY = 0; // 像素偏移：面板 dock 在哪侧就把中心往对侧挪
+    if (this._isFull && this._panelOpen) {
+      const dockBottom = window.innerWidth <= 600;
+      const pad = this._fitPadding();
+      if (dockBottom) offY = -pad * 0.35;
+      else offX = pad * 0.35;
+    }
+    // 像素偏移 → 经纬度偏移（当前 zoom 下）
+    const mPerLng = 360 / (2 ** z * 256);
+    const mPerLat = mPerLng / Math.cos((lat * Math.PI) / 180);
+    this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z);
+  }
+
   _update() {
     const hass = this._hass, cfg = this._config;
     const states = this._collectEntities();
@@ -1606,6 +1828,26 @@ class HaCnMapCard extends HTMLElement {
 
     this._engine.setMarkers(markers, { cluster: cfg.show_cluster !== false });
     this._syncTracks(states);
+    // 精度圈：对齐官方 ha-map 的 gps_accuracy 语义，默认开，zone 不画
+    if (cfg.show_accuracy === false) {
+      this._engine.setAccuracyCircles([]);
+    } else {
+      const circles = [];
+      states.forEach((s) => {
+        const acc = Number(s.attributes.gps_accuracy);
+        const { latitude, longitude } = s.attributes;
+        if (!Number.isFinite(acc) || acc <= 0 || latitude == null) return;
+        if (s.entity_id.startsWith("zone.")) return;
+        let clat = latitude, clng = longitude;
+        if (this._basemapShift) [clat, clng] = GCJ.wgs2gcj(clat, clng);
+        const color =
+          (cfg.entities || []).find((e) => (typeof e === "object" ? e.entity : e) === s.entity_id)?.color ||
+          s.attributes.color ||
+          (s.entity_id.split(".")[0] === "person" ? "#58a6f0" : "#8bc34a");
+        circles.push({ entityId: s.entity_id, lat: clat, lng: clng, radius: acc, color });
+      });
+      this._engine.setAccuracyCircles(circles);
+    }
     // 只在首次、且用户还没手动拖动/缩放时自动适配视野
     if (cfg.fit_entities && pts.length && !this._didFit && !this._engine._userMoved) {
       // 全屏时给概览面板留出空间，免得标记被面板盖住
@@ -1782,7 +2024,13 @@ class HaCnMapCard extends HTMLElement {
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         const id = b.dataset.entity;
-        if (this._hass?.states?.[id]) this._hass.callService("homeassistant", "more_info", { entity_id: id });
+        if (!this._hass?.states?.[id]) return;
+        // 对齐官方：点列表项 = 聚焦飞行 + 选中；已选中时再点开 more-info
+        if (this._engine?._selectedEntity === id) {
+          this._hass.callService("homeassistant", "more_info", { entity_id: id });
+        } else {
+          this.focusEntity(id);
+        }
       });
     });
   }
@@ -1945,6 +2193,10 @@ class HaCnMapCardEditor extends HTMLElement {
           <div class="row inline" style="margin-top:10px">
             <label class="t">标记下方显示状态（在家 / 离线 / 速度）</label>
             <label class="switch"><input type="checkbox" data-k="show_status"><span class="slider"></span></label>
+          </div>
+          <div class="row inline" style="margin-top:10px">
+            <label class="t">GPS 精度圈（需要实体带 gps_accuracy）</label>
+            <label class="switch"><input type="checkbox" data-k="show_accuracy"><span class="slider"></span></label>
           </div>
           <div class="row inline" style="margin-top:10px">
             <label class="t">首次自动缩放到所有标记</label>
@@ -2121,7 +2373,7 @@ class HaCnMapCardEditor extends HTMLElement {
       const k = el.dataset.k;
       if (el.type === "checkbox") {
         // fit_entities 默认为 true，其余默认为 false
-        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status"].includes(k) : !!c[k];
+        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
         el.value = String(c[k] === undefined ? 0 : c[k]);
       } else {
@@ -2161,4 +2413,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
