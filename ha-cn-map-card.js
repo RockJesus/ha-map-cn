@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.3 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.4 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -916,7 +916,29 @@ class HaCnMapCard extends HTMLElement {
     this._trackSig = "";      // 订阅参数签名，避免重复订阅
     // 官方交互：首次点标记 = 聚焦飞行 + 选中；设 false 恢复"直接弹 more-info"
     this._focusOnMarkerClick = true;
+    this._bleedUser = undefined; // 用户点全屏按钮的选择：true 铺满 / false 不铺满 / undefined 自动
+    this._isBleed = false;
+    // Esc 退出全屏（事件从 shadow 里冒泡上来，composed 事件才有）
+    this.addEventListener("keydown", this._onKeyBleed = (e) => {
+      if (e.key === "Escape" && this.classList.contains("cmc-bleed")) {
+        this._bleedUser = false;
+        this._applyBleed(false);
+      }
+    });
   }
+
+  /* hui-card 在 panel 视图里会直接给卡片元素赋 layout="panel"（官方卡片同样读这个属性） */
+  get layout() { return this._hLayout; }
+  set layout(v) {
+    const old = this._hLayout;
+    this._hLayout = v;
+    if (old !== v && this._config && this.isConnected) {
+      Promise.resolve().then(() => this._syncLayout());
+    }
+  }
+  get isPanel() { return this._hLayout === "panel"; }
+  // hui-card 还会顺手写 element.isPanel；只读会抛错（它有 try/catch，抛了就把卡片换成错误卡），给个空 setter
+  set isPanel(_v) {}
 
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("ha-cn-map-card: 配置无效");
@@ -982,27 +1004,49 @@ class HaCnMapCard extends HTMLElement {
   /* 解析布局：官方 panel 视图 / sections 紧凑 / 自定义全屏 */
   _resolveLayout() {
     const cfg = this._config;
+    // 用户显式指定 compact 时永远尊重（哪怕在 panel 视图里）
+    if (cfg.layout === "compact" || cfg.fullscreen === false) return LAYOUT.COMPACT;
     if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel" || cfg.fill === true) return LAYOUT.FULL;
-    if (cfg.layout === "compact") return LAYOUT.COMPACT;
-    if (cfg.fullscreen === false) return LAYOUT.COMPACT;
+    // 关键：hui-card 在 panel 视图里会直接给卡片元素赋 layout="panel"（官方 hui-map-card 也读这个信号）。
+    // 这比爬 DOM 祖先可靠得多——隔壁 shadow root 里的 hui-panel-view 用 parentElement 根本爬不到。
+    if (this.layout === "panel" || this.isPanel === true) return LAYOUT.FULL;
     return this._autoLayout();
   }
 
+  /* 祖先遍历：必须穿透 shadow root，否则 panel 视图里 parentElement 直接是 null
+     （卡片挂在 hui-card 的 light DOM 里，再往上是 hui-panel-view 的 shadowRoot） */
+  _ancestors(max = 10) {
+    const out = [];
+    let cur = this;
+    let el = cur.parentElement;
+    for (let i = 0; i < max && el; i++) {
+      out.push(el);
+      const root = el.getRootNode?.();
+      if (root && root.host) {
+        cur = root.host;          // 跨过 shadow 边界，继续从宿主往上爬
+        el = cur.parentElement;
+        // 宿主本身也算一层（它就是 hui-panel-view / hui-grid-section 之类）
+        out.push(cur);
+      } else {
+        el = el.parentElement;
+      }
+    }
+    return out;
+  }
+
   /* 自动判定：往上看几层，找真正给我分配高度的那个祖先。
-     HA 的嵌套关系不固定（panel 视图是 hui-panel-view > 卡片；
-     sections 视图是 hui-grid-section > 格子 > 卡片），所以逐层试。
-     判据：某个祖先的高度明显大于当前卡片高度，且接近视口 → 我方可以铺满。 */
+     HA 的嵌套关系不固定（panel 视图 shadowRoot > hui-card > 卡片；
+     sections 视图 hui-grid-section shadowRoot > grid > 格子 > hui-card > 卡片），所以逐层试。 */
   _autoLayout() {
     if (typeof window === "undefined" || !this.isConnected) return LAYOUT.COMPACT;
     const viewH = window.innerHeight || document.documentElement.clientHeight || 800;
     const selfH = this.getBoundingClientRect().height;
-    let el = this.parentElement;
-    for (let i = 0; el && i < 8; i++, el = el.parentElement) {
-      const r = el.getBoundingClientRect();
+    for (const el of this._ancestors(10)) {
       const tag = el.localName || "";
-      // sections 视图：卡片被困在固定高度的 grid 格子里，铺满没意义 → compact（想全屏请配 fill: true）
-      if (/^(hui-grid-section|hui-sections-view|hui-grid)$/.test(tag)) return LAYOUT.COMPACT;
-      // HA 的视图容器：说明卡片直接挂在视图上 → 官方 panel 布局
+      const r = el.getBoundingClientRect();
+      // sections 视图：卡片被困在固定高度的 grid 格子里，铺满没意义 → compact（想全屏请开 fill / 点全屏按钮）
+      if (/^(hui-grid-section|hui-sections-view)$/.test(tag)) return LAYOUT.COMPACT;
+      // 卡片直接挂在视图容器上 → 官方 panel 布局
       if (/^(hui-panel-view|hui-masonry-view|hui-grid-view)$/.test(tag)) {
         return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
       }
@@ -1012,6 +1056,69 @@ class HaCnMapCard extends HTMLElement {
     return LAYOUT.COMPACT;
   }
 
+  /* ---- 真·全屏（bleed）----
+     为什么需要它：sections 视图的格子高度是 JS 定死的 410px 左右，panel 视图里
+     hui-card 也可能不给卡片高度——这两种情况 height:100% 都不可能铺满。
+     所以只要"该全屏但实际没占满"，就把宿主改成 position:fixed 直接跳出容器。 */
+  _parentTooSmall() {
+    const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+    const p = this.parentElement;
+    if (!p) return true;
+    const r = p.getBoundingClientRect();
+    // 父容器高度不足以容纳整屏 → 说明它不会给我铺满的空间
+    return r.height < vh * 0.85;
+  }
+
+  _wantBleed() {
+    // 用户手动点过全屏按钮：以手动选择为准（哪怕当前布局判定为紧凑）
+    if (this._bleedUser === true) return true;
+    if (this._layout !== LAYOUT.FULL) return false;
+    if (this._bleedUser === false) return false;
+    // 显式 fill:true → 无条件铺满
+    if (this._config?.fill === true) return true;
+    return this._parentTooSmall();
+  }
+
+  _applyBleed(on, initial) {
+    const has = this.classList.contains("cmc-bleed");
+    if (on && !has) {
+      // 清掉 compact 模式下写死的内联高度，否则会压过 :host(.cmc-bleed)
+      this.style.height = "";
+      this.classList.add("cmc-bleed");
+    } else if (!on && has) {
+      this.classList.remove("cmc-bleed");
+      this.style.height = this._layout === LAYOUT.FULL ? "" : `${this._config?.height || 360}px`;
+    }
+    const btn = this.shadowRoot?.querySelector("[data-fs]");
+    if (btn) {
+      const icon = on ? ICONS.fullscreenExit : ICONS.fullscreen;
+      btn.querySelector("path")?.setAttribute("d", icon);
+      btn.setAttribute("aria-label", on ? "退出全屏" : "全屏");
+      btn.setAttribute("title", on ? "退出全屏" : "全屏");
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    if (!initial) {
+      this._isBleed = on;
+      // 尺寸变了，瓦片要重铺；等浏览器完成布局再算
+      requestAnimationFrame(() => this._engine?.render());
+    }
+    this._isBleed = on;
+  }
+
+  /* 外部尺寸变化后自愈：该全屏却没铺满就自动升级成 fixed */
+  _syncBleed() {
+    if (this._layout !== LAYOUT.FULL) return;
+    if (this._bleedUser !== undefined) return;
+    const want = this._wantBleed();
+    if (want !== this.classList.contains("cmc-bleed")) this._applyBleed(want);
+  }
+
+  _toggleBleed() {
+    const on = !this.classList.contains("cmc-bleed");
+    this._bleedUser = on;
+    this._applyBleed(on);
+  }
+
   _render() {
     const cfg = this._config;
     const base = BASEMAPS[cfg.basemap] || BASEMAPS.amap;
@@ -1019,11 +1126,11 @@ class HaCnMapCard extends HTMLElement {
     const isFull = layout === LAYOUT.FULL;
     // 官方在 panel 布局把缩放控件放右上、其它情况左上
     const zoomSide = isFull ? "right" : "left";
-    // fill：sections 视图里也铺满（用 vh 突破 grid 格子的固定高度）
+    // fill：sections 视图里也铺满（bleed 会接管实际铺满）
     const fill = cfg.fill === true;
-    const h = fill ? "100vh" : isFull ? "100%" : `${cfg.height || 360}px`;
+    const h = isFull ? "100%" : `${cfg.height || 360}px`;
     // 内联压过外部对宿主元素的 height:100% 拉伸（panel 视图会这样干）
-    if (typeof this.style !== "undefined") this.style.height = (isFull || fill) ? "" : h;
+    if (typeof this.style !== "undefined") this.style.height = isFull ? "" : h;
     this._isFull = isFull;
     this._zoomSide = zoomSide;
 
@@ -1037,13 +1144,6 @@ class HaCnMapCard extends HTMLElement {
           display:block;
           height:${h};
           ${(isFull || fill) ? "min-height:0;" : ""}
-          /* fill：整体脱离文档流铺满视口，sections 视图里也能全屏 */
-          ${fill ? `position:fixed !important;
-          inset:0 !important;
-          top:var(--header-height, 0px) !important;
-          height:auto !important;
-          max-height:none !important;
-          z-index:5;` : ""}
           --cmc-radius: var(--ha-card-border-radius, 12px);
           --cmc-surface: var(--card-background-color, #fff);
           --cmc-text: var(--primary-text-color, #111);
@@ -1051,6 +1151,25 @@ class HaCnMapCard extends HTMLElement {
           --cmc-divider: var(--divider-color, rgba(128,128,128,.22));
           --cmc-fill: var(--ha-color-fill-neutral-quiet-resting, rgba(128,128,128,.12));
           --cmc-shadow: var(--ha-box-shadow-m, 0 2px 8px rgba(0,0,0,.22));
+        }
+        /* ---- 真·全屏：脱离文档流铺满视口 ----
+           sections 视图的 grid 格子是固定高度，panel 视图也可能不给卡片高度，
+           靠 height:100% 永远突破不了。此处 position:fixed 直接跳出容器。 */
+        :host(.cmc-bleed) {
+          position:fixed !important;
+          top:var(--header-height, 0px) !important;
+          left:0 !important; right:0 !important; bottom:0 !important;
+          width:auto !important; height:auto !important;
+          min-height:0 !important; max-height:none !important;
+          margin:0 !important; padding:0 !important;
+          border-radius:0 !important;
+          z-index:5;
+          background:var(--map-background-color, #121212);
+        }
+        :host(.cmc-bleed) .cmc-card {
+          border-radius:0; border:none;
+          height:100%; width:100%;
+          background:var(--map-background-color, #121212);
         }
         .cmc-card {
           width:100%; height:100%; position:relative; overflow:hidden;
@@ -1283,7 +1402,7 @@ class HaCnMapCard extends HTMLElement {
           <button data-cluster aria-label="标记聚合" title="标记聚合" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.cluster}"/></svg></button>
           <button data-traffic aria-label="实时路况" title="实时路况" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.traffic}"/></svg></button>
           <button data-gear aria-label="地图设置" title="地图设置"><svg viewBox="0 0 24 24"><path d="${ICONS.cog}"/></svg></button>
-          ${isFull ? "" : `<button data-fs aria-label="全屏" title="全屏"><svg viewBox="0 0 24 24"><path d="${ICONS.fullscreen}"/></svg></button>`}
+          <button data-fs aria-label="全屏" title="全屏" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.fullscreen}"/></svg></button>
         </div>
 
         <div class="cmc-scale" aria-hidden="true"></div>
@@ -1353,6 +1472,9 @@ class HaCnMapCard extends HTMLElement {
         </div>
       </div>
     `;
+
+    // 先决定"要不要真正铺满"再建引擎：容器的最终尺寸直接影响首帧视野
+    this._applyBleed(this._wantBleed(), true);
 
     const mapEl = this.shadowRoot.querySelector(".cmc-map");
     this._engine = new CnTileEngine(mapEl);
@@ -1524,9 +1646,9 @@ class HaCnMapCard extends HTMLElement {
     });
     this.shadowRoot.querySelector("[data-fs]")?.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (typeof this.requestFullscreen === "function") {
-        this.requestFullscreen?.().catch(() => {});
-      }
+      // 浏览器原生 fullscreen 在 HA App 的 WebView 里基本无效（只对 <video> 生效），
+      // 所以这里用 CSS 的 position:fixed 铺满视口 —— 任何视图类型都能用。
+      this._toggleBleed();
     });
     // 全屏时点地图空白处不收起面板（官方行为），只在面板外点按才收起
     document.addEventListener("fullscreenchange", this._onFsChange = () => {
@@ -1719,6 +1841,7 @@ class HaCnMapCard extends HTMLElement {
   disconnectedCallback() {
     if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
     if (this._onFsChange) document.removeEventListener("fullscreenchange", this._onFsChange);
+    if (this._onKeyBleed) this.removeEventListener("keydown", this._onKeyBleed);
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
   }
 
@@ -1728,25 +1851,31 @@ class HaCnMapCard extends HTMLElement {
       this._ro = new ResizeObserver(() => {
         const layoutNow = this._resolveLayout();
         if (layoutNow !== this._layout) {
-          const cfg = this._config;
-          const wasFull = this._isFull;
-          this._layout = layoutNow;
-          this._isFull = layoutNow === LAYOUT.FULL;
-          // 布局切换需要重建控件位置；保持视野不动
-          const view = this._engine ? { c: this._engine.center, z: this._engine.zoom } : null;
-          this._render();
-          if (view && this._engine) {
-            this._engine.center = view.c;
-            this._engine.zoom = view.z;
-            this._engine.render();
-          }
-          if (this._hass) this._update();
+          this._syncLayout();
         } else {
+          // 尺寸变了：先看要不要自愈成全屏，再重铺瓦片
+          this._syncBleed();
           this._engine?.render();
         }
       });
       this._ro.observe(this);
     }
+    // 首帧后再判一次：刚挂上时祖先尺寸可能还没稳定
+    Promise.resolve().then(() => this._syncBleed());
+  }
+
+  /* 布局变了（panel 视图赋值 / 尺寸变化）时重建，并保住当前视野 */
+  _syncLayout() {
+    const view = this._engine ? { c: this._engine.center, z: this._engine.zoom } : null;
+    this._layout = this._resolveLayout();
+    this._isFull = this._layout === LAYOUT.FULL;
+    this._render();
+    if (view && this._engine) {
+      this._engine.center = view.c;
+      this._engine.zoom = view.z;
+      this._engine.render();
+    }
+    if (this._hass) this._update();
   }
 
   /* 聚焦实体：官方点击标记 / 点击列表项的"选中 + 飞行"语义。
@@ -2035,7 +2164,11 @@ class HaCnMapCard extends HTMLElement {
     });
   }
 
-  getCardSize() { return Math.ceil((this._config?.height || 360) / 50) + 1; }
+  getCardSize() {
+    // 全屏模式下高度由视口决定，给个大值免得 HA 按 360px 排格子
+    if (this._layout === LAYOUT.FULL || this.classList.contains("cmc-bleed")) return 10;
+    return Math.ceil((this._config?.height || 360) / 50) + 1;
+  }
 
   static async getConfigElement() {
     return document.createElement("ha-cn-map-card-editor");
@@ -2247,6 +2380,15 @@ class HaCnMapCardEditor extends HTMLElement {
         </div>
 
         <div class="row">
+          <label class="t">显示模式</label>
+          <select data-k="layout">
+            <option value="auto">自动（面板视图铺满，其它固定高度）</option>
+            <option value="full">总是铺满全屏</option>
+            <option value="compact">总是固定高度</option>
+          </select>
+        </div>
+
+        <div class="row">
           <label class="t">卡片高度（px）</label>
           <input type="number" data-k="height" min="180" max="900" step="10">
         </div>
@@ -2272,8 +2414,11 @@ class HaCnMapCardEditor extends HTMLElement {
 
     const cfg = { ...this._config };
     const keepZero = key === "hours_to_show";
-    if (value === "" || value === undefined || (value === 0 && !keepZero)) delete cfg[key];
+    if (key === "layout" && value === "auto") delete cfg.layout;
+    else if (value === "" || value === undefined || (value === 0 && !keepZero)) delete cfg[key];
     else cfg[key] = value;
+    // 选了"总是铺满"就不该再被固定高度卡住
+    if (key === "layout" && value === "full") delete cfg.height;
 
     // 底图切到需要 Key 的类型但没 Key 时提示，但不阻止保存
     this._config = cfg;
@@ -2375,7 +2520,7 @@ class HaCnMapCardEditor extends HTMLElement {
         // fit_entities 默认为 true，其余默认为 false
         el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
-        el.value = String(c[k] === undefined ? 0 : c[k]);
+        el.value = k === "layout" ? (c[k] || "auto") : String(c[k] === undefined ? 0 : c[k]);
       } else {
         el.value = c[k] === undefined ? (el.dataset.k === "height" ? 360 : "") : c[k];
       }
@@ -2413,4 +2558,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

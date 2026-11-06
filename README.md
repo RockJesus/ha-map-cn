@@ -227,27 +227,39 @@ show_traffic: false          # 高德实时路况叠加（仅 amap 底图）
 |---|---|
 | **panel（面板）** | 地图铺满整屏，右侧悬浮控件，左上角（手机为底部）概览面板 |
 | sections / masonry / grid | 按 `height` 给固定高度，底部抽屉默认收起 |
-| sections + `fill: true` | 地图以 `position:fixed` 铺满视口——**在 sections 视图里也能全屏**，不必改成面板视图 |
-| 任意（`fullscreen: true`） | 强制按全屏布局渲染 |
+| sections + `fill: true` | 地图脱离文档流铺满视口——**在 sections 视图里也能全屏**，不必改成面板视图 |
+| 任意（`layout: full`） | 强制按全屏布局渲染 |
+| 任意（点左下/左上 ⛶ 按钮） | 立刻全屏，再点或按 `Esc` 退出——**不改 YAML 也能全屏** |
 
 | 手机（底部抽屉） | 桌面（左侧浮层） |
 |---|---|
 | ![phone](examples/layout-phone.jpg) | ![desktop](examples/layout-desktop.jpg) |
 
-判定逻辑：卡片会测宿主容器高度，超过视口 55% 就认为在 panel 视图里。想强制指定用 `layout`：
+判定逻辑（v0.9.4 重写）：
+
+1. 先看 **`hui-card` 给卡片元素赋的 `layout` 属性**——panel 视图里它会被设成 `"panel"`，
+   这是官方 `hui-map-card` 用的同一个信号（比爬 DOM 可靠，因为卡片挂在 shadow root 里，
+   往上的 `parentElement` 会直接断掉）；
+2. 没有这个信号时，再**穿透 shadow root** 往上找 `hui-panel-view` / `hui-grid-section`；
+3. 判定为全屏但**实测没占满视口**时（panel 视图不给高度、sections 格子只有 410px），
+   自动升级为 `position:fixed` 真正铺满——不用你再手动补 `fill`。
+
+想强制指定用 `layout`：
 
 ```yaml
 type: custom:ha-cn-map-card
-layout: full      # full=铺满 | compact=固定高度；不填则自动判断
+layout: full      # full=铺满 | compact=固定高度 | 不填=自动判断
 ```
 
-**你的视图是 sections（网格）类型、卡片被困在固定高度的格子里？** 加一行 `fill: true` 即可，
-卡片会脱离文档流直接铺满整个视口（含 `--header-height` 让出顶栏）：
+**视图是 sections（网格）、卡片被困在固定高度格子里？** 三种办法任选：
 
 ```yaml
 type: custom:ha-cn-map-card
-fill: true
+fill: true        # 写法一：YAML 强制铺满（最稳）
 ```
+
+- 写法二：点卡片上的 ⛶ 全屏按钮，`Esc` 或再点一次退出（无需改 YAML）
+- 写法三：可视化编辑器里「显示模式」选「总是铺满全屏」
 
 ### 概览面板（对齐官方 hui-map-overview）
 
@@ -367,6 +379,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v0.9.4**：**修好"明明在面板视图却不能全屏"**——根因是布局探测用 `parentElement` 往上爬，而卡片挂在 `hui-card`／`hui-grid-section` 的 shadow root 里，`parentElement` 到边界就是 `null`，永远看不到 `hui-panel-view`，于是一律当成紧凑的 360px。现在改为：① 优先读 `hui-card` 赋给卡片的 `layout="panel"`（官方 `hui-map-card` 用的同一信号）；② 兜底遍历**穿透 shadow root**；③ 判定为全屏但实测不足一屏时自动升级 `position:fixed` 自愈。同时：⛶ 按钮改为 CSS 铺满（HA App 的 WebView 不支持 `requestFullscreen`），再点或按 `Esc` 退出，sections 视图也能一键全屏；编辑器新增「显示模式」（自动/总是铺满/总是固定高度）
 - **v0.9.3**：交互与官方对齐——**点击标记/列表项=聚焦飞行+选中**（再次点击才开 more-info，点空白或 `Esc` 取消）；新增平滑飞行 `flyTo`（550ms easeInOutQuad，手势立即接管，全屏时落点避开面板）；新增**键盘快捷键**（`+`/`-` 缩放、方向键平移、`Esc` 取消）；新增 **GPS 精度圈**（`gps_accuracy`，`show_accuracy` 默认开）；**轨迹方向箭头**（沿折线每 90px 一个小三角，白描边避免与同色轨迹线糊在一起）。修复：`setMarkers` 首次调用时 `_markerEls` 未初始化导致 `forEach` 抛错（首屏标记不渲染）；`flyTo` 的小数 zoom 需对瓦片层级取整，否则瓦片 URL 出现小数 z
 - **v0.9.2**：**标记状态行**——名称下方新增一行短状态（区域名 / 在家 / 离家+相对时间 / 车速 / 电量），`unavailable`、`unknown` 实体整枚标记灰显并标「离线」；新增配置 `show_status`（默认开），设置抽屉与可视化编辑器同步支持。修复：状态行与名称被 `inline-block` 排在同一行、垂直居中 padding 叠加导致下层文字被地图瓦片遮住
 - **v0.9.1**：新增 **`fill: true`**——sections（网格）视图里也能真正全屏（`position:fixed` 铺满视口，突破 grid 格子的固定高度限制）；sections 视图自动判定改回紧凑（之前会误判为全屏）；`layout: compact` 在 panel 视图下高度被外部拉伸为整屏的 bug（内联样式压过宿主拉伸）
