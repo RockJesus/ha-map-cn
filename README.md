@@ -5,6 +5,9 @@
 > 交互与布局对齐官方 `hui-map-card`：panel 视图自动铺满 + 底部/侧边概览面板。
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
+[![release](https://img.shields.io/github/v/release/RockJesus/ha-map-cn?display_name=tag)](https://github.com/RockJesus/ha-map-cn/releases)
+[![HACS Action](https://github.com/RockJesus/ha-map-cn/actions/workflows/hacs.yaml/badge.svg)](https://github.com/RockJesus/ha-map-cn/actions/workflows/hacs.yaml)
+[![Lint](https://github.com/RockJesus/ha-map-cn/actions/workflows/lint.yml/badge.svg)](https://github.com/RockJesus/ha-map-cn/actions/workflows/lint.yml)
 
 ## 安装（HACS，资源自动添加）
 
@@ -33,6 +36,12 @@
 ### 手动安装（不用 HACS）
 
 下载 `ha-cn-map-card.js`（发布产物已是自足的单文件）放到 `/config/www/`，资源里加 `/local/ha-cn-map-card.js`，类型选 **JavaScript Module**。
+
+## 截图
+
+![桌面布局](images/layout-desktop.jpg)
+
+![标记聚合](images/cluster-on.jpg)
 
 ## 为什么需要它
 
@@ -405,6 +414,21 @@ Key 无效或未开通「浏览器端」类型。到控制台检查应用类型�
 
 ---
 
+## 发布与兼容（HA 自定义卡片规范）
+
+| 项目 | 取值 |
+|---|---|
+| 卡片类型 | `custom:ha-cn-map-card`（`window.customCards` 注册，带 `preview` 与文档链接） |
+| 资源类型 | **JavaScript Module**（单文件 ESM，无运行时依赖） |
+| 发布产物 | 每个 GitHub Release 附带 `ha-cn-map-card.js` 单文件 asset（UTF-8 无 BOM） |
+| HACS 元数据 | `hacs.json`：`name` / `filename` / `render_readme` / `hide_default_branch` / `homeassistant` |
+| 最低 HA | 2024.1（`getGridOptions` 与旧 sections 接口都兼容） |
+| 仓库元数据 | 描述 + topics（`hacs` / `home-assistant` / `lovelace` / `custom-card`），CI 跑 HACS Action 与 ESLint |
+| 编辑器 | `getConfigElement()` 返回 `ha-cn-map-card-editor`；`getStubConfig()` 提供默认配置 |
+
+> 手工安装只需一个文件：把 release 里的 `ha-cn-map-card.js` 放到 `/config/www/`，资源里加
+> `/local/ha-cn-map-card.js`（类型 JavaScript Module）。HACS 会自动读取 release asset 并注册资源。
+
 ## 开发
 
 零构建、零依赖、原生 ES 模块：改完代码直接刷新页面就生效，没有打包步骤。入口 `ha-cn-map-card.js` 只负责注册自定义元素，实现拆在 `src/` 下。
@@ -448,6 +472,7 @@ images/                 # README 截图
 
 ## 版本历史
 
+- **v1.2.9**：按 HA 自定义卡片发布规范补齐——Release 附带单文件 `ha-cn-map-card.js` asset、`hacs.json` 改为 release 资产模式、补齐仓库描述/topics 与 `package.json` 元数据、README 增加截图与发布说明、新增 HACS 侧 `info.md`。功能与 v1.2.8 一致。
 - **v1.2.8**：拖动家图标/半径手柄松手后不再误开「最近活动」详情（松手后 400ms 内吞掉补发的 click）
 - **v1.2.7**：修复「人员」标签页偶发消失（人员按 HA 全部 person 实体列出，不再依赖当前是否有坐标）；新增地图上拖动家的图标改位置、拖动半径圈手柄改半径（松手自动保存，只影响本卡片）
 - **v1.2.6**：修复设置里实体清单排版（勾选框、名称、实体 ID 同行显示）；实体清单只列出真正带坐标的可定位实体
