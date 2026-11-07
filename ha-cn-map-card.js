@@ -1998,7 +1998,8 @@ class HaCnMapCard extends HTMLElement {
     this._saveRuntime();
     // 注意：_render() 会把 shadow DOM 整个换掉，而此刻事件还在往当前元素冒泡，
     // 直接重建会让监听器执行到一半节点就没了。放到微任务里再重建。
-    const rebuild = ["basemap", "tianditu_key", "show_traffic", "hours_to_show", "height"].includes(k);
+    // theme_mode 也要重建：暗色类是挂在 .cmc-card 上的，_update 不会改它
+    const rebuild = ["basemap", "theme_mode", "tianditu_key", "show_traffic", "hours_to_show", "height"].includes(k);
     if (rebuild) {
       Promise.resolve().then(() => {
         this._render();
