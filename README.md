@@ -106,7 +106,12 @@ tianditu_key: ""             # 用天地图时必填
 
 entities:                    # 指定实体；不填则配合 show_all
   - person.me
-  - device_tracker.car
+  - entity: device_tracker.car   # 对象形式：逐实体覆盖显示
+    name: 家里那台
+    color: "#e53935"
+    label_mode: attribute
+    attribute: battery_level
+    unit: "%"
 show_all: false              # true = 自动列出所有 person./device_tracker./geo_location.
 show_zones: false            # true = 显示 zone.* 区域图标
 show_status: true            # 标记下方状态行（在家 / 离线 / 速度 / 电量），默认开
@@ -125,7 +130,17 @@ hours_to_show: 0             # >0 时绘制轨迹线（0=关闭，24=最近24小
 track_width: 3               # 轨迹线宽
 track_opacity: 0.85          # 轨迹不透明度
 show_traffic: false          # 高德实时路况叠加（仅 amap 底图）
+
+# —— 外观（v1.0.x 新增）——
+theme_mode: auto             # auto(跟随 HA 主题) | light | dark
+label_mode: name             # name | state | attribute | none（可逐实体覆盖）
+aspect_ratio: ""             # 如 "16:9"；填了忽略 height
+show_zone_radius: true       # 按 zone.radius 画虚线半径圈
+fit_zones: false             # 自动缩放时把半径圈算进视野
+dedupe_trackers: true        # person 已覆盖的 device_tracker 不再单独画点
 ```
+
+> 完整字段以 `setConfig` 默认值为准（[源码](ha-cn-map-card.js)）；抽屉与可视化编辑器改过的选项会存在浏览器本地，优先于 YAML，`persist: false` 可关闭这一行为。
 
 ### 底图对比
 
@@ -331,6 +346,13 @@ HA 里的实体坐标是 **WGS84**。高德底图使用 **GCJ-02**，两者在�
 
 ---
 
+## 隐私
+
+- 底图瓦片请求只带瓦片坐标（`z/x/y`），**不包含任何实体数据**
+- 实体位置只在你自己的浏览器里渲染，不会上传到任何第三方
+- 历史轨迹走你自家 HA 的 WebSocket（`history/stream`），不经过外部服务
+- 唯一可选的对外请求是底图瓦片本身；天地图需要 Key，高德/OSM 不需要
+
 ## 常见问题
 
 **底图还是不出来？**
@@ -410,6 +432,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v1.1.0**：**仓库瘦身 + 文档只留这一份**——之前工作区根目录还躺着一份 v0.4 时代的旧 README，配置表写的还是早已废弃的 `provider` / `style`（现在叫 `basemap`），照着配必然报错；已删除，内容合并到这里。同时按 HACS 规范补齐仓库元数据：`hacs.json` 显式声明 `content_in_root`，新增 `.hacsignore` 排除 `examples/`（那几张截图有几百 KB，装卡片的人用不上），README 的配置示例补上 v1.0.x 新增的 `theme_mode` / `label_mode` / `aspect_ratio` / `show_zone_radius` / `fit_zones` / `dedupe_trackers` 与 `entities` 对象写法，并加了隐私说明（瓦片请求只带 `z/x/y`，位置数据不出你的浏览器）
 - **v1.0.9**：**想做成 16:9 大屏就写 `aspect_ratio`**——新增官方 `aspect_ratio` 配置（`16:9` / `4/3` / `1:1` / `21:9`，`:` `/` `x` 都认），填了就忽略 `height`，卡片按容器宽度自适应高度；`getCardSize()` 也按官方公式折算成格数，masonry 视图不会给你留一坨空白。全屏态不生效（铺满优先）。非法值自动回落 `height`，不会把卡片搞没
 - **v1.0.8**：**轨迹线能问「这是几点」了**——把鼠标移到轨迹上，会浮出那个点的 `HH:MM · 20 分钟前`。实现上没给每个点建元素（24 小时轨迹常有几百个点，那样会把渲染拖垮），而是抽稀成屏幕上间隔 ≥14px、每条最多 80 个透明命中圈，贴着鼠标出提示、移开即消失
 - **v1.0.7**：**标签想显示什么就显示什么**——新增官方 `label_mode` 语义：`name`（默认）/ `state` / `attribute` / `none`。`state` 走 `hass.formatEntityState` 拿本地化文本（「在家」「45 km/h」），不是生硬的 `home`；`attribute` 可以显示任意属性，比如共享汽车的电量。既能全局设，也能在 `entities` 里**逐实体覆盖**：`{entity: device_tracker.car, label_mode: attribute, attribute: battery_level, unit: "%"}`。同一个对象里还支持 `name:` 改显示名、`color:` 改颜色。设置抽屉与可视化编辑器都有入口

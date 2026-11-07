@@ -1,0 +1,3 @@
+# HACS 下载时排除（examples 里的截图对运行没意义，省体积）
+examples/
+.github/
