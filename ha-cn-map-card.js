@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.0.1 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.2 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -271,6 +271,13 @@ class CnTileEngine extends EventTarget {
         hic.setAttribute("icon", m.icon || "mdi:home");
         hm.appendChild(hic);
         el.appendChild(hm);
+        // 区域也要名字（官方 zone 标记带区域名），否则一排图标分不清是家还是公司
+        if (m.label) {
+          const lb = document.createElement("div");
+          lb.className = "cmc-label";
+          lb.textContent = m.label;
+          el.appendChild(lb);
+        }
         el.addEventListener("click", (e) => {
           e.stopPropagation();
           this.dispatchEvent(new CustomEvent("marker-click", { detail: { entityId: m.entityId } }));
@@ -399,10 +406,11 @@ class CnTileEngine extends EventTarget {
       el.setAttribute("cy", y.toFixed(1));
       el.setAttribute("r", r.toFixed(1));
       el.setAttribute("fill", ci.color || "#03a9f4");
-      el.setAttribute("fill-opacity", "0.10");
+      el.setAttribute("fill-opacity", String(ci.fillOpacity ?? 0.10));
       el.setAttribute("stroke", ci.color || "#03a9f4");
-      el.setAttribute("stroke-opacity", "0.30");
-      el.setAttribute("stroke-width", "1.5");
+      el.setAttribute("stroke-opacity", String(ci.strokeOpacity ?? 0.30));
+      el.setAttribute("stroke-width", String(ci.strokeWidth ?? 1.5));
+      if (ci.dashed) el.setAttribute("stroke-dasharray", "5 4");
       group.appendChild(el);
     }
   }
@@ -801,6 +809,7 @@ const RUNTIME_KEYS = [
   "show_traffic",
   "hours_to_show",
   "show_zones",
+  "show_zone_radius",
   "show_labels",
   "show_cluster",
   "show_status",
@@ -973,6 +982,8 @@ class HaCnMapCard extends HTMLElement {
       show_traffic: false,       // 高德实时路况叠加
       show_all: false,
       show_zones: false,
+      show_zone_radius: true,    // zone 半径圈（官方把半径当 zone 的核心属性）
+      fit_zones: false,          // 自动适配视野时把区域半径圈也算进去
       show_labels: true,
       show_status: true,         // 标记下方状态行（在家 / 离线 / 速度 / 电量 / 相对时间）
       show_accuracy: true,       // GPS 精度圈（gps_accuracy，对齐官方）
@@ -1546,6 +1557,7 @@ class HaCnMapCard extends HTMLElement {
               <label class="chk"><span>标记显示状态</span><input type="checkbox" data-d="show_status"></label>
               <label class="chk"><span>GPS 精度圈</span><input type="checkbox" data-d="show_accuracy"></label>
               <label class="chk"><span>显示区域（家）</span><input type="checkbox" data-d="show_zones"></label>
+              <label class="chk"><span>区域半径圈</span><input type="checkbox" data-d="show_zone_radius"></label>
               <label class="chk"><span>实时路况（仅高德）</span><input type="checkbox" data-d="show_traffic"></label>
               <label>轨迹时长
                 <select data-d="hours_to_show">
@@ -1903,7 +1915,7 @@ class HaCnMapCard extends HTMLElement {
     d.querySelectorAll("[data-d]").forEach((el) => {
       const k = el.dataset.d;
       // 默认开启的开关：值缺省时按 true 显示
-      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status", "show_accuracy"].includes(k) : !!c[k];
+      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status", "show_accuracy", "show_zone_radius"].includes(k) : !!c[k];
       else if (k === "hours_to_show") el.value = String(Number(c[k]) || 0);
       else el.value = c[k] === undefined ? "" : c[k];
     });
@@ -2284,35 +2296,58 @@ class HaCnMapCard extends HTMLElement {
         sub: cfg.show_status === false ? "" : this._markerSub(s, states),
         offline: OFFLINE_STATES.has(String(s.state).toLowerCase()),
       });
-      pts.push({ lat: latitude, lng: longitude }); // fitBounds 用原始坐标
+      pts.push({ lat, lng }); // fitBounds 必须用底图坐标系（已纠偏），否则自动适配中心偏 500m
     });
 
+    const zoneCircles = [];
     if (cfg.show_zones) {
       Object.values(hass.states).filter((s) => s.entity_id.startsWith("zone.")).forEach((z) => {
-        const { latitude, longitude, friendly_name, passive } = z.attributes;
+        const { latitude, longitude, friendly_name, passive, radius } = z.attributes;
         if (latitude == null || passive) return;
         let lat = latitude, lng = longitude;
         if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
+        const name = friendly_name || z.entity_id;
         markers.push({
           lat, lng,
           entityId: z.entity_id,
-          short: friendly_name || z.entity_id,
+          short: name,
+          label: cfg.show_labels === false ? "" : name,
           clusterable: false,   // 家/区域不参与聚合，永远单独显示
           home: true,
           icon: z.attributes.icon || "mdi:home",
         });
-        pts.push({ lat: latitude, lng: longitude });
+        pts.push({ lat, lng });
+        // 区域半径圈：radius 才是 zone 的核心属性（官方把 zone 画成带半径的圆）。
+        // 旧版本只画小房子图标，半径信息完全丢失（v1.0.2 补）
+        const r = Number(radius);
+        if (cfg.show_zone_radius !== false && Number.isFinite(r) && r > 0) {
+          zoneCircles.push({
+            entityId: z.entity_id,
+            lat, lng,
+            radius: r,
+            color: this._zoneColor(z),
+            dashed: true,
+            fillOpacity: 0.12,
+            strokeOpacity: 0.55,
+            strokeWidth: 2,
+          });
+          if (cfg.fit_zones) {
+            // 半径圈的四极值点也纳入自动适配，否则大区域会被裁掉半圈
+            const dLat = r / 111320;
+            const dLng = r / (111320 * Math.cos((lat * Math.PI) / 180));
+            pts.push({ lat: lat + dLat, lng }, { lat: lat - dLat, lng });
+            pts.push({ lat, lng: lng + dLng }, { lat, lng: lng - dLng });
+          }
+        }
       });
     }
 
     this._lastMarkers = markers; // 聚焦缩放要用显示坐标（已按底图纠偏）算最近标记
     this._engine.setMarkers(markers, { cluster: cfg.show_cluster !== false });
     this._syncTracks(states);
-    // 精度圈：对齐官方 ha-map 的 gps_accuracy 语义，默认开，zone 不画
-    if (cfg.show_accuracy === false) {
-      this._engine.setAccuracyCircles([]);
-    } else {
-      const circles = [];
+    // 圈层：区域半径圈在下、GPS 精度圈在上（都在轨迹层，标记之下）
+    const circles = [...zoneCircles];
+    if (cfg.show_accuracy !== false) {
       states.forEach((s) => {
         const acc = Number(s.attributes.gps_accuracy);
         const { latitude, longitude } = s.attributes;
@@ -2326,8 +2361,8 @@ class HaCnMapCard extends HTMLElement {
           (s.entity_id.split(".")[0] === "person" ? "#58a6f0" : "#8bc34a");
         circles.push({ entityId: s.entity_id, lat: clat, lng: clng, radius: acc, color });
       });
-      this._engine.setAccuracyCircles(circles);
     }
+    this._engine.setAccuracyCircles(circles);
     // 只在首次、且用户还没手动拖动/缩放时自动适配视野
     if (cfg.fit_entities && pts.length && !this._didFit && !this._engine._userMoved) {
       // 全屏时给概览面板留出空间，免得标记被面板盖住
@@ -2402,6 +2437,18 @@ class HaCnMapCard extends HTMLElement {
       return rel ? `离家 · ${rel}` : "离家";
     }
     return this._relTime(st.last_updated || st.last_changed);
+  }
+
+  /* 区域配色：官方 zoneColor —— 家取主色，非被动区域按实体 id 取一个稳定调色板色 */
+  _zoneColor(st) {
+    const css = getComputedStyle(this);
+    if (st.entity_id === "zone.home") {
+      return css.getPropertyValue("--primary-color").trim() || "#03a9f4";
+    }
+    const palette = ["#5c6bc0", "#26a69a", "#8d6e63", "#7e57c2", "#42a5f5"];
+    let h = 5381;
+    for (let i = 0; i < st.entity_id.length; i++) h = (h * 33 + st.entity_id.charCodeAt(i)) % 2147483647;
+    return palette[h % palette.length];
   }
 
   _zoneForState(st, zones) {
@@ -2672,6 +2719,14 @@ class HaCnMapCardEditor extends HTMLElement {
             <label class="switch"><input type="checkbox" data-k="show_zones"><span class="slider"></span></label>
           </div>
           <div class="row inline" style="margin-top:10px">
+            <label class="t">区域半径圈（按 zone 的 radius 画圆）</label>
+            <label class="switch"><input type="checkbox" data-k="show_zone_radius"><span class="slider"></span></label>
+          </div>
+          <div class="row inline" style="margin-top:10px">
+            <label class="t">自动适配视野包含区域半径</label>
+            <label class="switch"><input type="checkbox" data-k="fit_zones"><span class="slider"></span></label>
+          </div>
+          <div class="row inline" style="margin-top:10px">
             <label class="t">标记聚合（相近的合并成一个气泡）</label>
             <label class="switch"><input type="checkbox" data-k="show_cluster"><span class="slider"></span></label>
           </div>
@@ -2870,7 +2925,7 @@ class HaCnMapCardEditor extends HTMLElement {
       const k = el.dataset.k;
       if (el.type === "checkbox") {
         // fit_entities 默认为 true，其余默认为 false
-        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy"].includes(k) : !!c[k];
+        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy", "show_zone_radius"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
         el.value = k === "layout" ? (c[k] || "auto") : String(c[k] === undefined ? 0 : c[k]);
       } else {
@@ -2910,4 +2965,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v1.0.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
