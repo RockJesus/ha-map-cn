@@ -448,6 +448,7 @@ images/                 # README 截图
 
 ## 版本历史
 
+- **v1.1.9**：**继续向官方 map 卡片对齐（第一批）**——① **选中态双向同步**：点标记或列表项会把 `?entity_id=` 写进地址栏，刷新、分享、从别的页面退回来都能还原「选中 + 详情」；点空白处或按 Esc 取消选中时同步清掉参数（用 `replaceState` 替换当前记录，不新增历史，也不惊动 HA 路由）。② **详情页补齐官方两个入口**：「导航」（有坐标才显示；iOS 走 Apple 地图、Android 走 `geo:`、桌面走高德网页版）与「实体设置」（仅管理员可见，直接打开 more-info 的设置页）。③ **Tab 自适应**：只渲染有内容的分组，只剩一组时隐藏滑动药丸，三个分组全空时给一句「地图上还没有可显示的实体」，不再摆三个灰按钮
 - **v1.1.8**：**源码与发布产物分离**——HA 的插件安装只认单文件（tree 模式不进子目录，zip_release 解压后校验又要求 zip 本身在安装目录里），多文件分发两条路都走不通。最终采用标准做法：`src/` 四个模块继续作为源码维护（`src/main.js` 为构建入口），esbuild 打成单文件 `ha-cn-map-card.js` 作为发布产物（`pnpm build`，产物提交进仓库），`hacs.json` 回到 `filename: ha-cn-map-card.js`。功能与 v1.1.6 一致
 - **v1.1.7**：**zip_release 分发（失败版本）**——`hacs.json` 改 `zip_release` + `ha-map-cn.zip`，实测 HA 内置 marketplace 校验要求安装目录里存在 zip 本身，安装报 `The installed content has no ha-map-cn.zip`，方案作废
 - **v1.1.6**：**代码拆分 + ESLint**——单文件按职责拆成四个原生 ES 模块：`src/shared.js`（底图源 / GCJ-02 纠偏 / 常量）、`src/engine.js`（瓦片引擎）、`src/card.js`（卡片主类）、`src/editor.js`（编辑器），入口只负责注册自定义元素；仍是零构建，HACS 下载后相对 import 直接可用。接入 ESLint（flat config，`pnpm lint`，CI 每次推送跑），清掉全部 16 处问题：未用变量、无用赋值、精度丢失的字面量、重复注册等。卡片功能与 v1.1.5 完全一致
