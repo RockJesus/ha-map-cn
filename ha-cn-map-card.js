@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.1.2 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.1.3 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -979,6 +979,8 @@ class HaCnMapCard extends HTMLElement {
     this._trackPoints = {};   // entityId -> [{lat,lng}]
     this._trackUnsub = null;  // history 订阅取消函数
     this._trackSig = "";      // 订阅参数签名，避免重复订阅
+    this._hiddenIds = null;   // 实体注册表里 hidden_by 非空的实体集合；null = 尚未拉取
+    this._registryTried = false; // 注册表只拉一次，失败（权限/旧版本 HA）不重试
     // 官方交互：首次点标记 = 聚焦飞行 + 选中；设 false 恢复"直接弹 more-info"
     this._focusOnMarkerClick = true;
     this._bleedUser = undefined; // 用户点全屏按钮的选择：true 铺满 / false 不铺满 / undefined 自动
@@ -1034,6 +1036,7 @@ class HaCnMapCard extends HTMLElement {
       show_zones: false,
       show_zone_radius: true,    // zone 半径圈（官方把半径当 zone 的核心属性）
       dedupe_trackers: true,     // person 已覆盖的 device_tracker 不再单独画点
+      respect_hidden: true,      // 实体注册表里被用户隐藏（hidden_by）的实体不再上地图
       fit_zones: false,          // 自动适配视野时把区域半径圈也算进去
       show_labels: true,
       label_mode: "name",        // name | state | attribute | none（可在 entities 里逐实体覆盖）
@@ -1069,6 +1072,29 @@ class HaCnMapCard extends HTMLElement {
       this.shadowRoot?.querySelector(".cmc-card")?.classList.toggle("is-dark", dark);
     }
     if (this._engine) this._update();
+    // 用户在 HA 设置里隐藏的实体不该出现在地图上（官方 hui-map-card 同样查注册表）。
+    // 注册表是一次异步请求，回来自动触发一次重绘
+    this._ensureEntityRegistry();
+  }
+
+  /* 拉一次实体注册表，缓存 hidden_by 非空的实体集合。
+     只在 show_all / geo_location_sources 自动收集时生效；
+     用户显式写进 entities: 的实体永远照画——点名了就不替他做决定。
+     HA 2023.4+ 才有 hidden_by；拿不到（权限/版本）就置空集合并永不重试 */
+  _ensureEntityRegistry() {
+    if (this._registryTried || this._preview) return;
+    const conn = this._hass?.connection;
+    if (!conn?.sendMessagePromise) return;
+    this._registryTried = true;
+    Promise.resolve()
+      .then(() => conn.sendMessagePromise({ type: "config/entity_registry/list" }))
+      .then((entries) => {
+        this._hiddenIds = new Set(
+          (entries || []).filter((e) => e?.hidden_by).map((e) => e.entity_id)
+        );
+        if (this._hiddenIds.size && this._config?.respect_hidden !== false && this._engine) this._update();
+      })
+      .catch(() => { this._hiddenIds = new Set(); });
   }
 
   /* 解析 "16:9" / "4/3" / "21x9" 这类宽高比；非法值返回 null */
@@ -1688,6 +1714,7 @@ class HaCnMapCard extends HTMLElement {
               <label class="chk"><span>GPS 精度圈</span><input type="checkbox" data-d="show_accuracy"></label>
               <label class="chk"><span>显示区域（家）</span><input type="checkbox" data-d="show_zones"></label>
               <label class="chk"><span>区域半径圈</span><input type="checkbox" data-d="show_zone_radius"></label>
+              <label class="chk"><span>跳过已隐藏实体</span><input type="checkbox" data-d="respect_hidden"></label>
               <label class="chk"><span>实时路况（仅高德）</span><input type="checkbox" data-d="show_traffic"></label>
               <label>轨迹时长
                 <select data-d="hours_to_show">
@@ -1969,17 +1996,26 @@ class HaCnMapCard extends HTMLElement {
       });
     }
     let ids = [];
-    if (cfg.entities?.length) ids = [...cfg.entities];
+    if (cfg.entities?.length) {
+      // entities 支持字符串与对象两种写法（对象：{entity, color, name, label_mode, attribute, unit}）。
+      // 之前直接 [...cfg.entities] 原样拷贝，对象条目会被 hass.states[id] 查成 undefined 滤掉——
+      // 只写 entities 不开 show_all 时对象实体根本不上地图（v1.1.3 顺带修）
+      ids = cfg.entities.map((e) => (typeof e === "object" ? e.entity : e)).filter(Boolean);
+    }
     if (cfg.show_all) {
+      const skipHidden = cfg.respect_hidden !== false && this._hiddenIds;
       ids = Object.keys(hass.states).filter((id) => {
         const d = hass.states[id];
+        if (skipHidden && this._hiddenIds.has(id)) return false;
         if (personSources.has(id)) return false;
         return d?.attributes?.latitude != null && (id.startsWith("person.") || id.startsWith("device_tracker.") || id.startsWith("geo_location."));
       });
     }
     if (cfg.geo_location_sources?.length) {
+      const skipHiddenGeo = cfg.respect_hidden !== false && this._hiddenIds;
       ids.push(...Object.keys(hass.states).filter((id) => {
         const d = hass.states[id];
+        if (skipHiddenGeo && this._hiddenIds.has(id)) return false;
         return id.startsWith("geo_location.") && cfg.geo_location_sources.includes(d.attributes?.source);
       }));
     }
@@ -2095,7 +2131,7 @@ class HaCnMapCard extends HTMLElement {
     d.querySelectorAll("[data-d]").forEach((el) => {
       const k = el.dataset.d;
       // 默认开启的开关：值缺省时按 true 显示
-      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status", "show_accuracy", "show_zone_radius"].includes(k) : !!c[k];
+      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status", "show_accuracy", "show_zone_radius", "respect_hidden"].includes(k) : !!c[k];
       else if (k === "hours_to_show") el.value = String(Number(c[k]) || 0);
       else if (k === "theme_mode") el.value = c[k] || "auto";
       else if (k === "label_mode") el.value = c[k] || "name";
@@ -3012,6 +3048,10 @@ class HaCnMapCardEditor extends HTMLElement {
             <label class="switch"><input type="checkbox" data-k="dedupe_trackers"><span class="slider"></span></label>
           </div>
           <div class="row inline" style="margin-top:10px">
+            <label class="t">跳过实体注册表里隐藏的实体</label>
+            <label class="switch"><input type="checkbox" data-k="respect_hidden"><span class="slider"></span></label>
+          </div>
+          <div class="row inline" style="margin-top:10px">
             <label class="t">自动适配视野包含区域半径</label>
             <label class="switch"><input type="checkbox" data-k="fit_zones"><span class="slider"></span></label>
           </div>
@@ -3229,7 +3269,7 @@ class HaCnMapCardEditor extends HTMLElement {
       const k = el.dataset.k;
       if (el.type === "checkbox") {
         // fit_entities 默认为 true，其余默认为 false
-        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy", "show_zone_radius", "dedupe_trackers"].includes(k) : !!c[k];
+        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy", "show_zone_radius", "dedupe_trackers", "respect_hidden"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
         el.value = k === "layout" ? (c[k] || "auto")
           : k === "theme_mode" ? (c[k] || "auto")
@@ -3273,4 +3313,4 @@ window.customCards.push({
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.1.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.1.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
