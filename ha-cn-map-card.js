@@ -1237,6 +1237,22 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       sheetOk = false;
     }
     this._sheetOk = sheetOk;
+    if (phone && !sheetOk && !this._sheetWait) {
+      this._sheetWait = true;
+      try {
+        window.customElements.whenDefined("ha-snap-bottom-sheet").then(() => {
+          this._sheetWait = false;
+          if (this.isConnected && this._isPhone()) {
+            this._render();
+            this._update();
+          }
+        }).catch(() => {
+          this._sheetWait = false;
+        });
+      } catch {
+        this._sheetWait = false;
+      }
+    }
     let rtl;
     try {
       rtl = getComputedStyle(this).direction === "rtl";
@@ -3372,4 +3388,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.2.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.2.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
