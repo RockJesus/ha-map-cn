@@ -1286,7 +1286,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           min-height:0 !important; max-height:none !important;
           margin:0 !important; padding:0 !important;
           border-radius:0 !important;
-          z-index:5;
+          /* 必须高于 HA 侧栏（展开态会盖住面板）；同时保持低于全局弹层层级 */
+          z-index:1200;
           background:var(--map-background-color, #121212);
         }
         :host(.cmc-bleed) .cmc-card {
@@ -3389,4 +3390,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.2.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.2.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

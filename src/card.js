@@ -410,7 +410,8 @@ class HaCnMapCard extends HTMLElement {
           min-height:0 !important; max-height:none !important;
           margin:0 !important; padding:0 !important;
           border-radius:0 !important;
-          z-index:5;
+          /* 必须高于 HA 侧栏（展开态会盖住面板）；同时保持低于全局弹层层级 */
+          z-index:1200;
           background:var(--map-background-color, #121212);
         }
         :host(.cmc-bleed) .cmc-card {
