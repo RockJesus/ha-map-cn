@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.0.7 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.8 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -28,6 +28,8 @@ class CnTileEngine extends EventTarget {
       "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:hidden";
     this.pathLayer.setAttribute("preserveAspectRatio", "none");
     this._pathGroups = new Map(); // entityId -> <path>
+    this._hitGroup = null;        // 轨迹点悬停命中层
+    this.onTrackHover = null;     // (info | null) => void，由卡片接管 tooltip
     this._paths = [];             // [{entityId, color, points}]
     // 聚合层：位于标记之上，承载多成员气泡
     this.clusterLayer = document.createElement("div");
@@ -427,6 +429,8 @@ class CnTileEngine extends EventTarget {
   _layoutPaths(w, h) {
     if (!this._paths.length) {
       this._arrowGroup?.remove();
+      this._hitGroup?.remove();
+      this._hitGroup = null;
       return;
     }
     const c = CnTileEngine.project(this.center.lat, this.center.lng);
@@ -437,6 +441,9 @@ class CnTileEngine extends EventTarget {
     this._arrowGroup?.remove();
     const arrowGroup = this._arrowGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     this.pathLayer.appendChild(arrowGroup);
+    this._hitGroup?.remove();
+    this._hitGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    this.pathLayer.appendChild(this._hitGroup);
     const SPACING = 90, ARROW = 7; // 箭头半边长 px（6px 以下在高分屏上几乎看不见）
     this._paths.forEach((p) => {
       const el = this._pathGroups.get(p.entityId);
@@ -454,11 +461,32 @@ class CnTileEngine extends EventTarget {
           screen.length = 0;
           continue;
         }
-        screen.push({ x, y });
+        screen.push({ x, y, t: pt.t });
         d += `${drawing ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
         drawing = true;
       }
       el.setAttribute("d", d);
+      // 轨迹点悬停：抽稀成屏幕距离 ≥14px 的透明命中圆（几百个点各建一个元素会拖慢渲染）
+      if (screen.some((q) => q.t != null)) {
+        let lx = -1e9, ly = -1e9, made = 0;
+        for (const q of screen) {
+          if (q.t == null) continue;
+          if (Math.hypot(q.x - lx, q.y - ly) < 14) continue;
+          if (made >= 80) break;
+          lx = q.x; ly = q.y; made++;
+          const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          dot.setAttribute("cx", q.x.toFixed(1));
+          dot.setAttribute("cy", q.y.toFixed(1));
+          dot.setAttribute("r", "7");
+          dot.setAttribute("fill", "transparent");
+          dot.setAttribute("style", "pointer-events:all");
+          const when = q.t;
+          dot.addEventListener("mouseenter", (e) =>
+            this.onTrackHover?.({ x: e.clientX, y: e.clientY, t: when, entityId: p.entityId, color: p.color }));
+          dot.addEventListener("mouseleave", () => this.onTrackHover?.(null));
+          this._hitGroup.appendChild(dot);
+        }
+      }
       // 沿折线按累计弧长取点放箭头；点太少或全在屏外则跳过
       if (screen.length < 2) return;
       const segs = [];
@@ -1252,6 +1280,16 @@ class HaCnMapCard extends HTMLElement {
           height:100%; width:100%;
           background:var(--map-background-color, #121212);
         }
+        /* 轨迹点悬停提示（v1.0.8）：跟随鼠标的极小浮层 */
+        .cmc-tip {
+          position:absolute; z-index:30; pointer-events:none; white-space:nowrap;
+          padding:3px 7px; border-radius:6px; font-size:11.5px; line-height:1.3;
+          font-variant-numeric:tabular-nums;
+          background:var(--card-background-color, #fff); color:var(--primary-text-color, #212121);
+          box-shadow:0 2px 8px rgba(0,0,0,.28);
+          transform:translate(-50%, -100%); transition:opacity .1s;
+        }
+        .cmc-tip[hidden] { display:none; }
         .cmc-card {
           width:100%; height:100%; position:relative; overflow:hidden;
           border-radius:var(--cmc-radius);
@@ -1528,6 +1566,7 @@ class HaCnMapCard extends HTMLElement {
         }
       </style>
       <div class="cmc-card">
+        <div class="cmc-tip" hidden></div>
         ${titleHtml}
         <div class="cmc-map"></div>
 
@@ -1654,6 +1693,7 @@ class HaCnMapCard extends HTMLElement {
 
     const mapEl = this.shadowRoot.querySelector(".cmc-map");
     this._engine = new CnTileEngine(mapEl);
+    this._engine.onTrackHover = (info) => this._showTrackTip(info);
     this._engine.removeTileSets();
     base.layers.forEach((l, i) => {
       this._engine.addTileSet({
@@ -1958,7 +1998,12 @@ class HaCnMapCard extends HTMLElement {
               .map((st) => {
                 const lat = st.a?.latitude, lng = st.a?.longitude;
                 if (typeof lat !== "number" || typeof lng !== "number") return null;
-                return { lat, lng };
+                // history/stream 的时间字段：minimal_response 下是 lc(秒)，否则可能是 ISO
+                const raw = st.lc ?? st.last_changed ?? st.lu ?? st.last_updated ?? null;
+                let t = null;
+                if (typeof raw === "number") t = raw < 1e12 ? raw * 1000 : raw;
+                else if (typeof raw === "string") { const ms = Date.parse(raw); t = Number.isFinite(ms) ? ms : null; }
+                return { lat, lng, t };
               })
               .filter(Boolean);
             this._trackPoints[id] = pts;
@@ -1997,11 +2042,26 @@ class HaCnMapCard extends HTMLElement {
         points: pts.map((p) => {
           if (!shift) return p;
           const [gl, gn] = GCJ.wgs2gcj(p.lat, p.lng);
-          return { lat: gl, lng: gn };
+          return { lat: gl, lng: gn, t: p.t };
         }),
       });
     });
     this._engine.setPaths(paths);
+  }
+
+  /* 轨迹点悬停：显示该点的 HH:MM 与相对时间（官方轨迹 tooltip 语义） */
+  _showTrackTip(info) {
+    const tip = this.shadowRoot?.querySelector(".cmc-tip");
+    if (!tip) return;
+    if (!info || !info.t) { tip.hidden = true; return; }
+    const d = new Date(info.t);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    tip.textContent = `${hh}:${mm} · ${this._relTime(d.toISOString())}`;
+    const host = this.shadowRoot.querySelector(".cmc-card").getBoundingClientRect();
+    tip.style.left = `${Math.round(info.x - host.left)}px`;
+    tip.style.top = `${Math.round(info.y - host.top - 8)}px`;
+    tip.hidden = false;
   }
 
   /* 抽屉：值同步 */
@@ -3181,4 +3241,4 @@ window.customCards.push({
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.0.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
