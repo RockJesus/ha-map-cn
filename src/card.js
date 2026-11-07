@@ -367,6 +367,19 @@ class HaCnMapCard extends HTMLElement {
     let sheetOk;
     try { sheetOk = phone && !!window.customElements.get("ha-snap-bottom-sheet"); } catch { sheetOk = false; }
     this._sheetOk = sheetOk;
+    // 该组件属于按需加载块：本卡片单独渲染时往往还没注册。
+    // 先退回旧抽屉，等它被前端加载（如打开官方地图）后再自动升级成官方三档抽屉。
+    if (phone && !sheetOk && !this._sheetWait) {
+      this._sheetWait = true;
+      try {
+        window.customElements.whenDefined("ha-snap-bottom-sheet")
+          .then(() => {
+            this._sheetWait = false;
+            if (this.isConnected && this._isPhone()) { this._render(); this._update(); }
+          })
+          .catch(() => { this._sheetWait = false; });
+      } catch { this._sheetWait = false; }
+    }
     // RTL：HA 的 dir 在文档根上，shadow 里用计算样式判断，给卡片加类做镜像
     let rtl;
     try { rtl = getComputedStyle(this).direction === "rtl"; } catch { rtl = false; }
