@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.1.6 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.1.7 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖、零构建：入口从这里加载，实现拆在 src/ 下——
  *   src/shared.js  共享常量与工具（底图源 / GCJ-02 纠偏 / 布局 / 图标 / 本地存储）
@@ -33,4 +33,4 @@ window.customCards.push({
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.1.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.1.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
