@@ -332,6 +332,23 @@ class HaCnMapCard extends HTMLElement {
     this._applyBleed(on);
   }
 
+  /* 重置焦点：跳回 home 区域中心 + default_zoom，并暂停自动适配，避免下一帧又被 fit 走 */
+  _resetFocus() {
+    const home = this._hass?.states?.["zone.home"];
+    const cfg = this._config || {};
+    let lat = home?.attributes?.latitude;
+    let lng = home?.attributes?.longitude;
+    if (lat == null || lng == null) {
+      lat = cfg.center?.latitude;
+      lng = cfg.center?.longitude;
+    }
+    if (lat == null || lng == null) return;
+    if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
+    this._didFit = true;
+    this._engine._userMoved = false;
+    this._engine.flyTo(lat, lng, Number(cfg.default_zoom) || 12);
+  }
+
   _render() {
     // 重建会把引擎换掉：先记住旧视野，切底图/主题时不该把人踢回北京
     const prevView = this._engine
@@ -717,6 +734,8 @@ class HaCnMapCard extends HTMLElement {
             <button data-z="-1" aria-label="缩小"><svg viewBox="0 0 24 24"><path d="${ICONS.minus}"/></svg></button>
           </div>
           <button data-fit aria-label="显示全部" title="显示全部"><svg viewBox="0 0 24 24"><path d="${ICONS.focus}"/></svg></button>
+          <button data-cluster aria-label="切换分组" title="切换分组" aria-pressed="${cfg.show_cluster !== false}"><svg viewBox="0 0 24 24"><path d="${cfg.show_cluster !== false ? ICONS.cluster : ICONS.clusterOff}"/></svg></button>
+          <button data-reset aria-label="重置焦点" title="重置焦点"><svg viewBox="0 0 24 24"><path d="${ICONS.resetFocus}"/></svg></button>
           <button data-gear aria-label="地图设置" title="地图设置"><svg viewBox="0 0 24 24"><path d="${ICONS.cog}"/></svg></button>
           <button data-fs aria-label="全屏" title="全屏" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.fullscreen}"/></svg></button>
         </div>
@@ -1054,6 +1073,7 @@ class HaCnMapCard extends HTMLElement {
         this._config = { ...this._config, show_cluster: next };
         this._saveRuntime();
         clusterBtn.setAttribute("aria-pressed", String(next));
+        clusterBtn.querySelector("path")?.setAttribute("d", next ? ICONS.cluster : ICONS.clusterOff);
         this._update();
         this._persistConfig(this._config);
       });
@@ -1084,6 +1104,11 @@ class HaCnMapCard extends HTMLElement {
       this._persistConfig(this._config);
     });
 
+    // 重置焦点：回到「家」的位置与默认缩放（区别于「显示全部」的全实体适配）
+    this.shadowRoot.querySelector("[data-reset]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._resetFocus();
+    });
     this.shadowRoot.querySelector("[data-fit]")?.addEventListener("click", () => {
       this._didFit = false;
       this._engine._userMoved = false;
