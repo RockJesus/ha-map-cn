@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.1.4 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.1.5 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -2001,8 +2001,18 @@ class HaCnMapCard extends HTMLElement {
     if (cfg.entities?.length) {
       // entities 支持字符串与对象两种写法（对象：{entity, color, name, label_mode, attribute, unit}）。
       // 之前直接 [...cfg.entities] 原样拷贝，对象条目会被 hass.states[id] 查成 undefined 滤掉——
-      // 只写 entities 不开 show_all 时对象实体根本不上地图（v1.1.4 顺带修）
+      // 只写 entities 不开 show_all 时对象实体根本不上地图（v1.1.3 顺带修）
       ids = cfg.entities.map((e) => (typeof e === "object" ? e.entity : e)).filter(Boolean);
+      // 对象条目的 source 写法：{source: "nmap"} 纳入该来源的全部 geo_location 实体（v1.1.5）
+      const skipHiddenSrc = cfg.respect_hidden !== false && this._hiddenIds;
+      cfg.entities.forEach((e) => {
+        if (typeof e !== "object" || !e.source) return;
+        Object.keys(hass.states).forEach((id) => {
+          const d = hass.states[id];
+          if (skipHiddenSrc && this._hiddenIds.has(id)) return;
+          if (id.startsWith("geo_location.") && d.attributes?.source === e.source) ids.push(id);
+        });
+      });
     }
     if (cfg.show_all) {
       const skipHidden = cfg.respect_hidden !== false && this._hiddenIds;
@@ -2092,7 +2102,7 @@ class HaCnMapCard extends HTMLElement {
     Object.entries(this._trackPoints).forEach(([id, pts]) => {
       if (!pts || pts.length < 2) return;
       const color =
-        (cfg.entities || []).find((e) => (typeof e === "object" ? e.entity : e) === id)?.color ||
+        this._entityConf(id)?.color ||
         this._hass?.states?.[id]?.attributes?.color ||
         "#03a9f4";
       paths.push({
@@ -2537,6 +2547,18 @@ class HaCnMapCard extends HTMLElement {
     return !ok;
   }
 
+  /* 查某实体的逐实体配置：entities 条目既可按 entity 精确点名，
+     也可用 {source: "xxx"} 匹配指定来源的 geo_location 实体（v1.1.5） */
+  _entityConf(entityId) {
+    const st = this._hass?.states?.[entityId];
+    return (this._config?.entities || []).find((e) =>
+      typeof e !== "object" ? e === entityId
+        : e.entity ? e.entity === entityId
+        : e.source ? entityId.startsWith("geo_location.") && st?.attributes?.source === e.source
+        : false
+    );
+  }
+
   _update() {
     if (this._applyConditions()) return;   // conditions 不满足：整卡隐藏，布局不留空白
     const hass = this._hass, cfg = this._config;
@@ -2557,8 +2579,8 @@ class HaCnMapCard extends HTMLElement {
         : domain === "device_tracker" ? "mdi:cellphone-marker"
         : "mdi:map-marker";
       const icon = s.attributes.icon || domainIcon;
-      // 每实体配置：{ entity, color, name, label_mode, attribute, unit }
-      const conf = (cfg.entities || []).find((e) => (typeof e === "object" ? e.entity : e) === s.entity_id);
+      // 每实体配置：{ entity, color, name, label_mode, attribute, unit, focus }（source 写法见 _entityConf）
+      const conf = this._entityConf(s.entity_id);
       const name = conf?.name || friendly_name || s.entity_id;
       const color =
         conf?.color ||
@@ -2635,7 +2657,7 @@ class HaCnMapCard extends HTMLElement {
         let clat = latitude, clng = longitude;
         if (this._basemapShift) [clat, clng] = GCJ.wgs2gcj(clat, clng);
         const color =
-          (cfg.entities || []).find((e) => (typeof e === "object" ? e.entity : e) === s.entity_id)?.color ||
+          this._entityConf(s.entity_id)?.color ||
           s.attributes.color ||
           (s.entity_id.split(".")[0] === "person" ? "#58a6f0" : "#8bc34a");
         circles.push({ entityId: s.entity_id, lat: clat, lng: clng, radius: acc, color });
@@ -2652,6 +2674,14 @@ class HaCnMapCard extends HTMLElement {
     }
     // URL 深链：链接里带 ?entity_id=… 时首次渲染后直接定位到该实体
     this._applyUrlSelection();
+    // entities 对象里的 focus: true：首次渲染后把视野聚焦到该实体（URL 深链优先，v1.1.5）
+    if (!this._urlApplied && !this._focusApplied) {
+      const fe = (cfg.entities || []).find((e) => typeof e === "object" && e.focus && e.entity);
+      if (fe && this._hass.states[fe.entity]?.attributes?.latitude != null) {
+        this._focusApplied = true;
+        this.focusEntity(fe.entity);
+      }
+    }
     // 详情页开着时保证标记仍处于选中态：setMarkers 重建 DOM 时若找不到会把它清空
     if (this._panelView === "detail" && this._detailEntity &&
         this._engine._selectedEntity !== this._detailEntity) {
@@ -3219,9 +3249,18 @@ class HaCnMapCardEditor extends HTMLElement {
   }
 
   _removeEntity(id) {
-    const ents = (this._config.entities || []).filter(
-      (e) => (typeof e === "string" ? e : e.entity) !== id
-    );
+    let ents;
+    if (String(id).startsWith("__source__")) {
+      // source 条目按来源删（v1.1.5）
+      const src = String(id).slice("__source__".length);
+      ents = (this._config.entities || []).filter(
+        (e) => !(typeof e === "object" && !e.entity && e.source === src)
+      );
+    } else {
+      ents = (this._config.entities || []).filter(
+        (e) => (typeof e === "string" ? e : e.entity) !== id
+      );
+    }
     this._config = { ...this._config };
     if (ents.length) this._config.entities = ents;
     else delete this._config.entities;
@@ -3258,8 +3297,17 @@ class HaCnMapCardEditor extends HTMLElement {
       return;
     }
     host.innerHTML = ents
-      .map((e) => {
+      .map((e, i) => {
+        // source 条目（{source: "nmap"}）没有 entity id，展示成「来源」行（v1.1.5）
+        if (typeof e === "object" && !e.entity && e.source) {
+          return `<div class="ent" data-id="__source__${e.source}">
+            <span class="tag">source</span>
+            <span class="name">geo_location 来源：${e.source}</span>
+            <button class="del" title="移除">✕</button>
+          </div>`;
+        }
         const id = typeof e === "string" ? e : e.entity;
+        if (!id) return "";
         const st = this._hass?.states?.[id];
         const name = (typeof e === "object" && e.name) || st?.attributes?.friendly_name || id;
         const dom = id.split(".")[0];
@@ -3342,4 +3390,4 @@ window.customCards.push({
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.1.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.1.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
