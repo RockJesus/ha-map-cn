@@ -138,6 +138,7 @@ aspect_ratio: ""             # 如 "16:9"；填了忽略 height
 show_zone_radius: true       # 按 zone.radius 画虚线半径圈
 fit_zones: false             # 自动缩放时把半径圈算进视野
 dedupe_trackers: true        # person 已覆盖的 device_tracker 不再单独画点
+respect_hidden: true         # 跳过实体注册表里隐藏的实体（hidden_by 非空，v1.1.3）
 ```
 
 > 完整字段以 `setConfig` 默认值为准（[源码](ha-cn-map-card.js)）；抽屉与可视化编辑器改过的选项会存在浏览器本地，优先于 YAML，`persist: false` 可关闭这一行为。
