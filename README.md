@@ -171,7 +171,7 @@ dedupe_trackers: true        # person 已覆盖的 device_tracker 不再单独�
 
 ## 交互（对齐官方 hui-map-card）
 
-![聚焦飞行 / 精度圈 / 轨迹方向箭头](examples/interact-official.jpg)
+![聚焦飞行 / 精度圈 / 轨迹方向箭头](images/interact-official.jpg)
 
 ### 点击标记 = 聚焦，再点 = 详情
 
@@ -227,7 +227,7 @@ dedupe_trackers: true        # person 已覆盖的 device_tracker 不再单独�
 
 每个标记下方除了名称，还有一行**短状态**，一眼看出谁在哪、设备还有没有电：
 
-![标记状态行](examples/marker-status.jpg)
+![标记状态行](images/marker-status.jpg)
 
 | 实体状态 | 标记显示 |
 |---|---|
@@ -264,7 +264,7 @@ dedupe_trackers: true        # person 已覆盖的 device_tracker 不再单独�
 
 | 手机（底部抽屉） | 桌面（左侧浮层） |
 |---|---|
-| ![phone](examples/layout-phone.jpg) | ![desktop](examples/layout-desktop.jpg) |
+| ![phone](images/layout-phone.jpg) | ![desktop](images/layout-desktop.jpg) |
 
 判定逻辑（v0.9.4 重写）：
 
@@ -313,7 +313,7 @@ fill: true        # 写法一：YAML 强制铺满（最稳）
 
 | | 关闭聚合 | 开启聚合 |
 |---|---|---|
-| 效果 | ![off](examples/cluster-off.jpg) | ![on](examples/cluster-on.jpg) |
+| 效果 | ![off](images/cluster-off.jpg) | ![on](images/cluster-on.jpg) |
 
 - 屏幕上 **60px 内**的标记归为一组，气泡最多 3 个头像（边框用实体配色），超出显示 `+N`
 - **点击气泡**以点击位置为锚点放大两级，成员就地拆开
@@ -386,30 +386,17 @@ Key 无效或未开通「浏览器端」类型。到控制台检查应用类型�
 
 ## 开发
 
-```bash
-# 本地预览：起个静态服务器，打开仓库里的示例页
-python3 -m http.server 8931
-# http://localhost:8931/examples/card.html   卡片预览（mock hass）
-# http://localhost:8931/examples/editor.html 可视化编辑器
-# http://localhost:8931/examples/features.html 轨迹/路况/设置抽屉
-# http://localhost:8931/examples/cluster.html  标记聚合
-# http://localhost:8931/examples/layout.html   布局（panel 全屏 / 紧凑）
-# http://localhost:8931/examples/status.html   标记状态行 / 离线灰显
-# http://localhost:8931/examples/interact.html 聚焦飞行 / 键盘 / 精度圈 / 轨迹箭头
-```
+单文件、零构建、零依赖：改完 `ha-cn-map-card.js` 直接刷新页面就生效，没有打包步骤。
+
+要脱离 HA 调样式，给卡片喂一份假数据即可：`card.setConfig({...})` 之后设 `card.hass = { states: {...} }`，标记和区域就会渲染；依赖 `callWS` 的轨迹、历史、实体注册表会自动跳过，不会报错。
 
 文件结构：
 
 ```
-ha-cn-map-card.js       # 全部代码，单文件，零依赖，约 50KB
+ha-cn-map-card.js       # 全部代码，单文件，零依赖
 hacs.json               # HACS 元数据（filename 指向根目录的 js）
-examples/               # 本地预览页（含 mock hass 与模拟历史数据）
-  card.html
-  editor.html
-  features.html
-  status.html           # 标记状态行对照
-  interact.html         # 交互自测页（含可编程 API）
-  example.yaml          # 配置示例
+.hacsignore             # HACS 下载时排除的文件
+images/                 # README 截图
 .github/workflows/      # HACS 校验
 ```
 
@@ -432,6 +419,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v1.1.2**：**仓库只留跑卡片要用的东西**——`examples/` 整个删掉：里头是 7 个 mock 预览页、3 个本地调试页（`dettest` / `bleedtest` / `filltest`，硬编码着 `localhost:8935`，换台机器打开就是白屏）和一份配置示例，占仓库七成体积，对装卡片的人零价值。README 真正引用的 6 张截图迁到 `images/` 并对齐路径，`.hacsignore` 改为只排除 `.github/`，`.gitignore` 清掉早已不存在的 `card-src` / `_research` 条目。现在仓库就剩：一张卡、一份 README、一份 LICENSE、一份 HACS 元数据
 - **v1.1.1**：**补 v1.1.0 的版本串**——上一版打包时改了仓库文件却漏了卡片自身的版本串，导致市场里装完 `installed_version` 显示 v1.1.0、磁盘文件里却还是 `v1.0.9`，控制台横幅也对不上。这版把版本串补齐（内容与 v1.1.0 相同），顺便换掉市场按版本号做的下载缓存键
 - **v1.1.0**：**仓库瘦身 + 文档只留这一份**——之前工作区根目录还躺着一份 v0.4 时代的旧 README，配置表写的还是早已废弃的 `provider` / `style`（现在叫 `basemap`），照着配必然报错；已删除，内容合并到这里。同时按 HACS 规范补齐仓库元数据：`hacs.json` 显式声明 `content_in_root`，新增 `.hacsignore` 排除 `examples/`（那几张截图有几百 KB，装卡片的人用不上），README 的配置示例补上 v1.0.x 新增的 `theme_mode` / `label_mode` / `aspect_ratio` / `show_zone_radius` / `fit_zones` / `dedupe_trackers` 与 `entities` 对象写法，并加了隐私说明（瓦片请求只带 `z/x/y`，位置数据不出你的浏览器）
 - **v1.0.9**：**想做成 16:9 大屏就写 `aspect_ratio`**——新增官方 `aspect_ratio` 配置（`16:9` / `4/3` / `1:1` / `21:9`，`:` `/` `x` 都认），填了就忽略 `height`，卡片按容器宽度自适应高度；`getCardSize()` 也按官方公式折算成格数，masonry 视图不会给你留一坨空白。全屏态不生效（铺满优先）。非法值自动回落 `height`，不会把卡片搞没
