@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.9 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.0 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -645,18 +645,29 @@ class CnTileEngine extends EventTarget {
     });
     el.addEventListener("pointerup", () => (dragging = false));
     el.addEventListener("pointercancel", () => (dragging = false));
+    // 缩放锚点：把屏幕坐标换算成容器内坐标（setZoom 的 anchor 语义）
+    const anchorAt = (clientX, clientY) => {
+      const r = el.getBoundingClientRect();
+      return { x: clientX - r.left, y: clientY - r.top };
+    };
     el.addEventListener("wheel", (e) => {
       e.preventDefault();
-      this.setZoom(this.zoom + (e.deltaY < 0 ? 1 : -1));
+      // 以光标为锚：光标下的地物缩放前后不动（官方 ha-map / Leaflet 一致）
+      this.setZoom(this.zoom + (e.deltaY < 0 ? 1 : -1), { anchor: anchorAt(e.clientX, e.clientY) });
     }, { passive: false });
-    el.addEventListener("dblclick", () => this.setZoom(this.zoom + 1));
+    el.addEventListener("dblclick", (e) => this.setZoom(this.zoom + 1, { anchor: anchorAt(e.clientX, e.clientY) }));
     el.addEventListener("touchmove", (e) => {
       if (e.touches.length === 2) {
         const d = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
         );
-        if (pinchDist) this.setZoom(this.zoom + (d > pinchDist ? 1 : -1));
+        // 双指缩放同理：以两指中点为锚，默认往哪边捏就往哪边放
+        const anchor = anchorAt(
+          (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          (e.touches[0].clientY + e.touches[1].clientY) / 2
+        );
+        if (pinchDist) this.setZoom(this.zoom + (d > pinchDist ? 1 : -1), { anchor });
         pinchDist = d;
       }
     }, { passive: true });
@@ -693,19 +704,24 @@ class CnTileEngine extends EventTarget {
     const next = Math.max(3, Math.min(18, z));
     const anchor = opts?.anchor;
     if (anchor) {
-      // 以锚点（屏幕像素）为中心缩放：保持锚点下的地理坐标不动
+      // 以锚点（屏幕像素）为中心缩放：保持锚点下的地理坐标不动。
+      // 归一化世界坐标：screenX = (worldX - centerX) * 2^z * 256 + w/2
       const w = this.container.clientWidth || 400;
       const h = this.container.clientHeight || 300;
-      const c = CnTileEngine.tileXY(this.center.lat, this.center.lng, this.zoom);
-      const n0 = 2 ** this.zoom;
-      const ax = (c.x * 256 - (anchor.x - w / 2)) / (n0 * 256);
-      const ay = (c.y * 256 - (anchor.y - h / 2)) / (n0 * 256);
-      const n1 = 2 ** next;
-      const lng = ((ax * 256 + (anchor.x - w / 2)) / (n1 * 256)) * 360 - 180;
-      const my = (ay * 256 + (anchor.y - h / 2)) / (n1 * 256);
-      const lat = (Math.atan(Math.sinh(Math.PI * (1 - 2 * my))) * 180) / Math.PI;
+      const c = CnTileEngine.project(this.center.lat, this.center.lng);
+      const w0 = 2 ** this.zoom * 256;
+      const w1 = 2 ** next * 256;
+      const ax = anchor.x - w / 2;
+      const ay = anchor.y - h / 2;
+      const wx = c.x + ax / w0;   // 锚点正下方的地物（世界坐标）
+      const wy = c.y + ay / w0;
+      const ncx = wx - ax / w1;   // 缩放后把该地物放回锚点所在像素
+      const ncy = wy - ay / w1;
       this.zoom = next;
-      this.center = { lat, lng };
+      this.center = {
+        lat: (Math.atan(Math.sinh(Math.PI * (1 - 2 * ncy))) * 180) / Math.PI,
+        lng: ncx * 360 - 180,
+      };
       this.render();
       return;
     }
@@ -2872,4 +2888,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
