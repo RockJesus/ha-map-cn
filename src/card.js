@@ -741,8 +741,8 @@ class HaCnMapCard extends HTMLElement {
         }
         .cmc-ent-list { display:flex; flex-direction:column; gap:2px; max-height:260px; overflow-y:auto; }
         .cmc-ent-group { font-size:11px; font-weight:600; color:var(--cmc-sub); padding:8px 0 2px; }
-        .cmc-ent {
-          display:flex; align-items:center; gap:8px; padding:6px 0;
+        .cmc-set-b .cmc-ent {
+          display:flex; flex-direction:row; align-items:center; gap:8px; padding:6px 0;
           font-size:13px; color:var(--cmc-text); cursor:pointer;
         }
         .cmc-ent input { width:17px; height:17px; flex:none; accent-color:var(--primary-color,#03a9f4); }
@@ -1422,7 +1422,7 @@ class HaCnMapCard extends HTMLElement {
     let html = "", total = 0;
     groups.forEach(([pre, label]) => {
       const rows = Object.values(hass.states)
-        .filter((st) => st.entity_id.startsWith(pre))
+        .filter((st) => st.entity_id.startsWith(pre) && st.attributes?.latitude != null)
         .sort((a, b) => String(nameOf(a)).localeCompare(String(nameOf(b)), "zh"));
       if (!rows.length) return;
       total += rows.length;
