@@ -410,6 +410,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v1.0.8**：**轨迹线能问「这是几点」了**——把鼠标移到轨迹上，会浮出那个点的 `HH:MM · 20 分钟前`。实现上没给每个点建元素（24 小时轨迹常有几百个点，那样会把渲染拖垮），而是抽稀成屏幕上间隔 ≥14px、每条最多 80 个透明命中圈，贴着鼠标出提示、移开即消失
 - **v1.0.7**：**标签想显示什么就显示什么**——新增官方 `label_mode` 语义：`name`（默认）/ `state` / `attribute` / `none`。`state` 走 `hass.formatEntityState` 拿本地化文本（「在家」「45 km/h」），不是生硬的 `home`；`attribute` 可以显示任意属性，比如共享汽车的电量。既能全局设，也能在 `entities` 里**逐实体覆盖**：`{entity: device_tracker.car, label_mode: attribute, attribute: battery_level, unit: "%"}`。同一个对象里还支持 `name:` 改显示名、`color:` 改颜色。设置抽屉与可视化编辑器都有入口
 - **v1.0.6**：**「某人现在在哪」可以分享成链接了**——URL 带上 `?entity_id=person.zhangsan`（或 `#person.zhangsan`）打开仪表盘，卡片会自动选中该实体、飞过去并展开它的最近活动。只读不写回，不会污染地址栏。顺带修掉一个重建时的小毛病：切换底图/主题后选中光环会丢，详情页「开着详情却没有选中标记」；现在重建会保留选中态，详情打开时也会自愈
 - **v1.0.5**：**手机上不会再冒出两个重叠头像**——一部手机在 HA 里通常同时有 `person.zhangsan` 和 `device_tracker.zhangsan_iphone`，而 person 的坐标本来就是从那个 tracker 取的。`show_all` 自动收集时两个都画，标记完全重合，聚合气泡里还多算一个人。现在按官方 `hui-map-card` 相同规则过滤：出现在某个 `person.attributes.source` 里的 `device_tracker` 不再单独画点。新增 `dedupe_trackers`（默认开，可关）；**显式写进 `entities:` 的不受影响**——你自己点名要的，就照画
