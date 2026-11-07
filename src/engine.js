@@ -288,7 +288,10 @@ class CnTileEngine extends EventTarget {
         el.addEventListener("click", (e) => {
           e.stopPropagation();
           // 拖动结束后浏览器仍会补一次 click，用标记位吞掉，别误开详情
-          if (el.dataset.dragged === "1") { el.dataset.dragged = ""; return; }
+          if (el.dataset.dragged === "1" || Date.now() < (this._suppressClickUntil || 0)) {
+            el.dataset.dragged = "";
+            return;
+          }
           this.dispatchEvent(new CustomEvent("marker-click", { detail: { entityId: m.entityId } }));
         });
         this._attachMarkerDrag(el, m);
@@ -631,6 +634,9 @@ class CnTileEngine extends EventTarget {
       if (!this._dragMarker) return;
       this._dragMarker = null;
       el.style.cursor = "grab";
+      // 松手后卡片会 _update() 重建标记，浏览器补发的 click 可能落在新元素上，
+      // 用一个短时间窗统一吞掉，避免拖动后误开详情
+      if (this._dragMoved) this._suppressClickUntil = Date.now() + 400;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);

@@ -438,7 +438,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         }
         el.addEventListener("click", (e) => {
           e.stopPropagation();
-          if (el.dataset.dragged === "1") {
+          if (el.dataset.dragged === "1" || Date.now() < (this._suppressClickUntil || 0)) {
             el.dataset.dragged = "";
             return;
           }
@@ -771,6 +771,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       if (!this._dragMarker) return;
       this._dragMarker = null;
       el.style.cursor = "grab";
+      if (this._dragMoved) this._suppressClickUntil = Date.now() + 400;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
@@ -3824,4 +3825,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.2.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.2.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
