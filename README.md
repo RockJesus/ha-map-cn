@@ -13,7 +13,7 @@
 3. 搜索安装 → **重启 HA**（或刷新浏览器）
 4. **资源会自动注册**，无需手动添加
 
-> 自动注册依赖仓库根目录的 `hacs.json` 里 `"filename": "ha-cn-map-card.js"`。
+> 安装包是仓库根 `hacs.json` 声明的 `ha-map-cn.zip`（`zip_release: true`，含入口与 `src/` 模块），HACS 下载后自动解压。
 > 如果 HACS 版本较旧没自动加，手动加一条：`/hacsfiles/ha-map-cn/ha-cn-map-card.js`，类型 **JavaScript Module**。
 
 ### 更新后看不到新功能？
@@ -32,7 +32,7 @@
 
 ### 手动安装（不用 HACS）
 
-下载整个仓库（保留 `src/` 目录结构）放到 `/config/www/ha-map-cn/`，资源里加 `/local/ha-map-cn/ha-cn-map-card.js`，类型选 **JavaScript Module**。入口会通过相对路径加载 `src/` 下的模块，只拷一个 js 文件是不行的
+到 [Releases](https://github.com/RockJesus/ha-map-cn/releases) 下载 `ha-map-cn.zip`，解压到 `/config/www/ha-map-cn/`（保持 `src/` 子目录），资源里加 `/local/ha-map-cn/ha-cn-map-card.js`，类型选 **JavaScript Module**。入口会通过相对路径加载 `src/` 下的模块，只拷一个 js 文件是不行的
 
 ## 为什么需要它
 
@@ -447,6 +447,7 @@ images/                 # README 截图
 
 ## 版本历史
 
+- **v1.1.7**：**修正多文件分发**——v1.1.6 拆分后 `src/` 模块在 HACS 安装里是缺的：HACS 对插件仓库只下载 `filename` 指定的那个文件，入口 import 全部 404。改为官方多文件方案：`hacs.json` 声明 `zip_release`，每次 Release 附带 `ha-map-cn.zip`（入口 + src/），HACS 下载解压一次到位。卡片代码与 v1.1.6 完全一致
 - **v1.1.6**：**代码拆分 + ESLint**——单文件按职责拆成四个原生 ES 模块：`src/shared.js`（底图源 / GCJ-02 纠偏 / 常量）、`src/engine.js`（瓦片引擎）、`src/card.js`（卡片主类）、`src/editor.js`（编辑器），入口只负责注册自定义元素；仍是零构建，HACS 下载后相对 import 直接可用。接入 ESLint（flat config，`pnpm lint`，CI 每次推送跑），清掉全部 16 处问题：未用变量、无用赋值、精度丢失的字面量、重复注册等。卡片功能与 v1.1.5 完全一致
 - **v1.1.5**：**entities 对象条目补齐 source / unit / focus**——`{source: "nmap"}` 不写 entity 就纳入该来源的全部 geo_location 实体，还能只给这一路设 label_mode / name / color；`unit` 给数值标签加后缀（`80 %`）；`focus: true` 首帧渲染后聚焦到该实体（URL 深链优先）。顺带修掉：配置了非标准实体条目会把可视化编辑器搞崩（`id.split` 直接抛错）
 - **v1.1.4**：**conditions 条件显示**——官方条件卡片同款语义：`conditions` 里每一条都满足才渲染这张卡，否则整张卡隐藏。支持 `state` / `state_not` / `attribute` 三种匹配，实体不存在视为不满足，状态变化实时评估。空数组或缺省永远显示，老配置零影响
