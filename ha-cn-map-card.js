@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.0.6 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.7 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -815,6 +815,7 @@ const RUNTIME_KEYS = [
   "show_zones",
   "show_zone_radius",
   "show_labels",
+  "label_mode",
   "show_cluster",
   "show_status",
   "show_accuracy",
@@ -1007,6 +1008,7 @@ class HaCnMapCard extends HTMLElement {
       dedupe_trackers: true,     // person 已覆盖的 device_tracker 不再单独画点
       fit_zones: false,          // 自动适配视野时把区域半径圈也算进去
       show_labels: true,
+      label_mode: "name",        // name | state | attribute | none（可在 entities 里逐实体覆盖）
       show_status: true,         // 标记下方状态行（在家 / 离线 / 速度 / 电量 / 相对时间）
       show_accuracy: true,       // GPS 精度圈（gps_accuracy，对齐官方）
       show_cluster: true,        // 标记聚合
@@ -1614,6 +1616,13 @@ class HaCnMapCard extends HTMLElement {
               </label>
               <label class="chk"><span>标记聚合</span><input type="checkbox" data-d="show_cluster"></label>
               <label class="chk"><span>显示名称</span><input type="checkbox" data-d="show_labels"></label>
+              <label>标签内容
+                <select data-d="label_mode">
+                  <option value="name">实体名称</option>
+                  <option value="state">状态（在家 / 45 km/h）</option>
+                  <option value="none">不显示</option>
+                </select>
+              </label>
               <label class="chk"><span>标记显示状态</span><input type="checkbox" data-d="show_status"></label>
               <label class="chk"><span>GPS 精度圈</span><input type="checkbox" data-d="show_accuracy"></label>
               <label class="chk"><span>显示区域（家）</span><input type="checkbox" data-d="show_zones"></label>
@@ -2006,6 +2015,7 @@ class HaCnMapCard extends HTMLElement {
       if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status", "show_accuracy", "show_zone_radius"].includes(k) : !!c[k];
       else if (k === "hours_to_show") el.value = String(Number(c[k]) || 0);
       else if (k === "theme_mode") el.value = c[k] || "auto";
+      else if (k === "label_mode") el.value = c[k] || "name";
       else el.value = c[k] === undefined ? "" : c[k];
     });
     const bm = c.basemap || "amap";
@@ -2399,9 +2409,11 @@ class HaCnMapCard extends HTMLElement {
         : domain === "device_tracker" ? "mdi:cellphone-marker"
         : "mdi:map-marker";
       const icon = s.attributes.icon || domainIcon;
-      const name = friendly_name || s.entity_id;
+      // 每实体配置：{ entity, color, name, label_mode, attribute, unit }
+      const conf = (cfg.entities || []).find((e) => (typeof e === "object" ? e.entity : e) === s.entity_id);
+      const name = conf?.name || friendly_name || s.entity_id;
       const color =
-        (cfg.entities || []).find((e) => (typeof e === "object" ? e.entity : e) === s.entity_id)?.color ||
+        conf?.color ||
         s.attributes.color ||
         (domain === "person" ? "#58a6f0" : "#8bc34a");
       markers.push({
@@ -2411,7 +2423,7 @@ class HaCnMapCard extends HTMLElement {
         short: name,
         clusterable: true,
         icon,
-        label: cfg.show_labels === false ? "" : name,
+        label: cfg.show_labels === false ? "" : this._markerLabel(s, conf, cfg, name),
         sub: cfg.show_status === false ? "" : this._markerSub(s, states),
         offline: OFFLINE_STATES.has(String(s.state).toLowerCase()),
       });
@@ -2540,6 +2552,35 @@ class HaCnMapCard extends HTMLElement {
 
   /* 标记下方的短状态行：对齐官方 hui-map-marker 的副标题语义
      优先级：离线 > 区域名（在家/在公司）> 速度 > 电量 > 离家 > 相对时间 */
+  /* 官方 label_mode 语义：name（默认）| state | attribute | none。
+     每实体配置（entities 里的对象）优先于全局；attribute 模式取 conf.attribute */
+  _markerLabel(st, conf, cfg, name) {
+    const mode = conf?.label_mode || cfg.label_mode || "name";
+    if (mode === "none") return "";
+    if (mode === "state") {
+      const raw = String(st.state ?? "");
+      if (!raw || raw === "unknown" || raw === "unavailable") return name;
+      // 官方规范要求用 hass.formatEntityState 而不是原始状态（能拿到"在家"/"45 km/h"这类本地化文本）
+      let v = raw, formatted = false;
+      try {
+        if (typeof this._hass?.formatEntityState === "function") {
+          v = this._hass.formatEntityState(st);
+          formatted = v !== raw;
+        }
+      } catch (_) {}
+      const unit = conf?.unit || st.attributes.unit_of_measurement || "";
+      return !formatted && unit && /^[\d.,+-]+$/.test(v) ? `${v} ${unit}` : v;
+    }
+    if (mode === "attribute") {
+      const attr = conf?.attribute;
+      const raw = attr ? st.attributes[attr] : null;
+      if (raw == null || raw === "") return name;
+      const unit = conf?.unit || (attr === "battery" ? "%" : "");
+      return unit ? `${raw} ${unit}` : String(raw);
+    }
+    return name;
+  }
+
   _markerSub(st, all) {
     const state = String(st.state ?? "").toLowerCase();
     if (OFFLINE_STATES.has(state)) return "离线";
@@ -2892,6 +2933,15 @@ class HaCnMapCardEditor extends HTMLElement {
             <label class="t">标记聚合（相近的合并成一个气泡）</label>
             <label class="switch"><input type="checkbox" data-k="show_cluster"><span class="slider"></span></label>
           </div>
+          <div class="row">
+            <label class="t">标记标签内容</label>
+            <select data-k="label_mode">
+              <option value="name">实体名称（默认）</option>
+              <option value="state">状态</option>
+              <option value="none">不显示</option>
+            </select>
+            <div class="hint">逐实体可用 <code>label_mode: attribute</code> + <code>attribute: battery</code> 显示任意属性。</div>
+          </div>
           <div class="row inline" style="margin-top:10px">
             <label class="t">标记下方显示状态（在家 / 离线 / 速度）</label>
             <label class="switch"><input type="checkbox" data-k="show_status"><span class="slider"></span></label>
@@ -3089,7 +3139,10 @@ class HaCnMapCardEditor extends HTMLElement {
         // fit_entities 默认为 true，其余默认为 false
         el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy", "show_zone_radius", "dedupe_trackers"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
-        el.value = (k === "layout" || k === "theme_mode") ? (c[k] || "auto") : String(c[k] === undefined ? 0 : c[k]);
+        el.value = k === "layout" ? (c[k] || "auto")
+          : k === "theme_mode" ? (c[k] || "auto")
+          : k === "label_mode" ? (c[k] || "name")
+          : String(c[k] === undefined ? 0 : c[k]);
       } else {
         el.value = c[k] === undefined ? (el.dataset.k === "height" ? 360 : "") : c[k];
       }
@@ -3128,4 +3181,4 @@ window.customCards.push({
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.0.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

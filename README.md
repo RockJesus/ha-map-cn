@@ -410,6 +410,7 @@ examples/               # 本地预览页（含 mock hass 与模拟历史数据�
 
 ## 版本历史
 
+- **v1.0.7**：**标签想显示什么就显示什么**——新增官方 `label_mode` 语义：`name`（默认）/ `state` / `attribute` / `none`。`state` 走 `hass.formatEntityState` 拿本地化文本（「在家」「45 km/h」），不是生硬的 `home`；`attribute` 可以显示任意属性，比如共享汽车的电量。既能全局设，也能在 `entities` 里**逐实体覆盖**：`{entity: device_tracker.car, label_mode: attribute, attribute: battery_level, unit: "%"}`。同一个对象里还支持 `name:` 改显示名、`color:` 改颜色。设置抽屉与可视化编辑器都有入口
 - **v1.0.6**：**「某人现在在哪」可以分享成链接了**——URL 带上 `?entity_id=person.zhangsan`（或 `#person.zhangsan`）打开仪表盘，卡片会自动选中该实体、飞过去并展开它的最近活动。只读不写回，不会污染地址栏。顺带修掉一个重建时的小毛病：切换底图/主题后选中光环会丢，详情页「开着详情却没有选中标记」；现在重建会保留选中态，详情打开时也会自愈
 - **v1.0.5**：**手机上不会再冒出两个重叠头像**——一部手机在 HA 里通常同时有 `person.zhangsan` 和 `device_tracker.zhangsan_iphone`，而 person 的坐标本来就是从那个 tracker 取的。`show_all` 自动收集时两个都画，标记完全重合，聚合气泡里还多算一个人。现在按官方 `hui-map-card` 相同规则过滤：出现在某个 `person.attributes.source` 里的 `device_tracker` 不再单独画点。新增 `dedupe_trackers`（默认开，可关）；**显式写进 `entities:` 的不受影响**——你自己点名要的，就照画
 - **v1.0.4**：**在 sections 视图里终于能正确占格子了**——之前没实现 `getGridOptions()`，sections 布局下卡片只能占满整段、高度还锁死不可调；现在按 `height` 算出默认行数（12 列栅格、56px/行，最少 3 行），面板/全屏态自动切 `columns: "full"`。同时补齐官方卡片 API 的另两项：`preview` 属性（出现在卡片选择器预览时不再真的去订阅 24h 历史轨迹，省一次 WebSocket 往返）和 `documentationURL`（卡片选择器里多一个「文档」入口）；并留了 `getLayoutOptions()` 兼容 HA 2024.x 的旧 sections 接口
