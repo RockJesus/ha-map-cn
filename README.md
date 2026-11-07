@@ -160,6 +160,24 @@ conditions:
 
 支持 `state` / `state_not` / `attribute` 三种字段；实体不存在视为不满足；`conditions` 缺省或为空数组时永远显示。只写 YAML，图形编辑器暂不提供这一项。
 
+### geo_location 来源与逐实体写法（v1.1.5）
+
+`entities` 对象条目新增三个字段：
+
+```yaml
+entities:
+  - entity: sensor.car                # 数值标签加单位
+    label_mode: attribute
+    attribute: battery_level
+    unit: "%"
+  - source: nmap                      # 不写 entity：纳入该来源的全部 geo_location 实体
+    label_mode: state
+  - entity: person.zhangsan
+    focus: true                       # 首帧渲染后把视野聚焦到它（URL 深链优先）
+```
+
+`source` 写法等价于全局 `geo_location_sources`，但可以只给这一路来源设置 `label_mode` / `name` / `color`。编辑器列表里 source 条目显示为「geo_location 来源：xxx」，可单独移除。
+
 ### 底图对比
 
 | basemap | 需要 Key | 最大级别 | 偏移处理 | 说明 |
@@ -437,6 +455,7 @@ images/                 # README 截图
 
 ## 版本历史
 
+- **v1.1.5**：**entities 对象条目补齐 source / unit / focus**——`{source: "nmap"}` 不写 entity 就纳入该来源的全部 geo_location 实体，还能只给这一路设 label_mode / name / color；`unit` 给数值标签加后缀（`80 %`）；`focus: true` 首帧渲染后聚焦到该实体（URL 深链优先）。顺带修掉：配置了非标准实体条目会把可视化编辑器搞崩（`id.split` 直接抛错）
 - **v1.1.4**：**conditions 条件显示**——官方条件卡片同款语义：`conditions` 里每一条都满足才渲染这张卡，否则整张卡隐藏。支持 `state` / `state_not` / `attribute` 三种匹配，实体不存在视为不满足，状态变化实时评估。空数组或缺省永远显示，老配置零影响
 - **v1.1.3**：**尊重实体注册表的 hidden 标志**——你在 HA 设置里点「隐藏」的实体不再出现在地图上。启动时拉一次 `config/entity_registry/list`，`hidden_by` 非空的实体从自动收集中剔除；新增 `respect_hidden`（默认开），**显式写进 `entities:` 的照画**；拉不到注册表（旧版本 HA）自动降级。顺带修掉一个隐藏 bug：`entities:` 写对象形式且没开 `show_all` 时该实体根本不渲染（对象条目被当成 id 查了 `hass.states`）
 - **v1.1.2**：**仓库只留跑卡片要用的东西**——`examples/` 整个删掉：里头是 7 个 mock 预览页、3 个本地调试页（`dettest` / `bleedtest` / `filltest`，硬编码着 `localhost:8935`，换台机器打开就是白屏）和一份配置示例，占仓库七成体积，对装卡片的人零价值。README 真正引用的 6 张截图迁到 `images/` 并对齐路径，`.hacsignore` 改为只排除 `.github/`，`.gitignore` 清掉早已不存在的 `card-src` / `_research` 条目。现在仓库就剩：一张卡、一份 README、一份 LICENSE、一份 HACS 元数据
