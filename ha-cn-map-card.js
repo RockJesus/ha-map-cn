@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.0.2 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.3 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -114,10 +114,11 @@ class CnTileEngine extends EventTarget {
     raf = requestAnimationFrame(step);
   }
 
-  addTileSet({ url, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "" }) {
+  addTileSet({ url, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
     const ts = { url, maxZoom, zIndex, opacity, els: new Map(), id: ++this._tileSeq };
     const layer = document.createElement("div");
-    layer.className = "cmc-layer";
+    // nofilter：卫星影像 / 路况叠加不参与暗色反色，否则颜色会失真
+    layer.className = nofilter ? "cmc-layer cmc-nofilter" : "cmc-layer";
     layer.style.cssText = `position:absolute;inset:0;z-index:${zIndex};opacity:${opacity}`;
     ts.layer = layer;
     this.viewport.appendChild(layer);
@@ -148,6 +149,7 @@ class CnTileEngine extends EventTarget {
         maxZoom: spec.maxZoom || 18,
         opacity: l.opacity ?? 1,
         zIndex: 20 + i,
+        nofilter: true,
       });
       return ts;
     });
@@ -805,6 +807,7 @@ const OFFLINE_STATES = new Set(["unavailable", "unknown"]);
 // 设置抽屉 / 快捷按钮可写回本地的键
 const RUNTIME_KEYS = [
   "basemap",
+  "theme_mode",
   "tianditu_key",
   "show_traffic",
   "hours_to_show",
@@ -880,6 +883,7 @@ const BASEMAPS = {
     attribution: "© 高德地图 AutoNavi",
     maxZoom: 18,
     needsShift: true,
+    noFilter: true, // 卫星影像反色会变成"负片"，暗色模式也不套 filter
     layers: [
       { template: (x, y, z) => `https://webst0${(x % 4) + 1}.is.autonavi.com/appmaptile?style=6&x=${x}&y=${y}&z=${z}` },
       { template: (x, y, z) => `https://webst0${(x % 4) + 1}.is.autonavi.com/appmaptile?style=8&x=${x}&y=${y}&z=${z}`, opacity: 0.9 },
@@ -902,6 +906,7 @@ const BASEMAPS = {
     maxZoom: 18,
     needsShift: false,
     requireKey: true,
+    noFilter: true,
     layers: [
       { template: (x, y, z, tk) => `https://t${x % 8}.tianditu.gov.cn/DataServer?T=img_w&x=${x}&y=${y}&l=${z}&tk=${tk}` },
       { template: (x, y, z, tk) => `https://t${x % 8}.tianditu.gov.cn/DataServer?T=cia_w&x=${x}&y=${y}&l=${z}&tk=${tk}` },
@@ -993,6 +998,7 @@ class HaCnMapCard extends HTMLElement {
       entities: [],
       geo_location_sources: [],
       title: "",
+      theme_mode: "auto",        // auto（跟随 HA 主题）| light | dark
       ...config,
     };
     // 本地保存的运行时设置（设置抽屉/快捷按钮改过的）优先于 YAML
@@ -1008,7 +1014,23 @@ class HaCnMapCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    // 主题可能是 auto：hass.themes.darkMode 变了要立刻切（不必重建整张卡片）
+    const dark = this._resolveDark();
+    if (dark !== this._dark) {
+      this._dark = dark;
+      this.shadowRoot?.querySelector(".cmc-card")?.classList.toggle("is-dark", dark);
+    }
     if (this._engine) this._update();
+  }
+
+  /* 暗色判定：显式 theme_mode 优先，auto 跟随 HA 主题，再兜底系统偏好 */
+  _resolveDark() {
+    const mode = this._config?.theme_mode || "auto";
+    if (mode === "dark") return true;
+    if (mode === "light") return false;
+    const t = this._hass?.themes?.darkMode;
+    if (typeof t === "boolean") return t;
+    return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
   }
 
   /* 把 localStorage 里的运行时设置合并进当前配置（YAML 里的显式值仍可通过 persist:false 关闭） */
@@ -1151,6 +1173,10 @@ class HaCnMapCard extends HTMLElement {
   }
 
   _render() {
+    // 重建会把引擎换掉：先记住旧视野，切底图/主题时不该把人踢回北京
+    const prevView = this._engine
+      ? { c: { ...this._engine.center }, z: this._engine.zoom, moved: this._engine._userMoved }
+      : null;
     const cfg = this._config;
     const base = BASEMAPS[cfg.basemap] || BASEMAPS.amap;
     const layout = this._layout = this._resolveLayout();
@@ -1210,6 +1236,11 @@ class HaCnMapCard extends HTMLElement {
           box-sizing:border-box;
         }
         .cmc-map { position:absolute; inset:0; overflow:hidden; cursor:grab; }
+        /* ---- 暗色底图：高德/天地图没有暗色瓦片，用 CSS filter 近似（官方矢量图是双配色，
+           栅格图只能这么来）。卫星影像与路况叠加带 .cmc-nofilter，不参与反色 ---- */
+        .cmc-card.is-dark .cmc-layer:not(.cmc-nofilter) {
+          filter: invert(1) hue-rotate(180deg) brightness(.88) contrast(.92) saturate(.75);
+        }
         .cmc-map:active { cursor:grabbing; }
         .cmc-title {
           position:absolute; top:0; left:0; right:0; height:44px; z-index:12;
@@ -1549,6 +1580,13 @@ class HaCnMapCard extends HTMLElement {
                   <option value="osm">OpenStreetMap</option>
                 </select>
               </label>
+              <label>主题
+                <select data-d="theme_mode">
+                  <option value="auto">跟随 Home Assistant</option>
+                  <option value="light">始终浅色</option>
+                  <option value="dark">始终深色</option>
+                </select>
+              </label>
               <label data-d-row="tianditu tianditu-satellite">天地图 Key
                 <input type="text" data-d="tianditu_key" placeholder="粘贴 tk">
               </label>
@@ -1592,6 +1630,7 @@ class HaCnMapCard extends HTMLElement {
         maxZoom: base.maxZoom,
         opacity: l.opacity ?? 1,
         zIndex: i + 1,
+        nofilter: !!base.noFilter,
       });
     });
     this._engine.attribution.textContent = base.attribution;
@@ -1802,7 +1841,18 @@ class HaCnMapCard extends HTMLElement {
     );
 
     this._basemapShift = base.needsShift;
+    // 主题：重建 DOM 后要把暗色类补回来（_render 会换掉整个 shadowRoot）
+    this._dark = this._resolveDark();
+    this.shadowRoot.querySelector(".cmc-card")?.classList.toggle("is-dark", !!this._dark);
+    if (prevView) {
+      this._engine.center = prevView.c;
+      this._engine.zoom = prevView.z;
+      this._engine._userMoved = prevView.moved;
+    }
     if (this._hass) this._update(); else this._engine.render();
+    // 必须补一帧：_didFit 已为 true 时 _update 走不到 render()，
+    // 换底图后地图会是一片空白（v1.0.3 修）
+    this._engine.render();
     this._renderList();
   }
 
@@ -1917,6 +1967,7 @@ class HaCnMapCard extends HTMLElement {
       // 默认开启的开关：值缺省时按 true 显示
       if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status", "show_accuracy", "show_zone_radius"].includes(k) : !!c[k];
       else if (k === "hours_to_show") el.value = String(Number(c[k]) || 0);
+      else if (k === "theme_mode") el.value = c[k] || "auto";
       else el.value = c[k] === undefined ? "" : c[k];
     });
     const bm = c.basemap || "amap";
@@ -2702,6 +2753,16 @@ class HaCnMapCardEditor extends HTMLElement {
           <div class="hint">高德免 Key，自动做 GCJ-02 纠偏；天地图需在 console.tianditu.gov.cn 申请免费 Key。</div>
         </div>
 
+        <div class="row">
+          <label class="t">主题</label>
+          <select data-k="theme_mode">
+            <option value="auto">跟随 Home Assistant（默认）</option>
+            <option value="light">始终浅色</option>
+            <option value="dark">始终深色</option>
+          </select>
+          <div class="hint">高德/天地图没有暗色瓦片，深色下用 CSS 滤镜近似；卫星影像不受影响。</div>
+        </div>
+
         <div class="row" data-only="tianditu tianditu-satellite">
           <label class="t">天地图 Key</label>
           <input type="text" data-k="tianditu_key" placeholder="粘贴你的 tk">
@@ -2927,7 +2988,7 @@ class HaCnMapCardEditor extends HTMLElement {
         // fit_entities 默认为 true，其余默认为 false
         el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy", "show_zone_radius"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
-        el.value = k === "layout" ? (c[k] || "auto") : String(c[k] === undefined ? 0 : c[k]);
+        el.value = (k === "layout" || k === "theme_mode") ? (c[k] || "auto") : String(c[k] === undefined ? 0 : c[k]);
       } else {
         el.value = c[k] === undefined ? (el.dataset.k === "height" ? 360 : "") : c[k];
       }
@@ -2965,4 +3026,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v1.0.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
