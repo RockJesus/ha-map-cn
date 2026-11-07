@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.0.4 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.5 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -1003,6 +1003,7 @@ class HaCnMapCard extends HTMLElement {
       show_all: false,
       show_zones: false,
       show_zone_radius: true,    // zone 半径圈（官方把半径当 zone 的核心属性）
+      dedupe_trackers: true,     // person 已覆盖的 device_tracker 不再单独画点
       fit_zones: false,          // 自动适配视野时把区域半径圈也算进去
       show_labels: true,
       show_status: true,         // 标记下方状态行（在家 / 离线 / 速度 / 电量 / 相对时间）
@@ -1875,11 +1876,23 @@ class HaCnMapCard extends HTMLElement {
     const hass = this._hass;
     if (!hass) return [];
     const cfg = this._config;
+    // 去重：person 的 attributes.source 指向它的位置来源 device_tracker，
+    // 两者坐标完全重合，自动模式下只画 person（官方 hui-map-card 的 _getAllEntities 同样处理）。
+    // 用户显式写在 entities: 里的保持原样，不替他做决定。
+    const personSources = new Set();
+    if (cfg.dedupe_trackers !== false) {
+      Object.values(hass.states).forEach((st) => {
+        if (st.entity_id.startsWith("person.") && st.attributes?.source) {
+          personSources.add(st.attributes.source);
+        }
+      });
+    }
     let ids = [];
     if (cfg.entities?.length) ids = [...cfg.entities];
     if (cfg.show_all) {
       ids = Object.keys(hass.states).filter((id) => {
         const d = hass.states[id];
+        if (personSources.has(id)) return false;
         return d?.attributes?.latitude != null && (id.startsWith("person.") || id.startsWith("device_tracker.") || id.startsWith("geo_location."));
       });
     }
@@ -2823,6 +2836,10 @@ class HaCnMapCardEditor extends HTMLElement {
             <label class="switch"><input type="checkbox" data-k="show_zone_radius"><span class="slider"></span></label>
           </div>
           <div class="row inline" style="margin-top:10px">
+            <label class="t">去重：person 已覆盖的轨迹设备</label>
+            <label class="switch"><input type="checkbox" data-k="dedupe_trackers"><span class="slider"></span></label>
+          </div>
+          <div class="row inline" style="margin-top:10px">
             <label class="t">自动适配视野包含区域半径</label>
             <label class="switch"><input type="checkbox" data-k="fit_zones"><span class="slider"></span></label>
           </div>
@@ -3025,7 +3042,7 @@ class HaCnMapCardEditor extends HTMLElement {
       const k = el.dataset.k;
       if (el.type === "checkbox") {
         // fit_entities 默认为 true，其余默认为 false
-        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy", "show_zone_radius"].includes(k) : !!c[k];
+        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy", "show_zone_radius", "dedupe_trackers"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
         el.value = (k === "layout" || k === "theme_mode") ? (c[k] || "auto") : String(c[k] === undefined ? 0 : c[k]);
       } else {
@@ -3066,4 +3083,4 @@ window.customCards.push({
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.0.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
