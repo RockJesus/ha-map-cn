@@ -2,7 +2,7 @@
   "name": "ha-map-cn",
   "private": true,
   "type": "module",
-  "description": "中国地图卡片 (China Map Card) for Home Assistant",
+  "description": "Home Assistant 中国地图卡片：高德/天地图底图浏览器直连，免代理，支持人员/设备/区域概览与家的拖动配置",
   "scripts": {
     "lint": "eslint .",
     "build": "esbuild src/main.js --bundle --format=esm --charset=utf8 --legal-comments=inline --outfile=ha-cn-map-card.js"
@@ -12,5 +12,23 @@
     "eslint": "^9.0.0",
     "esbuild": "^0.28.2",
     "globals": "^15.0.0"
-  }
+  },
+  "version": "1.2.9",
+  "license": "Apache-2.0",
+  "author": "RockJesus",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RockJesus/ha-map-cn.git"
+  },
+  "homepage": "https://github.com/RockJesus/ha-map-cn#readme",
+  "keywords": [
+    "home-assistant",
+    "hacs",
+    "lovelace",
+    "custom-card",
+    "map",
+    "china",
+    "amap",
+    "tianditu"
+  ]
 }
