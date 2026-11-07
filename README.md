@@ -32,7 +32,7 @@
 
 ### 手动安装（不用 HACS）
 
-下载 `ha-cn-map-card.js` 放到 `/config/www/`，资源里加 `/local/ha-cn-map-card.js`，类型选 **JavaScript Module**。
+下载整个仓库（保留 `src/` 目录结构）放到 `/config/www/ha-map-cn/`，资源里加 `/local/ha-map-cn/ha-cn-map-card.js`，类型选 **JavaScript Module**。入口会通过相对路径加载 `src/` 下的模块，只拷一个 js 文件是不行的
 
 ## 为什么需要它
 
@@ -51,21 +51,6 @@ HA 2026.9 起，官方地图改用 OSMF 矢量瓦片，且**瓦片请求由 HA �
 
 ---
 
-## 安装
-
-### HACS（推荐）
-
-1. HACS → 前端 → 右上角 ⋮ → **自定义存储库**
-2. 填仓库地址，类别选 **Lovelace / Dashboard**
-3. 搜 `ha-cn-map-card` 安装 → 刷新页面
-4. 若没自动注册资源，手动加：设置 → 仪表盘 → ⋮ → 资源 → 添加
-   `/hacsfiles/ha-cn-map-card/ha-cn-map-card.js`，类型 **JavaScript Module**
-
-### 手动
-
-把仓库根目录的 `ha-cn-map-card.js` 放到 `/config/www/`，然后资源里加 `/local/ha-cn-map-card.js`（类型 JavaScript Module）。
-
----
 
 ## 配置
 
@@ -422,18 +407,25 @@ Key 无效或未开通「浏览器端」类型。到控制台检查应用类型�
 
 ## 开发
 
-单文件、零构建、零依赖：改完 `ha-cn-map-card.js` 直接刷新页面就生效，没有打包步骤。
+零构建、零依赖、原生 ES 模块：改完代码直接刷新页面就生效，没有打包步骤。入口 `ha-cn-map-card.js` 只负责注册自定义元素，实现拆在 `src/` 下。
 
 要脱离 HA 调样式，给卡片喂一份假数据即可：`card.setConfig({...})` 之后设 `card.hass = { states: {...} }`，标记和区域就会渲染；依赖 `callWS` 的轨迹、历史、实体注册表会自动跳过，不会报错。
+
+静态检查：`pnpm install && pnpm lint`（ESLint，零告警是发布门槛；CI 每次推送都跑）。
 
 文件结构：
 
 ```
-ha-cn-map-card.js       # 全部代码，单文件，零依赖
+ha-cn-map-card.js       # 入口：注册卡片与编辑器两个自定义元素
+src/shared.js           # 共享常量与工具（底图源 / GCJ-02 纠偏 / 布局 / 图标 / 本地存储）
+src/engine.js           # 轻量 XYZ 瓦片引擎（投影 / 平移 / 缩放 / 标记 / 聚合 / 轨迹）
+src/card.js             # Lovelace 卡片主类
+src/editor.js           # 可视化编辑器
 hacs.json               # HACS 元数据（filename 指向根目录的 js）
 .hacsignore             # HACS 下载时排除的文件
+eslint.config.mjs       # ESLint 平面配置
 images/                 # README 截图
-.github/workflows/      # HACS 校验
+.github/workflows/      # HACS 校验 + ESLint
 ```
 
 ---
@@ -455,6 +447,7 @@ images/                 # README 截图
 
 ## 版本历史
 
+- **v1.1.6**：**代码拆分 + ESLint**——单文件按职责拆成四个原生 ES 模块：`src/shared.js`（底图源 / GCJ-02 纠偏 / 常量）、`src/engine.js`（瓦片引擎）、`src/card.js`（卡片主类）、`src/editor.js`（编辑器），入口只负责注册自定义元素；仍是零构建，HACS 下载后相对 import 直接可用。接入 ESLint（flat config，`pnpm lint`，CI 每次推送跑），清掉全部 16 处问题：未用变量、无用赋值、精度丢失的字面量、重复注册等。卡片功能与 v1.1.5 完全一致
 - **v1.1.5**：**entities 对象条目补齐 source / unit / focus**——`{source: "nmap"}` 不写 entity 就纳入该来源的全部 geo_location 实体，还能只给这一路设 label_mode / name / color；`unit` 给数值标签加后缀（`80 %`）；`focus: true` 首帧渲染后聚焦到该实体（URL 深链优先）。顺带修掉：配置了非标准实体条目会把可视化编辑器搞崩（`id.split` 直接抛错）
 - **v1.1.4**：**conditions 条件显示**——官方条件卡片同款语义：`conditions` 里每一条都满足才渲染这张卡，否则整张卡隐藏。支持 `state` / `state_not` / `attribute` 三种匹配，实体不存在视为不满足，状态变化实时评估。空数组或缺省永远显示，老配置零影响
 - **v1.1.3**：**尊重实体注册表的 hidden 标志**——你在 HA 设置里点「隐藏」的实体不再出现在地图上。启动时拉一次 `config/entity_registry/list`，`hidden_by` 非空的实体从自动收集中剔除；新增 `respect_hidden`（默认开），**显式写进 `entities:` 的照画**；拉不到注册表（旧版本 HA）自动降级。顺带修掉一个隐藏 bug：`entities:` 写对象形式且没开 `show_all` 时该实体根本不渲染（对象条目被当成 id 查了 `hass.states`）
@@ -488,7 +481,7 @@ images/                 # README 截图
 
 ## 已知限制
 
-1. **单文件无构建**：代码未压缩，约 145KB。要发布 HACS 建议后续接 esbuild。
+1. **无构建无压缩**：原生 ES 模块（入口 + `src/` 四个模块），未压缩约 160KB。要瘦身可后续接 esbuild 打包
 2. **聚合为屏幕像素贪心算法**：不做层级金字塔，缩放到不同级别时每次重算；实体过千会有明显卡顿（DOM 标记方案的天花板）。
 3. **瓦片无本地缓存**：依赖浏览器 HTTP 缓存。
 4. **高德瓦片非官方 API**：用的是 `webrd0x.is.autonavi.com` 公开瓦片端点，无 SLA 保证。生产环境建议换天地图（有正式 Key 和配额）。
@@ -498,7 +491,6 @@ images/                 # README 截图
 - 尊重实体注册表的 `hidden` 标志（官方 `_getAllEntities` 会跳过用户在 UI 里隐藏的实体），需额外拉一次 `config/entity_registry/list`
 - `conditions` 条件显示（官方 `_meetsConditions`）
 - `geo_location_sources` 的对象形式（`source` / `label_mode` / `attribute` / `unit` / `focus`）
-- 代码拆分与 ESLint（当前单文件 3.3k 行，无静态检查）
 
 ## License
 

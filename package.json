@@ -1,0 +1,14 @@
+{
+  "name": "ha-map-cn",
+  "private": true,
+  "type": "module",
+  "description": "中国地图卡片 (China Map Card) for Home Assistant",
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0"
+  }
+}
