@@ -449,10 +449,17 @@ images/                 # README 截图
 
 ## 已知限制
 
-1. **单文件无构建**：代码未压缩，约 65KB。要发布 HACS 建议后续接 esbuild。
+1. **单文件无构建**：代码未压缩，约 145KB。要发布 HACS 建议后续接 esbuild。
 2. **聚合为屏幕像素贪心算法**：不做层级金字塔，缩放到不同级别时每次重算；实体过千会有明显卡顿（DOM 标记方案的天花板）。
 3. **瓦片无本地缓存**：依赖浏览器 HTTP 缓存。
 4. **高德瓦片非官方 API**：用的是 `webrd0x.is.autonavi.com` 公开瓦片端点，无 SLA 保证。生产环境建议换天地图（有正式 Key 和配额）。
+
+### 后续可做（未排期）
+
+- 尊重实体注册表的 `hidden` 标志（官方 `_getAllEntities` 会跳过用户在 UI 里隐藏的实体），需额外拉一次 `config/entity_registry/list`
+- `conditions` 条件显示（官方 `_meetsConditions`）
+- `geo_location_sources` 的对象形式（`source` / `label_mode` / `attribute` / `unit` / `focus`）
+- 代码拆分与 ESLint（当前单文件 3.3k 行，无静态检查）
 
 ## License
 
