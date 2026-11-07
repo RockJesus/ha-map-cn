@@ -889,6 +889,7 @@ class HaCnMapCard extends HTMLElement {
                   <button data-geocode>解析地址并填入坐标</button>
                   <span class="cmc-set-hint" data-geo-hint></span>
                 </div>
+                <span class="cmc-set-hint">地图上可直接拖家里的图标改位置，拖半径圈右侧白点改半径</span>
                 <label>高德 Web 服务 Key <input type="text" data-lazy data-d="amap_key" placeholder="可选，仅用于地址解析"></label>
               </div>
 
@@ -943,6 +944,9 @@ class HaCnMapCard extends HTMLElement {
       }
     });
     // 点空白处/Esc 取消选中时：详情页退回列表（官方行为），同时把地址栏里的 entity_id 清掉
+    // 家的图标/半径圈拖动：拖动中只改内存并回填设置，松手才落盘（避免每帧写 localStorage）
+    this._engine.addEventListener("marker-drag", (e) => this._onHomeDrag(e.detail));
+    this._engine.addEventListener("circle-radius", (e) => this._onHomeRadius(e.detail));
     this._engine.addEventListener("selection-cleared", () => {
       this._writeSelection(null);
       if (this._panelView === "detail") {
@@ -1509,6 +1513,59 @@ class HaCnMapCard extends HTMLElement {
     }
     setHint(`已定位：${cfg.home_lat}, ${cfg.home_lng}`);
     Promise.resolve().then(() => this._update());
+  }
+
+  _syncHomeFields() {
+    const d = this.shadowRoot?.querySelector('[data-view="settings"]');
+    if (!d) return;
+    const cfg = this._config || {};
+    const a = d.querySelector('[data-d="home_lat"]');
+    const b = d.querySelector('[data-d="home_lng"]');
+    const r = d.querySelector('[data-d="home_radius"]');
+    if (a) a.value = cfg.home_lat ?? "";
+    if (b) b.value = cfg.home_lng ?? "";
+    if (r) r.value = cfg.home_radius ?? "";
+  }
+
+  _setGeoHint(t) {
+    const h = this.shadowRoot?.querySelector("[data-geo-hint]");
+    if (h) h.textContent = t;
+  }
+
+  /* 地图上拖动家里的小房子：高德底图坐标 → WGS84 后写进 home_lat/home_lng */
+  _onHomeDrag(d) {
+    if (!d || d.entityId !== "zone.home") return;
+    if (d.phase === "start") {
+      this._engine._userMoved = true;
+      return;
+    }
+    let lat = d.lat, lng = d.lng;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (this._basemapShift) [lat, lng] = GCJ.gcj2wgs(lat, lng);
+    this._config = { ...this._config, home_lat: Number(lat.toFixed(6)), home_lng: Number(lng.toFixed(6)) };
+    this._syncHomeFields();
+    if (d.phase === "end") {
+      this._saveRuntime();
+      this._persistConfig(this._config);
+      this._setGeoHint(`已拖动到位：${this._config.home_lat}, ${this._config.home_lng}`);
+      Promise.resolve().then(() => this._update());
+    }
+  }
+
+  /* 拖动半径圈手柄：米数直接写 home_radius */
+  _onHomeRadius(d) {
+    if (!d || d.entityId !== "zone.home") return;
+    if (d.phase !== "start" && Number.isFinite(d.radius)) {
+      this._config = { ...this._config, home_radius: Math.round(d.radius) };
+      this._syncHomeFields();
+    }
+    if (d.phase === "end") {
+      this._engine._userMoved = true;
+      this._saveRuntime();
+      this._persistConfig(this._config);
+      this._setGeoHint(`已设置半径：${Math.round(d.radius)} 米`);
+      Promise.resolve().then(() => this._update());
+    }
   }
 
   /* 抽屉：改配置 → 立即重绘 + 存到本浏览器 + 通知外部 */
@@ -2082,6 +2139,7 @@ class HaCnMapCard extends HTMLElement {
           label: cfg.show_labels === false ? "" : name,
           clusterable: false,   // 家/区域不参与聚合，永远单独显示
           home: true,
+          draggable: z.entity_id === "zone.home",   // 只能拖家（其他区域没有对应的覆盖配置）
           icon: z.attributes.icon || "mdi:home",
         });
         pts.push({ lat, lng });
@@ -2098,6 +2156,7 @@ class HaCnMapCard extends HTMLElement {
             fillOpacity: 0.12,
             strokeOpacity: 0.55,
             strokeWidth: 2,
+            handle: z.entity_id === "zone.home",   // 家半径圈带一个可拖动的小手柄
           });
           if (cfg.fit_zones) {
             // 半径圈的四极值点也纳入自动适配，否则大区域会被裁掉半圈
@@ -2182,17 +2241,29 @@ class HaCnMapCard extends HTMLElement {
     return Math.max(base, Math.min(pad, Math.floor(Math.min(w, h) * 0.35)));
   }
 
+  _cfgHidden() {
+    return Array.isArray(this._config?.hidden_entities) ? this._config.hidden_entities : [];
+  }
+
   /* ---- 概览列表（对齐官方 hui-map-overview 的分组与文案） ---- */
   _listEntries() {
     const hass = this._hass;
     if (!hass) return { people: [], devices: [], zones: [] };
     const ids = new Set(this._collectEntities().map((e) => e.entity_id));
     const people = [], devices = [], zones = [];
+    // 人员：按 HA 里全部 person 实体列出，不看它当前有没有坐标。
+    // 否则某人定位掉线（person 状态没有 latitude）时「人员」Tab 会整组消失，像被删掉一样。
+    const hiddenIds = this._cfgHidden();
+    Object.values(hass.states).forEach((st) => {
+      if (!st.entity_id.startsWith("person.")) return;
+      if (hiddenIds.includes(st.entity_id)) return;
+      if (this._config.respect_hidden !== false && this._hiddenIds?.has(st.entity_id)) return;
+      people.push(st);
+    });
     ids.forEach((id) => {
       const st = hass.states[id];
       if (!st) return;
-      if (id.startsWith("person.")) people.push(st);
-      else if (id.startsWith("device_tracker.") || id.startsWith("geo_location.")) devices.push(st);
+      if (id.startsWith("device_tracker.") || id.startsWith("geo_location.")) devices.push(st);
     });
     // 区域：该区域里有人时计数才有意义
     Object.values(hass.states).forEach((st) => {

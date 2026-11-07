@@ -31,6 +31,17 @@ const GCJ = (() => {
       dLng = (dLng * 180) / (a / sqrt * Math.cos(radLat) * Math.PI);
       return [lat + dLat, lng + dLng];
     },
+    // 反向：把高德底图上的坐标还原成 WGS84（拖动家图标后写回配置用）
+    gcj2wgs(lat, lng) {
+      if (this.outOfChina(lat, lng)) return [lat, lng];
+      let wLat = lat, wLng = lng;
+      for (let i = 0; i < 3; i++) {
+        const [gLat, gLng] = this.wgs2gcj(wLat, wLng);
+        wLat += lat - gLat;
+        wLng += lng - gLng;
+      }
+      return [wLat, wLng];
+    },
   };
 })();
 
