@@ -960,6 +960,27 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._trackPoints = {};
     }
   }
+  /* 官方 hui-map-card 的字段名与我们的内部字段对齐（2026.11 MapCardConfig）。
+     同名概念优先用户写的内部字段；只做单向别名，不改写用户原始 YAML。 */
+  _applyAliases(raw) {
+    const c = { ...raw };
+    if (c.auto_fit !== void 0 && c.fit_entities === void 0) {
+      c.fit_entities = c.auto_fit !== "zones" && c.auto_fit !== false;
+      if (c.fit_zones === void 0) c.fit_zones = c.auto_fit === "zones" || c.auto_fit === "all";
+    }
+    if (c.cluster !== void 0 && c.show_cluster === void 0) c.show_cluster = !!c.cluster;
+    if (c.scale_ruler !== void 0 && c.show_scale === void 0) c.show_scale = !!c.scale_ruler;
+    const ms = typeof c.map_style === "string" ? c.map_style.trim().toLowerCase() : "";
+    if (ms) {
+      if (c.theme_mode === void 0 && (ms === "auto" || ms === "light" || ms === "dark")) c.theme_mode = ms;
+      if (c.basemap === void 0) {
+        if (ms === "satellite") c.basemap = "amap-satellite";
+        else if (ms === "streets" || ms === "auto" || ms === "light" || ms === "dark") c.basemap = "amap";
+      }
+    }
+    if (c.dark_mode !== void 0 && c.theme_mode === void 0) c.theme_mode = c.dark_mode ? "dark" : "light";
+    return c;
+  }
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("ha-cn-map-card: 配置无效");
     this._rawConfig = config;
@@ -1004,7 +1025,9 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       title: "",
       theme_mode: "auto",
       // auto（跟随 HA 主题）| light | dark
-      ...config
+      show_scale: true,
+      // 比例尺（官方字段 scale_ruler，显式 false 才关）
+      ...this._applyAliases(config)
     };
     this._lsKey = storageKey(config);
     if (config.persist !== false) this._applyRuntime(loadRuntime(this._lsKey));
@@ -1205,6 +1228,22 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._zoomSide = zoomSide;
     const titleHtml = cfg.title ? `<div class="cmc-title">${cfg.title}</div>` : "";
     const overlayOpen = this._panelOpen === true;
+    const phone = this._isPhone();
+    this._phone = phone;
+    let sheetOk;
+    try {
+      sheetOk = phone && !!window.customElements.get("ha-snap-bottom-sheet");
+    } catch {
+      sheetOk = false;
+    }
+    this._sheetOk = sheetOk;
+    let rtl;
+    try {
+      rtl = getComputedStyle(this).direction === "rtl";
+    } catch {
+      rtl = false;
+    }
+    this._rtl = rtl;
     this.shadowRoot.innerHTML = `
       <style>
         :host {
@@ -1406,6 +1445,21 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         /* 详情页（最近活动）内容更高：紧凑卡片里也把抽屉抬高一点，别只剩两行 */
         .cmc-panel.dock-bottom.open.is-detail { top:18%; }
         .cmc-panel.dock-bottom:not(.open) { transform:translateY(calc(100% - 52px)); }
+        /* 手机：内容交给官方 ha-snap-bottom-sheet 定位/拖拽，容器只负责排版 */
+        .cmc-panel.in-sheet {
+          position:static; width:auto; max-height:none; height:auto;
+          border-radius:0; box-shadow:none; background:var(--cmc-surface);
+          transform:none; transition:none;
+        }
+        .cmc-panel.in-sheet .cmc-panel-handle { display:none; }
+        /* RTL：左侧浮层镜像到右侧（官方面板同样按 dir 镜像） */
+        .cmc-card.is-rtl .cmc-panel.dock-auto {
+          left:auto; right:12px; transform:translateX(calc(100% + 16px));
+        }
+        .cmc-card.is-rtl .cmc-panel.dock-auto.open { transform:none; }
+        .cmc-card.is-rtl .cmc-panel-btn { left:auto; right:12px; }
+        .cmc-card.is-rtl .cmc-item, .cmc-card.is-rtl .cmc-det-name,
+        .cmc-card.is-rtl .cmc-det-sub, .cmc-card.is-rtl .cmc-act-hl { text-align:right; }
         .cmc-panel-handle {
           flex:none; height:20px; display:flex; align-items:center; justify-content:center;
           cursor:pointer; touch-action:none;
@@ -1446,29 +1500,15 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         .cmc-panel-close:hover { background:var(--cmc-fill); }
         .cmc-panel-close svg { width:20px; height:20px; fill:currentColor; }
         .cmc-list { flex:1; min-height:0; overflow-y:auto; padding:0 8px 12px; -webkit-overflow-scrolling:touch; }
-        .cmc-item {
-          display:flex; align-items:center; gap:12px; width:100%; box-sizing:border-box;
-          padding:8px; border:none; background:none; cursor:pointer; text-align:left;
-          border-radius:12px; font-family:inherit; color:var(--cmc-text);
-          -webkit-tap-highlight-color:transparent;
-        }
-        .cmc-item:hover, .cmc-item:focus-visible { background:var(--cmc-fill); outline:none; }
+        .cmc-item { color:var(--cmc-text); }
         .cmc-item-av {
-          flex:none; width:44px; height:44px; border-radius:12px; overflow:hidden;
+          flex:none; width:40px; height:40px; border-radius:50%; overflow:hidden;
           display:flex; align-items:center; justify-content:center;
           background:var(--cmc-fill); color:var(--cmc-sub);
           font-size:16px; font-weight:600;
         }
         .cmc-item-av img { width:100%; height:100%; object-fit:cover; display:block; }
-        .cmc-item-tx { min-width:0; flex:1; display:flex; flex-direction:column; gap:2px; }
-        .cmc-item-nm {
-          font-size:15px; font-weight:500; white-space:nowrap;
-          overflow:hidden; text-overflow:ellipsis;
-        }
-        .cmc-item-sub {
-          font-size:13px; color:var(--cmc-sub); white-space:nowrap;
-          overflow:hidden; text-overflow:ellipsis;
-        }
+        .cmc-item-av ha-icon { --mdc-icon-size:22px; }
         .cmc-empty {
           padding:28px 12px; text-align:center; font-size:13px; color:var(--cmc-sub);
         }
@@ -1524,7 +1564,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           color:var(--cmc-text);
         }
       </style>
-      <div class="cmc-card">
+      <div class="cmc-card${rtl ? " is-rtl" : ""}">
         <div class="cmc-tip" hidden></div>
         ${titleHtml}
         <div class="cmc-map"></div>
@@ -1535,8 +1575,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
             <button data-z="-1" aria-label="缩小"><svg viewBox="0 0 24 24"><path d="${ICONS.minus}"/></svg></button>
           </div>
           <button data-fit aria-label="显示全部" title="显示全部"><svg viewBox="0 0 24 24"><path d="${ICONS.focus}"/></svg></button>
-          <button data-cluster aria-label="标记聚合" title="标记聚合" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.cluster}"/></svg></button>
-          <button data-traffic aria-label="实时路况" title="实时路况" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.traffic}"/></svg></button>
           <button data-gear aria-label="地图设置" title="地图设置"><svg viewBox="0 0 24 24"><path d="${ICONS.cog}"/></svg></button>
           <button data-fs aria-label="全屏" title="全屏" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.fullscreen}"/></svg></button>
         </div>
@@ -1546,23 +1584,24 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         <button class="cmc-panel-btn${overlayOpen ? " hide" : ""}" data-panel-btn aria-label="打开面板" title="打开面板">
           <svg viewBox="0 0 24 24"><path d="${ICONS.people}"/></svg>
         </button>
-        <div class="cmc-panel dock-${isFull ? "auto" : "bottom"}${overlayOpen ? " open" : ""}" data-panel>          <div class="cmc-panel-handle" data-handle></div>
+        ${sheetOk ? `<ha-snap-bottom-sheet data-sheet min-height="56" label="地图概览">` : ""}
+        <div class="cmc-panel ${sheetOk ? "in-sheet" : `dock-${isFull ? "auto" : "bottom"}${overlayOpen ? " open" : ""}`}" data-panel>          <div class="cmc-panel-handle" data-handle></div>
           <div data-view="list">
             <div class="cmc-panel-h">
               ${isFull ? `<button class="cmc-panel-close" data-back aria-label="收起面板">
                 <svg viewBox="0 0 24 24"><path d="${ICONS.chevronLeft}"/></svg>
               </button>` : ""}
-              <div class="cmc-tabs" role="tablist">
-                <span class="pill"></span>
-                <button role="tab" data-tab="people">人</button>
-                <button role="tab" data-tab="devices">设备</button>
-                <button role="tab" data-tab="zones">区域</button>
+              <div class="cmc-tabs" role="tablist" aria-label="地图概览分组">
+                <span class="pill" aria-hidden="true"></span>
+                <button type="button" role="tab" id="cmc-tab-people" aria-controls="cmc-tabpanel" aria-selected="true" tabindex="0" data-tab="people">人</button>
+                <button type="button" role="tab" id="cmc-tab-devices" aria-controls="cmc-tabpanel" aria-selected="false" tabindex="-1" data-tab="devices">设备</button>
+                <button type="button" role="tab" id="cmc-tab-zones" aria-controls="cmc-tabpanel" aria-selected="false" tabindex="-1" data-tab="zones">区域</button>
               </div>
               <button class="cmc-panel-close" data-panel-close aria-label="收起">
                 <svg viewBox="0 0 24 24"><path d="${ICONS.minus}"/></svg>
               </button>
             </div>
-            <div class="cmc-list" data-list></div>
+            <div class="cmc-list" id="cmc-tabpanel" role="tabpanel" aria-labelledby="cmc-tab-people" data-list></div>
           </div>
           <div data-view="detail" hidden>
             <div class="cmc-panel-h">
@@ -1633,6 +1672,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
               <label class="chk"><span>区域半径圈</span><input type="checkbox" data-d="show_zone_radius"></label>
               <label class="chk"><span>跳过已隐藏实体</span><input type="checkbox" data-d="respect_hidden"></label>
               <label class="chk"><span>实时路况（仅高德）</span><input type="checkbox" data-d="show_traffic"></label>
+              <label class="chk"><span>显示比例尺</span><input type="checkbox" data-d="show_scale"></label>
               <label>轨迹时长
                 <select data-d="hours_to_show">
                   <option value="0">关闭</option>
@@ -1651,6 +1691,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
             </div>
           </div>
         </div>
+        ${sheetOk ? "</ha-snap-bottom-sheet>" : ""}
       </div>
     `;
     this._applyBleed(this._wantBleed(), true);
@@ -1709,11 +1750,34 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const setOpen = (open) => {
       this._panelOpen = open;
       panel.classList.toggle("open", open);
-      panel.parentElement?.querySelector("[data-panel-btn]")?.classList.toggle("hide", open);
+      this.shadowRoot.querySelector("[data-panel-btn]")?.classList.toggle("hide", open);
       if (open) showView(this._panelView || "list");
+      const sheet2 = this.shadowRoot.querySelector("[data-sheet]");
+      if (sheet2) {
+        try {
+          sheet2.snapTo(open ? "half" : "collapsed");
+        } catch {
+        }
+      }
     };
     this._setPanelOpen = setOpen;
     this._setPanelView = showView;
+    const sheet = this.shadowRoot.querySelector("[data-sheet]");
+    if (sheet) {
+      this._sheet = sheet;
+      const head = panel.querySelector(".cmc-panel-h");
+      const peek = head ? Math.round(head.getBoundingClientRect().height) : 0;
+      if (peek > 0) sheet.minHeight = peek + 10;
+      sheet.addEventListener("bottom-sheet-resized", (e) => {
+        const d = e.detail || {};
+        this._sheetH = Math.round(Number(d.height) || 0);
+        this._sheetHalf = Math.round(Number(d.halfHeight) || 0);
+        this._engine?.render();
+      });
+    } else {
+      this._sheet = null;
+      this._sheetH = 0;
+    }
     setOpen(overlayOpen || this._isFull && this._panelView !== "settings" && this._panelUserClosed !== true);
     panel.querySelectorAll("[data-tab]").forEach((b) => {
       b.addEventListener("click", (e) => {
@@ -1722,12 +1786,33 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         this._renderList();
       });
     });
+    panel.querySelector(".cmc-tabs")?.addEventListener("keydown", (e) => {
+      const key = e.key;
+      const dir = key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : 0;
+      if (!dir && key !== "Home" && key !== "End") return;
+      const btns = [...panel.querySelectorAll("[data-tab]")].filter((b) => !b.hidden && !b.disabled);
+      if (!btns.length) return;
+      const cur = btns.findIndex((b) => b.dataset.tab === this._tab);
+      let idx;
+      if (key === "Home") idx = 0;
+      else if (key === "End") idx = btns.length - 1;
+      else {
+        const step = this._rtl ? -dir : dir;
+        idx = ((cur < 0 ? 0 : cur) + step + btns.length) % btns.length;
+      }
+      const next = btns[idx];
+      e.preventDefault();
+      e.stopPropagation();
+      this._tab = next.dataset.tab;
+      this._renderList();
+      next.focus();
+    });
     panel.querySelector("[data-handle]")?.addEventListener("click", (e) => {
       e.stopPropagation();
       setOpen(!this._panelOpen);
       if (!this._panelOpen) this._panelUserClosed = true;
     });
-    panel.parentElement?.querySelector("[data-panel-btn]")?.addEventListener("click", (e) => {
+    this.shadowRoot.querySelector("[data-panel-btn]")?.addEventListener("click", (e) => {
       e.stopPropagation();
       this._panelUserClosed = false;
       setOpen(true);
@@ -2030,7 +2115,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const c = this._config;
     d.querySelectorAll("[data-d]").forEach((el) => {
       const k = el.dataset.d;
-      if (el.type === "checkbox") el.checked = c[k] === void 0 ? ["show_cluster", "show_labels", "show_status", "show_accuracy", "show_zone_radius", "respect_hidden"].includes(k) : !!c[k];
+      if (el.type === "checkbox") el.checked = c[k] === void 0 ? ["show_cluster", "show_labels", "show_status", "show_accuracy", "show_zone_radius", "respect_hidden", "show_scale"].includes(k) : !!c[k];
       else if (k === "hours_to_show") el.value = String(Number(c[k]) || 0);
       else if (k === "theme_mode") el.value = c[k] || "auto";
       else if (k === "label_mode") el.value = c[k] || "name";
@@ -2107,6 +2192,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._ro.disconnect();
       this._ro = null;
     }
+    if (this._mq && this._onMq) {
+      this._mq.removeEventListener?.("change", this._onMq);
+      this._mq = null;
+      this._onMq = null;
+    }
   }
   connectedCallback() {
     if (!this._onPop) {
@@ -2144,6 +2234,15 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         }
       });
       this._ro.observe(this);
+    }
+    if (typeof window.matchMedia === "function" && !this._mq) {
+      this._mq = window.matchMedia("(max-width: 600px)");
+      this._onMq = () => {
+        if (this._mq.matches === this._phone) return;
+        this._render();
+        if (this._hass) this._update();
+      };
+      this._mq.addEventListener?.("change", this._onMq);
     }
     Promise.resolve().then(() => this._syncBleed());
   }
@@ -2495,6 +2594,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   _update() {
     if (this._applyConditions()) return;
     const hass = this._hass, cfg = this._config;
+    const scaleEl = this.shadowRoot.querySelector(".cmc-scale");
+    if (scaleEl) scaleEl.style.display = cfg.show_scale === false ? "none" : "";
     const states = this._collectEntities();
     const markers = [];
     const pts = [];
@@ -2606,12 +2707,25 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   }
   /* 自动适配时的内边距：全屏 + 面板展开时避开面板覆盖区
      （padding 会从可用宽高里扣两次，所以必须 clamp，否则会算出负数把缩放压到 3 级） */
+  _isPhone() {
+    try {
+      return window.matchMedia("(max-width: 600px)").matches;
+    } catch {
+      return false;
+    }
+  }
   _fitPadding() {
     const w = this._engine?.container.clientWidth || 400;
     const h = this._engine?.container.clientHeight || 300;
     const base = Math.round(Math.min(w, h) * 0.08);
     if (!this._isFull || !this._panelOpen) return base;
-    const pad = window.innerWidth <= 600 ? Math.round(h * 0.26) : Math.round(w * 0.28) + 12;
+    let pad;
+    if (this._phone) {
+      const sheetH = Number(this._sheetH) || Number(this._sheetHalf) || 0;
+      pad = sheetH ? Math.round(sheetH * 0.92) : Math.round(h * 0.26);
+    } else {
+      pad = Math.round(w * 0.28) + 12;
+    }
     return Math.max(base, Math.min(pad, Math.floor(Math.min(w, h) * 0.35)));
   }
   /* ---- 概览列表（对齐官方 hui-map-overview 的分组与文案） ---- */
@@ -2766,9 +2880,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       const btns = [...tabsEl.querySelectorAll("[data-tab]")];
       btns.forEach((b) => {
         const n = counts[b.dataset.tab] > 0;
+        const sel = n && b.dataset.tab === tabs;
         b.hidden = !n;
-        b.setAttribute("aria-selected", String(n && b.dataset.tab === tabs));
+        b.setAttribute("aria-selected", String(sel));
         b.disabled = !n;
+        b.tabIndex = sel ? 0 : -1;
       });
       tabsEl.classList.toggle("single", btns.filter((b) => !b.hidden).length <= 1);
       this._syncTabPill();
@@ -2776,15 +2892,14 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         requestAnimationFrame(() => this._syncTabPill());
       }
     }
+    listEl.setAttribute("aria-labelledby", `cmc-tab-${tabs}`);
     const rows = [];
     const mkRow = (st, name, sub, picture) => `
-      <button class="cmc-item" data-entity="${st.entity_id}" title="${escapeAttr(name)}">
-        <span class="cmc-item-av">${picture ? `<img src="${escapeAttr(picture)}" referrerpolicy="no-referrer" alt="">` : /^[a-z]+:/.test(this._icon(st)) ? `<ha-icon icon="${this._icon(st)}"></ha-icon>` : this._initial(name)}</span>
-        <span class="cmc-item-tx">
-          <span class="cmc-item-nm">${escapeHtml(name)}</span>
-          <span class="cmc-item-sub">${escapeHtml(sub)}</span>
-        </span>
-      </button>`;
+      <ha-list-item-button class="cmc-item" data-entity="${st.entity_id}">
+        <div class="cmc-item-av" slot="start" aria-hidden="true">${picture ? `<img src="${escapeAttr(picture)}" referrerpolicy="no-referrer" alt="">` : /^[a-z]+:/.test(this._icon(st)) ? `<ha-icon icon="${this._icon(st)}"></ha-icon>` : escapeHtml(this._initial(name))}</div>
+        <span slot="headline">${escapeHtml(name)}</span>
+        <span slot="supporting-text">${escapeHtml(sub)}</span>
+      </ha-list-item-button>`;
     const items = tabs === "people" ? g.people : tabs === "devices" ? g.devices : zones;
     items.forEach((st) => {
       const name = st.attributes.friendly_name || st.entity_id;
@@ -2802,7 +2917,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       const sub = `${state} · ${this._relTime(st.last_updated)}`;
       rows.push(mkRow(st, name, sub, st.attributes.entity_picture));
     });
-    listEl.innerHTML = rows.length ? rows.join("") : !hasAny ? `<div class="cmc-empty">地图上还没有可显示的实体</div>` : `<div class="cmc-empty">暂无${{ people: "人员", devices: "设备", zones: "区域" }[tabs]}</div>`;
+    listEl.innerHTML = rows.length ? `<ha-list-base>${rows.join("")}</ha-list-base>` : !hasAny ? `<div class="cmc-empty">地图上还没有可显示的实体</div>` : `<div class="cmc-empty">暂无${{ people: "人员", devices: "设备", zones: "区域" }[tabs]}</div>`;
     listEl.querySelectorAll("[data-entity]").forEach((b) => {
       b.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -3257,4 +3372,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.1.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.2.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
