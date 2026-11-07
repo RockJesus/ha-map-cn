@@ -30,10 +30,5 @@
     "china",
     "amap",
     "tianditu"
-  ],
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
-  }
+  ]
 }
