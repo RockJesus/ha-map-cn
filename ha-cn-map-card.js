@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.0.0 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.1 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -2030,22 +2030,43 @@ class HaCnMapCard extends HTMLElement {
     this.dispatchEvent(ev);
   }
 
+  /* 聚焦缩放：只放大到"和最近的其它标记拉开 80px"为止（官方 FOCUS_CLEARANCE_PX），
+     上限 17 级。人多且挨得近时不会一杆戳到街景级；单独一个实体才允许明显拉近。 */
+  _focusZoom(lat, lng, base) {
+    const n = 2 ** base;
+    const c = CnTileEngine.project(lat, lng);
+    let nearest = Infinity;
+    (this._lastMarkers || []).forEach((m) => {
+      const p = CnTileEngine.project(m.lat, m.lng);
+      const d = Math.hypot((p.x - c.x) * n * 256, (p.y - c.y) * n * 256);
+      if (d > 0.5) nearest = Math.min(nearest, d); // 跳过自己（同一坐标）
+    });
+    if (!Number.isFinite(nearest)) return Math.min(17, base + 2);
+    return Math.max(base, Math.min(17, base + Math.log2(80 / nearest)));
+  }
+
   /* 聚焦实体：官方点击标记 / 点击列表项的"选中 + 飞行"语义。
      全屏且面板展开时，把目标点放在让开面板后的可视区域中心 */
   focusEntity(entityId, zoom) {
     const st = this._hass?.states?.[entityId];
     if (!st || typeof st.attributes.latitude !== "number") return;
     let lat = st.attributes.latitude, lng = st.attributes.longitude;
+    // 标记是按底图坐标系画的（高德要 GCJ-02 纠偏），聚焦必须用同一套坐标，
+    // 否则飞过去会差 300~500m（v1.0.1 修）
+    if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
     this._engine.setSelected(entityId);
     // 选中即打开详情（最近活动），对齐官方 hui-map-overview 的聚焦语义
     this._showDetail(entityId);
-    const z = Math.max(zoom ?? 0, this._engine.zoom, 13);
+    const z = this._focusZoom(lat, lng, Math.max(zoom ?? 0, this._engine.zoom, 13));
     let offX = 0, offY = 0; // 像素偏移：面板 dock 在哪侧就把中心往对侧挪
     if (this._isFull && this._panelOpen) {
       const dockBottom = window.innerWidth <= 600;
       const pad = this._fitPadding();
+      // 屏幕 y 向下、世界 y 也向下：想让目标出现在中心"上方"（避开底部抽屉），
+      // 中心就得往南挪（lat 减）；想让目标出现在中心"右侧"（避开左侧浮层），
+      // 中心就得往西挪（lng 减）。符号错了目标会被推到面板底下（v1.0.1 修）
       if (dockBottom) offY = -pad * 0.35;
-      else offX = pad * 0.35;
+      else offX = -pad * 0.35;
     }
     // 像素偏移 → 经纬度偏移（当前 zoom 下）
     const mPerLng = 360 / (2 ** z * 256);
@@ -2284,6 +2305,7 @@ class HaCnMapCard extends HTMLElement {
       });
     }
 
+    this._lastMarkers = markers; // 聚焦缩放要用显示坐标（已按底图纠偏）算最近标记
     this._engine.setMarkers(markers, { cluster: cfg.show_cluster !== false });
     this._syncTracks(states);
     // 精度圈：对齐官方 ha-map 的 gps_accuracy 语义，默认开，zone 不画
@@ -2888,4 +2910,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v1.0.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
