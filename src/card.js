@@ -701,6 +701,12 @@ class HaCnMapCard extends HTMLElement {
                 <span class="cmc-det-name" data-det-name></span>
                 <span class="cmc-det-sub" data-det-sub></span>
               </span>
+              <button class="cmc-panel-close" data-det-nav aria-label="导航" title="导航" hidden>
+                <svg viewBox="0 0 24 24"><path d="${ICONS.nav}"/></svg>
+              </button>
+              <button class="cmc-panel-close" data-det-set aria-label="实体设置" title="实体设置" hidden>
+                <svg viewBox="0 0 24 24"><path d="${ICONS.cog}"/></svg>
+              </button>
               <button class="cmc-panel-close" data-det-close aria-label="收起">
                 <svg viewBox="0 0 24 24"><path d="${ICONS.minus}"/></svg>
               </button>
@@ -810,8 +816,9 @@ class HaCnMapCard extends HTMLElement {
         this._openMoreInfo(id);
       }
     });
-    // 点空白处/Esc 取消选中时：详情页退回列表（官方行为）
+    // 点空白处/Esc 取消选中时：详情页退回列表（官方行为），同时把地址栏里的 entity_id 清掉
     this._engine.addEventListener("selection-cleared", () => {
+      this._writeSelection(null);
       if (this._panelView === "detail") {
         this._setPanelView?.("list");
         this._renderList();
@@ -882,6 +889,16 @@ class HaCnMapCard extends HTMLElement {
       e.stopPropagation();
       setOpen(false);
       this._panelUserClosed = true;
+    });
+    // 详情页「导航」：与官方 hui-map-overview 一致，手机走原生地图应用，桌面走网页地图
+    panel.querySelector("[data-det-nav]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._openDirections();
+    });
+    // 详情页「实体设置」：官方仅管理员可见，打开 more-info 的设置页
+    panel.querySelector("[data-det-set]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this._detailEntity) this._openMoreInfo(this._detailEntity, true);
     });
     panel.querySelector("[data-panel-close]")?.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1248,16 +1265,28 @@ class HaCnMapCard extends HTMLElement {
     if (this._onFsChange) document.removeEventListener("fullscreenchange", this._onFsChange);
     if (this._onKeyBleed) this.removeEventListener("keydown", this._onKeyBleed);
     if (this._onDocKey) { document.removeEventListener("keydown", this._onDocKey); this._onDocKey = null; }
+    if (this._onPop) { window.removeEventListener("popstate", this._onPop); this._onPop = null; }
+    if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); this._onLoc = null; }
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
   }
 
   connectedCallback() {
+    // 地址栏变化时回填选中（官方 _syncSelection 同款监听）
+    if (!this._onPop) {
+      this._onPop = () => this._syncUrlSelection();
+      window.addEventListener("popstate", this._onPop);
+    }
+    if (!this._onLoc) {
+      this._onLoc = () => this._syncUrlSelection();
+      window.addEventListener("location-changed", this._onLoc);
+    }
     // 全局 Esc：详情页退回列表（点标记后焦点不在引擎容器上，引擎那层键盘处理接不到）
     if (!this._onDocKey) {
       this._onDocKey = (e) => {
         if (e.key !== "Escape") return;
         if (this._panelView === "detail") {
           this._engine?.setSelected(null);
+          this._writeSelection(null);
           this._setPanelView?.("list");
           this._renderList?.();
           e.preventDefault();
@@ -1304,11 +1333,33 @@ class HaCnMapCard extends HTMLElement {
      HA 没有 homeassistant.more_info 这个服务（已对实例实测：该域只有 turn_on /
      toggle / restart 等），旧代码 callService 属于静默失败。正确做法与官方一致：
      发 hass-more-info 事件，composed 才能穿出 shadow root 被 lovelace 接住。 */
-  _openMoreInfo(entityId) {
+  _openMoreInfo(entityId, settings) {
     if (!entityId) return;
     const ev = new Event("hass-more-info", { bubbles: true, composed: true });
-    ev.detail = { entityId };
+    ev.detail = settings ? { entityId, view: "settings" } : { entityId };
     this.dispatchEvent(ev);
+  }
+
+  /* 详情页「导航」：官方 navigationUrl 同款语义，桌面端换成国内可达的高德网页版 */
+  _openDirections() {
+    const st = this._hass?.states?.[this._detailEntity];
+    const lat = st?.attributes?.latitude;
+    const lng = st?.attributes?.longitude;
+    if (typeof lat !== "number" || typeof lng !== "number") return;
+    const point = `${lat},${lng}`;
+    const ua = String(navigator.userAgent || "");
+    let url;
+    if (/iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+      url = `https://maps.apple.com/?daddr=${point}`;
+    } else if (/Android/i.test(ua)) {
+      url = `geo:${point}?q=${point}`;
+    } else {
+      // 桌面：OSM 官方链接在国内不一定可达，优先高德（坐标按 WGS84 传入，由高德自行转换）
+      url = `https://uri.amap.com/marker?position=${lng},${lat}&name=${encodeURIComponent(
+        st.attributes.friendly_name || this._detailEntity
+      )}&coordinate=wgs84&callnative=1&src=ha-map-cn`;
+    }
+    window.open(url, "_blank", "noreferrer");
   }
 
   /* 聚焦缩放：只放大到"和最近的其它标记拉开 80px"为止（官方 FOCUS_CLEARANCE_PX），
@@ -1357,6 +1408,42 @@ class HaCnMapCard extends HTMLElement {
     this.focusEntity(id);
   }
 
+  /* 选中态写回地址栏（对齐官方 SELECTED_ENTITY_PARAM = "entity_id"）。
+     v1.0.6 起这里只读不写；v1.1.9 改成双向：选中即写，刷新/分享/后退都能还原。
+     用 replaceState 而不是 pushState——自定义卡片不在 HA 的导航链路里，
+     推历史会让「后退」落到卡片不认识的中间态；替换当前记录已足够。 */
+  _writeSelection(entityId) {
+    if (!this._isFull || this._preview) return;
+    try {
+      const u = new URL(window.location.href);
+      if (entityId) u.searchParams.set("entity_id", entityId);
+      else u.searchParams.delete("entity_id");
+      const next = u.pathname + u.search + u.hash;
+      const cur = window.location.pathname + window.location.search + window.location.hash;
+      if (next !== cur) window.history.replaceState(window.history.state, "", next);
+    } catch (_) { /* 少数内嵌 WebView 没有 history API，忽略即可 */ }
+  }
+
+  /* 地址栏变化（浏览器后退/前进、别的组件改参数）时回填选中态 */
+  _syncUrlSelection() {
+    if (!this._isFull || !this._hass) return;
+    let raw = "";
+    try { raw = new URLSearchParams(window.location.search).get("entity_id") || ""; } catch (_) {}
+    let id = raw;
+    try { id = decodeURIComponent(raw); } catch (_) {}
+    if (!id || !/^(person|device_tracker|zone|geo_location)\./.test(id)) {
+      // 参数被清掉：和官方一样取消选中、详情退回列表
+      if (this._engine?._selectedEntity) {
+        this._engine.setSelected(null);
+        if (this._panelView === "detail") this._setPanelView?.("list");
+        this._renderList?.();
+      }
+      return;
+    }
+    if (this._engine?._selectedEntity === id) return;
+    if (this._hass.states[id]) this.focusEntity(id);
+  }
+
   focusEntity(entityId, zoom) {
     const st = this._hass?.states?.[entityId];
     if (!st || typeof st.attributes.latitude !== "number") return;
@@ -1365,6 +1452,7 @@ class HaCnMapCard extends HTMLElement {
     // 否则飞过去会差 300~500m（v1.0.1 修）
     if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
     this._engine.setSelected(entityId);
+    this._writeSelection(entityId);
     // 选中即打开详情（最近活动），对齐官方 hui-map-overview 的聚焦语义
     this._showDetail(entityId);
     const z = this._focusZoom(lat, lng, Math.max(zoom ?? 0, this._engine.zoom, 13));
@@ -1416,6 +1504,13 @@ class HaCnMapCard extends HTMLElement {
       state = z ? `在 ${z.attributes.friendly_name || "区域"}` : st.state === "not_home" ? "离家" : st.state === "home" ? "在家" : st.state;
     }
     subEl.textContent = rel && state ? `${state} · ${rel}` : state || rel;
+    // 导航：官方只在实体有坐标时显示；设置：官方仅管理员可见
+    const navEl = this.shadowRoot.querySelector("[data-det-nav]");
+    const setEl = this.shadowRoot.querySelector("[data-det-set]");
+    if (navEl) {
+      navEl.hidden = !(typeof st.attributes.latitude === "number" && typeof st.attributes.longitude === "number");
+    }
+    if (setEl) setEl.hidden = !this._hass?.user?.is_admin;
   }
 
   /* 最近 24h 活动时间线：官方 ACTIVITY_HOURS=24 / 最多 20 条 / 默认显示 5 条 */
@@ -1869,6 +1964,21 @@ class HaCnMapCard extends HTMLElement {
     return n ? n.slice(0, 1).toUpperCase() : "?";
   }
 
+  /* Tab 药丸：跟着当前可见的选中按钮走；容器还没布局时（offsetWidth=0）留到下一帧再量 */
+  _syncTabPill() {
+    const tabsEl = this.shadowRoot.querySelector(".cmc-tabs");
+    if (!tabsEl) return;
+    const pill = tabsEl.querySelector(".pill");
+    if (!pill) return;
+    const btns = [...tabsEl.querySelectorAll("[data-tab]")].filter((b) => !b.hidden);
+    const active = btns.find((b) => b.getAttribute("aria-selected") === "true");
+    if (!active || btns.length <= 1) { pill.style.display = "none"; return; }
+    pill.style.display = "";
+    tabsEl.style.setProperty("--n", String(btns.length));
+    const left = active.offsetLeft, width = active.offsetWidth;
+    if (width) { pill.style.left = `${left}px`; pill.style.width = `${width}px`; }
+  }
+
   _renderList() {
     const listEl = this.shadowRoot.querySelector("[data-list]");
     const tabsEl = this.shadowRoot.querySelector(".cmc-tabs");
@@ -1876,23 +1986,28 @@ class HaCnMapCard extends HTMLElement {
     const g = this._listEntries();
     const zones = g.zones;
     const counts = { people: g.people.length, devices: g.devices.length, zones: zones.length };
-    const tabs = this._tab || (counts.people ? "people" : counts.devices ? "devices" : "zones");
+    // 对齐官方：只保留有内容的分组；当前分组空了就落到第一个非空分组
+    let tabs = this._tab;
+    if (!tabs || !counts[tabs]) {
+      tabs = ["people", "devices", "zones"].find((k) => counts[k] > 0) || "people";
+    }
     this._tab = tabs;
+    const hasAny = counts.people + counts.devices + counts.zones > 0;
 
     // Tab 药丸位置
     if (tabsEl) {
       const btns = [...tabsEl.querySelectorAll("[data-tab]")];
-      const idx = btns.findIndex((b) => b.dataset.tab === tabs);
-      btns.forEach((b, i) => {
-        b.setAttribute("aria-selected", String(i === idx));
-        b.disabled = !counts[b.dataset.tab];
+      btns.forEach((b) => {
+        const n = counts[b.dataset.tab] > 0;
+        b.hidden = !n;
+        b.setAttribute("aria-selected", String(n && b.dataset.tab === tabs));
+        b.disabled = !n;
       });
-      const pill = tabsEl.querySelector(".pill");
-      const active = btns[idx];
-      if (pill && active) {
-        tabsEl.style.setProperty("--n", String(btns.length));
-        pill.style.left = `${active.offsetLeft}px`;
-        pill.style.width = `${active.offsetWidth}px`;
+      // 只剩一组时官方会退化成标题（single-tab），这里隐藏滑块，按钮自然铺满
+      tabsEl.classList.toggle("single", btns.filter((b) => !b.hidden).length <= 1);
+      this._syncTabPill();
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => this._syncTabPill());
       }
     }
 
@@ -1929,7 +2044,9 @@ class HaCnMapCard extends HTMLElement {
 
     listEl.innerHTML = rows.length
       ? rows.join("")
-      : `<div class="cmc-empty">暂无${{ people: "人员", devices: "设备", zones: "区域" }[tabs]}</div>`;
+      : !hasAny
+        ? `<div class="cmc-empty">地图上还没有可显示的实体</div>`
+        : `<div class="cmc-empty">暂无${{ people: "人员", devices: "设备", zones: "区域" }[tabs]}</div>`;
 
     listEl.querySelectorAll("[data-entity]").forEach((b) => {
       b.addEventListener("click", (e) => {
