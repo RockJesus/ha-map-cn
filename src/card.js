@@ -97,8 +97,13 @@ class HaCnMapCard extends HTMLElement {
       track_width: 3,
       track_opacity: 0.85,
       show_traffic: false,       // 高德实时路况叠加
-      show_all: false,
-      show_zones: false,
+      show_all: true,            // 全部可定位实体（对齐官方地图卡：默认全显示）
+      show_zones: true,          // 默认显示区域（家）
+      hidden_entities: [],       // 设置里逐个取消勾选的实体（永远不上图）
+      home_lat: undefined,       // 家的坐标/半径覆盖（留空则用 zone.home 自身属性）
+      home_lng: undefined,
+      home_radius: undefined,
+      home_address: "",
       show_zone_radius: true,    // zone 半径圈（官方把半径当 zone 的核心属性）
       dedupe_trackers: true,     // person 已覆盖的 device_tracker 不再单独画点
       respect_hidden: true,      // 实体注册表里被用户隐藏（hidden_by）的实体不再上地图
@@ -336,8 +341,12 @@ class HaCnMapCard extends HTMLElement {
   _resetFocus() {
     const home = this._hass?.states?.["zone.home"];
     const cfg = this._config || {};
-    let lat = home?.attributes?.latitude;
-    let lng = home?.attributes?.longitude;
+    let lat = cfg.home_lat;
+    let lng = cfg.home_lng;
+    if (lat == null || lat === "" || lng == null || lng === "") {
+      lat = home?.attributes?.latitude;
+      lng = home?.attributes?.longitude;
+    }
     if (lat == null || lng == null) {
       lat = cfg.center?.latitude;
       lng = cfg.center?.longitude;
@@ -717,6 +726,28 @@ class HaCnMapCard extends HTMLElement {
           display:flex; align-items:center; justify-content:space-between; gap:8px;
           font-size:11px; color:var(--cmc-sub);
         }
+        .cmc-set-sec { border:1px solid var(--cmc-divider); border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:10px; }
+        .cmc-set-sec-h { font-size:13px; font-weight:600; color:var(--cmc-text); display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .cmc-set-count { font-size:11px; font-weight:400; color:var(--cmc-sub); }
+        .cmc-set-row { display:flex; gap:10px; }
+        .cmc-set-row label { flex:1; min-width:0; }
+        .cmc-set-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+        .cmc-set-actions button { border:1px solid var(--cmc-divider); background:none; color:var(--cmc-text); border-radius:8px; padding:6px 10px; font-size:12px; font-family:inherit; cursor:pointer; }
+        .cmc-set-hint { font-size:11.5px; color:var(--cmc-sub); }
+        .cmc-set-b input[type=number] {
+          width:100%; box-sizing:border-box; padding:9px 10px; border-radius:10px;
+          border:1px solid var(--cmc-divider); font-size:14px; font-family:inherit;
+          background:var(--cmc-surface); color:var(--cmc-text);
+        }
+        .cmc-ent-list { display:flex; flex-direction:column; gap:2px; max-height:260px; overflow-y:auto; }
+        .cmc-ent-group { font-size:11px; font-weight:600; color:var(--cmc-sub); padding:8px 0 2px; }
+        .cmc-ent {
+          display:flex; align-items:center; gap:8px; padding:6px 0;
+          font-size:13px; color:var(--cmc-text); cursor:pointer;
+        }
+        .cmc-ent input { width:17px; height:17px; flex:none; accent-color:var(--primary-color,#03a9f4); }
+        .cmc-ent-n { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .cmc-ent-id { flex:none; max-width:46%; font-size:11px; color:var(--cmc-sub); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .cmc-set-f button {
           border:1px solid var(--cmc-divider); background:none; cursor:pointer;
           border-radius:8px; padding:5px 10px; font-size:12px; font-family:inherit;
@@ -735,7 +766,7 @@ class HaCnMapCard extends HTMLElement {
           </div>
           <button data-fit aria-label="显示全部" title="显示全部"><svg viewBox="0 0 24 24"><path d="${ICONS.focus}"/></svg></button>
           <button data-cluster aria-label="切换分组" title="切换分组" aria-pressed="${cfg.show_cluster !== false}"><svg viewBox="0 0 24 24"><path d="${cfg.show_cluster !== false ? ICONS.cluster : ICONS.clusterOff}"/></svg></button>
-          <button data-reset aria-label="重置焦点" title="重置焦点"><svg viewBox="0 0 24 24"><path d="${ICONS.resetFocus}"/></svg></button>
+          <button data-reset-focus aria-label="重置焦点" title="重置焦点"><svg viewBox="0 0 24 24"><path d="${ICONS.resetFocus}"/></svg></button>
           <button data-gear aria-label="地图设置" title="地图设置"><svg viewBox="0 0 24 24"><path d="${ICONS.cog}"/></svg></button>
           <button data-fs aria-label="全屏" title="全屏" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.fullscreen}"/></svg></button>
         </div>
@@ -829,8 +860,6 @@ class HaCnMapCard extends HTMLElement {
               </label>
               <label class="chk"><span>标记显示状态</span><input type="checkbox" data-d="show_status"></label>
               <label class="chk"><span>GPS 精度圈</span><input type="checkbox" data-d="show_accuracy"></label>
-              <label class="chk"><span>显示区域（家）</span><input type="checkbox" data-d="show_zones"></label>
-              <label class="chk"><span>区域半径圈</span><input type="checkbox" data-d="show_zone_radius"></label>
               <label class="chk"><span>跳过已隐藏实体</span><input type="checkbox" data-d="respect_hidden"></label>
               <label class="chk"><span>实时路况（仅高德）</span><input type="checkbox" data-d="show_traffic"></label>
               <label class="chk"><span>显示比例尺</span><input type="checkbox" data-d="show_scale"></label>
@@ -845,6 +874,29 @@ class HaCnMapCard extends HTMLElement {
                   <option value="168">7 天</option>
                 </select>
               </label>
+
+              <div class="cmc-set-sec">
+                <div class="cmc-set-sec-h">家的区域</div>
+                <label class="chk"><span>显示区域（家）</span><input type="checkbox" data-d="show_zones"></label>
+                <label class="chk"><span>区域半径圈</span><input type="checkbox" data-d="show_zone_radius"></label>
+                <label>家庭地址 <input type="text" data-lazy data-d="home_address" placeholder="填地址后点下方按钮解析（需高德 Key）"></label>
+                <div class="cmc-set-row">
+                  <label>纬度 <input type="number" step="any" data-d="home_lat" placeholder=""></label>
+                  <label>经度 <input type="number" step="any" data-d="home_lng" placeholder=""></label>
+                </div>
+                <label>半径（米） <input type="number" min="0" step="10" data-d="home_radius" placeholder="留空则用 HA 区域自身半径"></label>
+                <div class="cmc-set-actions">
+                  <button data-geocode>解析地址并填入坐标</button>
+                  <span class="cmc-set-hint" data-geo-hint></span>
+                </div>
+                <label>高德 Web 服务 Key <input type="text" data-lazy data-d="amap_key" placeholder="可选，仅用于地址解析"></label>
+              </div>
+
+              <div class="cmc-set-sec">
+                <div class="cmc-set-sec-h">地图实体 <span class="cmc-set-count" data-ent-count></span></div>
+                <label class="chk"><span>全部可定位</span><input type="checkbox" data-d="show_all"></label>
+                <div class="cmc-ent-list" data-ent-list></div>
+              </div>
             </div>
             <div class="cmc-set-f">
               <span>设置保存在本浏览器</span>
@@ -1041,8 +1093,17 @@ class HaCnMapCard extends HTMLElement {
       }
     });
 
+    panel.querySelector("[data-geocode]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._geocodeHome();
+    });
+    panel.querySelector("[data-ent-list]")?.addEventListener("change", (e) => {
+      const id = e.target?.dataset?.ent;
+      if (id) this._toggleEntity(id, !!e.target.checked);
+    });
+
     panel.querySelectorAll("[data-d]").forEach((el) => {
-      const evt = el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input";
+      const evt = el.type === "checkbox" || el.tagName === "SELECT" || el.dataset.lazy !== undefined ? "change" : "input";
       el.addEventListener(evt, () => this._onDrawerChange(el));
     });
     // 恢复为 YAML 配置（清掉本浏览器存的设置）
@@ -1105,7 +1166,7 @@ class HaCnMapCard extends HTMLElement {
     });
 
     // 重置焦点：回到「家」的位置与默认缩放（区别于「显示全部」的全实体适配）
-    this.shadowRoot.querySelector("[data-reset]")?.addEventListener("click", (e) => {
+    this.shadowRoot.querySelector("[data-reset-focus]")?.addEventListener("click", (e) => {
       e.stopPropagation();
       this._resetFocus();
     });
@@ -1211,7 +1272,8 @@ class HaCnMapCard extends HTMLElement {
         return id.startsWith("geo_location.") && cfg.geo_location_sources.includes(d.attributes?.source);
       }));
     }
-    return [...new Set(ids)].map((id) => hass.states[id]).filter(Boolean);
+    const hidden = new Set(cfg.hidden_entities || []);
+    return [...new Set(ids)].filter((id) => !hidden.has(id)).map((id) => hass.states[id]).filter(Boolean);
   }
 
   /* ---- 轨迹：订阅 history/stream，按实体画折线 ---- */
@@ -1323,7 +1385,7 @@ class HaCnMapCard extends HTMLElement {
     d.querySelectorAll("[data-d]").forEach((el) => {
       const k = el.dataset.d;
       // 默认开启的开关：值缺省时按 true 显示
-      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status", "show_accuracy", "show_zone_radius", "respect_hidden", "show_scale"].includes(k) : !!c[k];
+      if (el.type === "checkbox") el.checked = c[k] === undefined ? ["show_cluster", "show_labels", "show_status", "show_accuracy", "show_zone_radius", "show_zones", "show_all", "respect_hidden", "show_scale"].includes(k) : !!c[k];
       else if (k === "hours_to_show") el.value = String(Number(c[k]) || 0);
       else if (k === "theme_mode") el.value = c[k] || "auto";
       else if (k === "label_mode") el.value = c[k] || "name";
@@ -1333,6 +1395,120 @@ class HaCnMapCard extends HTMLElement {
     d.querySelectorAll("[data-d-row]").forEach((el) => {
       el.style.display = el.dataset.dRow.split(" ").includes(bm) ? "" : "none";
     });
+    // 家的坐标/半径留空时，用 HA zone.home 的当前值做占位提示（不写进配置）
+    const home = this._hass?.states?.["zone.home"]?.attributes || {};
+    const ph = (k, v) => {
+      const el = d.querySelector(`[data-d="${k}"]`);
+      if (el && c[k] == null) el.placeholder = v == null ? "" : String(v);
+    };
+    ph("home_lat", typeof home.latitude === "number" ? home.latitude.toFixed(6) : "");
+    ph("home_lng", typeof home.longitude === "number" ? home.longitude.toFixed(6) : "");
+    ph("home_radius", typeof home.radius === "number" ? home.radius : "");
+    this._renderEntityPicker();
+  }
+
+  /* 设置里的实体清单：人 / 设备 / 区域，逐个勾选是否上图 */
+  _renderEntityPicker() {
+    const box = this.shadowRoot?.querySelector("[data-ent-list]");
+    if (!box) return;
+    const hass = this._hass, cfg = this._config;
+    const cnt = this.shadowRoot.querySelector("[data-ent-count]");
+    if (!hass) { box.innerHTML = ""; if (cnt) cnt.textContent = ""; return; }
+    const hidden = new Set(cfg.hidden_entities || []);
+    const explicit = (cfg.entities || []).map((e) => (typeof e === "object" ? e.entity : e)).filter(Boolean);
+    const showAll = cfg.show_all !== false;
+    const nameOf = (st) => st.attributes?.friendly_name || st.entity_id;
+    const groups = [["person.", "人员"], ["device_tracker.", "设备"], ["zone.", "区域"]];
+    let html = "", total = 0;
+    groups.forEach(([pre, label]) => {
+      const rows = Object.values(hass.states)
+        .filter((st) => st.entity_id.startsWith(pre))
+        .sort((a, b) => String(nameOf(a)).localeCompare(String(nameOf(b)), "zh"));
+      if (!rows.length) return;
+      total += rows.length;
+      html += `<div class="cmc-ent-group">${label}（${rows.length}）</div>`;
+      rows.forEach((st) => {
+        const id = st.entity_id;
+        const on = id.startsWith("zone.")
+          ? cfg.show_zones !== false && !hidden.has(id)
+          : !hidden.has(id) && (showAll || explicit.includes(id));
+        html += `<label class="cmc-ent"><input type="checkbox" data-ent="${escapeAttr(id)}"${on ? " checked" : ""}>`
+          + `<span class="cmc-ent-n">${escapeHtml(nameOf(st))}</span>`
+          + `<span class="cmc-ent-id">${escapeHtml(id)}</span></label>`;
+      });
+    });
+    box.innerHTML = html || '<div class="cmc-empty">没有可定位实体</div>';
+    if (cnt) cnt.textContent = total ? `共 ${total} 个` : "";
+  }
+
+  /* 勾选/取消一个实体：写 entities（自定义模式）或 hidden_entities（全部模式） */
+  _toggleEntity(id, on) {
+    const cfg = { ...this._config };
+    const hidden = new Set(cfg.hidden_entities || []);
+    const eid = (e) => (typeof e === "object" ? e.entity : e);
+    if (id.startsWith("zone.")) {
+      if (on) { hidden.delete(id); cfg.show_zones = true; }
+      else hidden.add(id);
+    } else if (cfg.show_all === false) {
+      const ents = (cfg.entities || []).slice();
+      if (on) {
+        hidden.delete(id);
+        if (!ents.some((e) => eid(e) === id)) ents.push(id);
+      } else {
+        hidden.add(id);
+        cfg.entities = ents.filter((e) => eid(e) !== id);
+      }
+      cfg.entities = ents;
+    } else if (on) hidden.delete(id); else hidden.add(id);
+    cfg.hidden_entities = [...hidden];
+    this._config = cfg;
+    this._saveRuntime();
+    this._persistConfig(cfg);
+    Promise.resolve().then(() => { this._update(); this._renderEntityPicker(); });
+  }
+
+  /* 家庭地址解析：支持 “纬度,经度” 直填，或高德 Web 服务 Key 地理编码 */
+  async _geocodeHome() {
+    const cfg = { ...this._config };
+    const hint = this.shadowRoot?.querySelector("[data-geo-hint]");
+    const addr = String(cfg.home_address || "").trim();
+    const setHint = (t) => { if (hint) hint.textContent = t; };
+    if (!addr) { setHint("先填地址，或直接填“纬度,经度”"); return; }
+    const m = addr.match(/^(-?\d+(?:\.\d+)?)\s*[,，]\s*(-?\d+(?:\.\d+)?)$/);
+    let lat, lng;
+    if (m) {
+      lat = Number(m[1]); lng = Number(m[2]);
+      if (Math.abs(lat) > 90 && Math.abs(lng) <= 90) [lat, lng] = [lng, lat];
+    } else {
+      const key = String(cfg.amap_key || "").trim();
+      if (!key) { setHint("地址解析需要高德 Web 服务 Key；也可直接填“纬度,经度”"); return; }
+      try {
+        const r = await fetch(`https://restapi.amap.com/v3/geocode/geo?key=${encodeURIComponent(key)}&address=${encodeURIComponent(addr)}`);
+        const j = await r.json();
+        const loc = j?.geocodes?.[0]?.location;
+        if (!loc) { setHint(`解析失败：${j?.info || "无结果"}`); return; }
+        [lng, lat] = String(loc).split(",").map(Number);
+      } catch {
+        setHint("地址服务不可达，请直接填经纬度");
+        return;
+      }
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      setHint("坐标不合法"); return;
+    }
+    cfg.home_lat = Number(lat.toFixed(6));
+    cfg.home_lng = Number(lng.toFixed(6));
+    this._config = cfg;
+    this._saveRuntime();
+    this._persistConfig(cfg);
+    const d = this.shadowRoot.querySelector('[data-view="settings"]');
+    if (d) {
+      const a = d.querySelector('[data-d="home_lat"]'), b = d.querySelector('[data-d="home_lng"]');
+      if (a) a.value = String(cfg.home_lat);
+      if (b) b.value = String(cfg.home_lng);
+    }
+    setHint(`已定位：${cfg.home_lat}, ${cfg.home_lng}`);
+    Promise.resolve().then(() => this._update());
   }
 
   /* 抽屉：改配置 → 立即重绘 + 存到本浏览器 + 通知外部 */
@@ -1344,10 +1520,19 @@ class HaCnMapCard extends HTMLElement {
     else v = el.value;
 
     const cfg = { ...this._config };
+    if (k === "show_all" && v === false) {
+      // 关闭“全部可定位”时，把当前可见实体固化成自定义清单，避免瞬间空图
+      const keep = (cfg.entities || []).filter((e) => typeof e === "object");
+      const objs = new Map(keep.map((o) => [o.entity, o]));
+      cfg.entities = this._collectEntities().map((st) => objs.get(st.entity_id) || st.entity_id);
+    }
     if (el.type === "checkbox") {
       cfg[k] = v;               // false 也是有效状态，不能当"未设置"删掉
     } else if (k === "hours_to_show") {
       cfg[k] = Number(v) || 0;
+    } else if (["home_lat", "home_lng", "home_radius"].includes(k)) {
+      if (v === "" || v == null) delete cfg[k];
+      else cfg[k] = Number(v);
     } else if (v === "") {
       delete cfg[k];
     } else {
@@ -1877,7 +2062,17 @@ class HaCnMapCard extends HTMLElement {
       Object.values(hass.states).filter((s) => s.entity_id.startsWith("zone.")).forEach((z) => {
         const { latitude, longitude, friendly_name, passive, radius } = z.attributes;
         if (latitude == null || passive) return;
-        let lat = latitude, lng = longitude;
+        if ((cfg.hidden_entities || []).includes(z.entity_id)) return;
+        let lat = latitude, lng = longitude, radiusAttr = radius;
+        // 家：用户在设置里自定义了坐标/半径就覆盖 HA zone.home 的属性（只影响卡片，不改 HA 配置）
+        if (z.entity_id === "zone.home") {
+          if (cfg.home_lat != null && cfg.home_lat !== "" && cfg.home_lng != null && cfg.home_lng !== "") {
+            lat = Number(cfg.home_lat); lng = Number(cfg.home_lng);
+          }
+          if (cfg.home_radius != null && cfg.home_radius !== "" && Number(cfg.home_radius) > 0) {
+            radiusAttr = Number(cfg.home_radius);
+          }
+        }
         if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
         const name = friendly_name || z.entity_id;
         markers.push({
@@ -1892,7 +2087,7 @@ class HaCnMapCard extends HTMLElement {
         pts.push({ lat, lng });
         // 区域半径圈：radius 才是 zone 的核心属性（官方把 zone 画成带半径的圆）。
         // 旧版本只画小房子图标，半径信息完全丢失（v1.0.2 补）
-        const r = Number(radius);
+        const r = Number(radiusAttr);
         if (cfg.show_zone_radius !== false && Number.isFinite(r) && r > 0) {
           zoneCircles.push({
             entityId: z.entity_id,
