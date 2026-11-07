@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.0.3 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.4 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -945,6 +945,7 @@ class HaCnMapCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    this._preview = false;    // 官方 preview 属性：卡片选择器/编辑器预览态
     this._trackPoints = {};   // entityId -> [{lat,lng}]
     this._trackUnsub = null;  // history 订阅取消函数
     this._trackSig = "";      // 订阅参数签名，避免重复订阅
@@ -973,6 +974,20 @@ class HaCnMapCard extends HTMLElement {
   get isPanel() { return this._hLayout === "panel"; }
   // hui-card 还会顺手写 element.isPanel；只读会抛错（它有 try/catch，抛了就把卡片换成错误卡），给个空 setter
   set isPanel(_v) {}
+
+  /* 官方卡片 API：preview=true 表示这张卡正被渲染在卡片选择器/编辑器里。
+     预览态不该真的去订阅历史轨迹（那是一次 WebSocket 请求），也不该铺满全屏 */
+  get preview() { return this._preview; }
+  set preview(v) {
+    const on = !!v;
+    if (on === this._preview) return;
+    this._preview = on;
+    if (on && this._engine) {
+      if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
+      this._trackSig = "";
+      this._trackPoints = {};
+    }
+  }
 
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("ha-cn-map-card: 配置无效");
@@ -1879,6 +1894,7 @@ class HaCnMapCard extends HTMLElement {
 
   /* ---- 轨迹：订阅 history/stream，按实体画折线 ---- */
   _syncTracks(states) {
+    if (this._preview) return; // 预览态不订阅轨迹，省一次 WS 请求
     const cfg = this._config;
     const hours = Number(cfg.hours_to_show) || 0;
     if (hours <= 0) {
@@ -2621,6 +2637,28 @@ class HaCnMapCard extends HTMLElement {
     return Math.ceil((this._config?.height || 360) / 50) + 1;
   }
 
+  /* 官方卡片 API：sections 视图的栅格尺寸。
+     栅格 12 列、行高 56px；不给这个方法时卡片会占满整段且高度不可调 */
+  getGridOptions() {
+    if (this._layout === "panel" || this.classList.contains("cmc-bleed")) {
+      return { columns: "full", rows: 8, min_columns: 6, min_rows: 2, max_rows: 20 };
+    }
+    const px = Number(this._config?.height) || 360;
+    const rows = Math.min(20, Math.max(3, Math.round(px / 56)));
+    return { columns: 12, rows, min_columns: 6, min_rows: 2, max_rows: 20 };
+  }
+
+  /* 兼容 HA 2024.x 的 sections 旧接口（2024.11+ 走 getGridOptions） */
+  getLayoutOptions() {
+    const g = this.getGridOptions();
+    return {
+      grid_columns: g.columns,
+      grid_rows: g.rows,
+      grid_min_columns: g.min_columns,
+      grid_min_rows: g.min_rows,
+    };
+  }
+
   static async getConfigElement() {
     return document.createElement("ha-cn-map-card-editor");
   }
@@ -3025,6 +3063,7 @@ window.customCards.push({
   name: "中国地图卡片",
   description: "高德/天地图底图的 HA 地图卡片，免代理直连",
   preview: true,
+  documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.0.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
