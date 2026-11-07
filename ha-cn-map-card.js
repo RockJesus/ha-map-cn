@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.0.8 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.9 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -1042,6 +1042,7 @@ class HaCnMapCard extends HTMLElement {
       show_cluster: true,        // 标记聚合
       fit_entities: true,
       height: 360,
+      aspect_ratio: "",          // 如 "16:9"，填了就忽略 height（官方 aspect_ratio 语义）
       entities: [],
       geo_location_sources: [],
       title: "",
@@ -1068,6 +1069,25 @@ class HaCnMapCard extends HTMLElement {
       this.shadowRoot?.querySelector(".cmc-card")?.classList.toggle("is-dark", dark);
     }
     if (this._engine) this._update();
+  }
+
+  /* 解析 "16:9" / "4/3" / "21x9" 这类宽高比；非法值返回 null */
+  _parseAspect(v) {
+    if (!v || typeof v !== "string") return null;
+    const m = v.trim().match(/^(\d+(?:\.\d+)?)\s*[:/xX]\s*(\d+(?:\.\d+)?)$/);
+    if (!m) return null;
+    const w = Number(m[1]), h = Number(m[2]);
+    return w > 0 && h > 0 ? { w, h } : null;
+  }
+
+  /* 宽高比：卡片按比例撑高，全屏态忽略（铺满是第一优先级） */
+  _applyAspect() {
+    const card = this.shadowRoot?.querySelector(".cmc-card");
+    if (!card || typeof this.style === "undefined") return;
+    const r = this._isFull ? null : this._parseAspect(this._config?.aspect_ratio);
+    card.classList.toggle("is-aspect", !!r);
+    card.style.aspectRatio = r ? `${r.w} / ${r.h}` : "";
+    this.style.height = this._isFull ? "" : r ? "auto" : `${this._config?.height || 360}px`;
   }
 
   /* 暗色判定：显式 theme_mode 优先，auto 跟随 HA 主题，再兜底系统偏好 */
@@ -1237,7 +1257,8 @@ class HaCnMapCard extends HTMLElement {
     const zoomSide = isFull ? "right" : "left";
     // fill：sections 视图里也铺满（bleed 会接管实际铺满）
     const fill = cfg.fill === true;
-    const h = isFull ? "100%" : `${cfg.height || 360}px`;
+    const ar = this._parseAspect(cfg.aspect_ratio);
+    const h = isFull ? "100%" : ar ? "auto" : `${cfg.height || 360}px`;
     // 内联压过外部对宿主元素的 height:100% 拉伸（panel 视图会这样干）
     if (typeof this.style !== "undefined") this.style.height = isFull ? "" : h;
     this._isFull = isFull;
@@ -1290,6 +1311,7 @@ class HaCnMapCard extends HTMLElement {
           transform:translate(-50%, -100%); transition:opacity .1s;
         }
         .cmc-tip[hidden] { display:none; }
+        .cmc-card.is-aspect { height:auto; }
         .cmc-card {
           width:100%; height:100%; position:relative; overflow:hidden;
           border-radius:var(--cmc-radius);
@@ -1927,6 +1949,7 @@ class HaCnMapCard extends HTMLElement {
     // 必须补一帧：_didFit 已为 true 时 _update 走不到 render()，
     // 换底图后地图会是一片空白（v1.0.3 修）
     this._engine.render();
+    this._applyAspect();
     this._renderList();
   }
 
@@ -2793,6 +2816,9 @@ class HaCnMapCard extends HTMLElement {
   getCardSize() {
     // 全屏模式下高度由视口决定，给个大值免得 HA 按 360px 排格子
     if (this._layout === LAYOUT.FULL || this.classList.contains("cmc-bleed")) return 10;
+    // 官方 hui-map-card 的算法：有宽高比时按比例折算成 50px 一格
+    const r = this._parseAspect(this._config?.aspect_ratio);
+    if (r) return 1 + Math.floor(((100 * r.h) / r.w) / 25) || 3;
     return Math.ceil((this._config?.height || 360) / 50) + 1;
   }
 
@@ -3071,6 +3097,12 @@ class HaCnMapCardEditor extends HTMLElement {
           <label class="t">卡片高度（px）</label>
           <input type="number" data-k="height" min="180" max="900" step="10">
         </div>
+
+        <div class="row">
+          <label class="t">宽高比（可选，如 16:9）</label>
+          <input type="text" data-k="aspect_ratio" placeholder="留空 = 用上面的高度">
+          <div class="hint">填了宽高比就忽略「卡片高度」，地图按比例自适应；全屏态不生效。</div>
+        </div>
       </div>
     `;
 
@@ -3241,4 +3273,4 @@ window.customCards.push({
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.0.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
