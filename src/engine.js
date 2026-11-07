@@ -64,6 +64,20 @@ class CnTileEngine extends EventTarget {
     return { x: p.x * n, y: p.y * n };
   }
 
+  /* 屏幕坐标（clientX/clientY）→ 底图坐标系经纬度（拖动家图标用） */
+  latLngAt(clientX, clientY) {
+    const r = this.container.getBoundingClientRect();
+    const w = this.container.clientWidth || 400;
+    const h = this.container.clientHeight || 300;
+    const c = CnTileEngine.project(this.center.lat, this.center.lng);
+    const n = 2 ** this.zoom;
+    const wx = c.x + (clientX - r.left - w / 2) / (n * 256);
+    const wy = c.y + (clientY - r.top - h / 2) / (n * 256);
+    const lng = wx * 360 - 180;
+    const lat = (Math.atan(Math.sinh(Math.PI * (1 - 2 * wy))) * 180) / Math.PI;
+    return { lat, lng };
+  }
+
   setView(lat, lng, zoom) {
     this.center = { lat, lng };
     if (zoom != null) this.zoom = zoom;
@@ -273,8 +287,11 @@ class CnTileEngine extends EventTarget {
         }
         el.addEventListener("click", (e) => {
           e.stopPropagation();
+          // 拖动结束后浏览器仍会补一次 click，用标记位吞掉，别误开详情
+          if (el.dataset.dragged === "1") { el.dataset.dragged = ""; return; }
           this.dispatchEvent(new CustomEvent("marker-click", { detail: { entityId: m.entityId } }));
         });
+        this._attachMarkerDrag(el, m);
         this.markerLayer.appendChild(el);
         return el;
       }
@@ -406,6 +423,18 @@ class CnTileEngine extends EventTarget {
       el.setAttribute("stroke-width", String(ci.strokeWidth ?? 1.5));
       if (ci.dashed) el.setAttribute("stroke-dasharray", "5 4");
       group.appendChild(el);
+      if (ci.handle) {
+        const hd = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        hd.setAttribute("cx", (x + r).toFixed(1));
+        hd.setAttribute("cy", y.toFixed(1));
+        hd.setAttribute("r", "7");
+        hd.setAttribute("fill", "#fff");
+        hd.setAttribute("stroke", ci.color || "#03a9f4");
+        hd.setAttribute("stroke-width", "2");
+        hd.setAttribute("style", "cursor:ew-resize;pointer-events:all");
+        group.appendChild(hd);
+        this._attachRadiusHandle(hd, el, ci, x, y);
+      }
     }
   }
 
@@ -575,6 +604,87 @@ class CnTileEngine extends EventTarget {
       this.clusterLayer.appendChild(bubble);
       this._clusters.push({ x: g.x, y: g.y, members: g.members.map((m) => m.marker) });
     }
+  }
+
+  /* 区域图标拖动（仅 zone.home）：拖动期间只更新内存坐标，松手由卡片落盘 */
+  _attachMarkerDrag(el, m) {
+    if (!m.draggable) return;
+    el.style.cursor = "grab";
+    const move = (e) => {
+      if (!this._dragMarker) return;
+      e.preventDefault();
+      const ll = this.latLngAt(e.clientX, e.clientY);
+      if (!ll) return;
+      m.lat = ll.lat; m.lng = ll.lng;
+      if (el.isConnected) {
+        const r = this.container.getBoundingClientRect();
+        el.style.left = `${(e.clientX - r.left).toFixed(1)}px`;
+        el.style.top = `${(e.clientY - r.top).toFixed(1)}px`;
+      }
+      if (!this._dragMoved && Math.hypot(e.clientX - this._dragStart.x, e.clientY - this._dragStart.y) > 4) {
+        this._dragMoved = true;
+        el.dataset.dragged = "1";
+      }
+      this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: ll.lat, lng: ll.lng, phase: "move" } }));
+    };
+    const end = () => {
+      if (!this._dragMarker) return;
+      this._dragMarker = null;
+      el.style.cursor = "grab";
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: m.lat, lng: m.lng, phase: "end" } }));
+    };
+    el.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.stopPropagation(); e.preventDefault();
+      this._dragMarker = m.entityId;
+      this._dragMoved = false;
+      this._dragStart = { x: e.clientX, y: e.clientY };
+      this._fly?.cancel?.(); this._fly = null;
+      el.style.cursor = "grabbing";
+      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
+      this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, phase: "start" } }));
+    });
+  }
+
+  /* 半径手柄拖动：跟着指针到圆心的距离算米数，实时改圆，松手由卡片落盘 */
+  _attachRadiusHandle(handle, circleEl, ci, cx, cy) {
+    let active = false;
+    const move = (e) => {
+      if (!active) return;
+      e.preventDefault();
+      const r = this.container.getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const mPerPx = (156543.03392 * Math.cos((ci.lat * Math.PI) / 180)) / 2 ** this.zoom;
+      const meters = Math.max(20, Math.round(Math.hypot(px - cx, py - cy) * mPerPx));
+      ci.radius = meters;
+      const rr = meters / mPerPx;
+      circleEl.setAttribute("r", rr.toFixed(1));
+      handle.setAttribute("cx", (cx + rr).toFixed(1));
+      this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: meters, phase: "move" } }));
+    };
+    const end = () => {
+      if (!active) return;
+      active = false;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "end" } }));
+    };
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.stopPropagation(); e.preventDefault();
+      active = true;
+      this._fly?.cancel?.(); this._fly = null;
+      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
+      this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
+    });
   }
 
   _createClusterEl(g) {

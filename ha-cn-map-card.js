@@ -28,6 +28,17 @@ var GCJ = /* @__PURE__ */ (() => {
       dLat = dLat * 180 / (a * (1 - ee) / (magic * sqrt) * Math.PI);
       dLng = dLng * 180 / (a / sqrt * Math.cos(radLat) * Math.PI);
       return [lat + dLat, lng + dLng];
+    },
+    // 反向：把高德底图上的坐标还原成 WGS84（拖动家图标后写回配置用）
+    gcj2wgs(lat, lng) {
+      if (this.outOfChina(lat, lng)) return [lat, lng];
+      let wLat = lat, wLng = lng;
+      for (let i = 0; i < 3; i++) {
+        const [gLat, gLng] = this.wgs2gcj(wLat, wLng);
+        wLat += lat - gLat;
+        wLng += lng - gLng;
+      }
+      return [wLat, wLng];
     }
   };
 })();
@@ -219,6 +230,19 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     const p = _CnTileEngine.project(lat, lng);
     const n = 2 ** z;
     return { x: p.x * n, y: p.y * n };
+  }
+  /* 屏幕坐标（clientX/clientY）→ 底图坐标系经纬度（拖动家图标用） */
+  latLngAt(clientX, clientY) {
+    const r = this.container.getBoundingClientRect();
+    const w = this.container.clientWidth || 400;
+    const h = this.container.clientHeight || 300;
+    const c = _CnTileEngine.project(this.center.lat, this.center.lng);
+    const n = 2 ** this.zoom;
+    const wx = c.x + (clientX - r.left - w / 2) / (n * 256);
+    const wy = c.y + (clientY - r.top - h / 2) / (n * 256);
+    const lng = wx * 360 - 180;
+    const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * wy))) * 180 / Math.PI;
+    return { lat, lng };
   }
   setView(lat, lng, zoom) {
     this.center = { lat, lng };
@@ -414,8 +438,13 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         }
         el.addEventListener("click", (e) => {
           e.stopPropagation();
+          if (el.dataset.dragged === "1") {
+            el.dataset.dragged = "";
+            return;
+          }
           this.dispatchEvent(new CustomEvent("marker-click", { detail: { entityId: m.entityId } }));
         });
+        this._attachMarkerDrag(el, m);
         this.markerLayer.appendChild(el);
         return el;
       }
@@ -539,6 +568,18 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       el.setAttribute("stroke-width", String(ci.strokeWidth ?? 1.5));
       if (ci.dashed) el.setAttribute("stroke-dasharray", "5 4");
       group.appendChild(el);
+      if (ci.handle) {
+        const hd = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        hd.setAttribute("cx", (x + r).toFixed(1));
+        hd.setAttribute("cy", y.toFixed(1));
+        hd.setAttribute("r", "7");
+        hd.setAttribute("fill", "#fff");
+        hd.setAttribute("stroke", ci.color || "#03a9f4");
+        hd.setAttribute("stroke-width", "2");
+        hd.setAttribute("style", "cursor:ew-resize;pointer-events:all");
+        group.appendChild(hd);
+        this._attachRadiusHandle(hd, el, ci, x, y);
+      }
     }
   }
   clearPaths() {
@@ -703,6 +744,90 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       this.clusterLayer.appendChild(bubble);
       this._clusters.push({ x: g.x, y: g.y, members: g.members.map((m) => m.marker) });
     }
+  }
+  /* 区域图标拖动（仅 zone.home）：拖动期间只更新内存坐标，松手由卡片落盘 */
+  _attachMarkerDrag(el, m) {
+    if (!m.draggable) return;
+    el.style.cursor = "grab";
+    const move = (e) => {
+      if (!this._dragMarker) return;
+      e.preventDefault();
+      const ll = this.latLngAt(e.clientX, e.clientY);
+      if (!ll) return;
+      m.lat = ll.lat;
+      m.lng = ll.lng;
+      if (el.isConnected) {
+        const r = this.container.getBoundingClientRect();
+        el.style.left = `${(e.clientX - r.left).toFixed(1)}px`;
+        el.style.top = `${(e.clientY - r.top).toFixed(1)}px`;
+      }
+      if (!this._dragMoved && Math.hypot(e.clientX - this._dragStart.x, e.clientY - this._dragStart.y) > 4) {
+        this._dragMoved = true;
+        el.dataset.dragged = "1";
+      }
+      this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: ll.lat, lng: ll.lng, phase: "move" } }));
+    };
+    const end = () => {
+      if (!this._dragMarker) return;
+      this._dragMarker = null;
+      el.style.cursor = "grab";
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: m.lat, lng: m.lng, phase: "end" } }));
+    };
+    el.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      this._dragMarker = m.entityId;
+      this._dragMoved = false;
+      this._dragStart = { x: e.clientX, y: e.clientY };
+      this._fly?.cancel?.();
+      this._fly = null;
+      el.style.cursor = "grabbing";
+      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
+      this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, phase: "start" } }));
+    });
+  }
+  /* 半径手柄拖动：跟着指针到圆心的距离算米数，实时改圆，松手由卡片落盘 */
+  _attachRadiusHandle(handle, circleEl, ci, cx, cy) {
+    let active = false;
+    const move = (e) => {
+      if (!active) return;
+      e.preventDefault();
+      const r = this.container.getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const mPerPx = 156543.03392 * Math.cos(ci.lat * Math.PI / 180) / 2 ** this.zoom;
+      const meters = Math.max(20, Math.round(Math.hypot(px - cx, py - cy) * mPerPx));
+      ci.radius = meters;
+      const rr = meters / mPerPx;
+      circleEl.setAttribute("r", rr.toFixed(1));
+      handle.setAttribute("cx", (cx + rr).toFixed(1));
+      this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: meters, phase: "move" } }));
+    };
+    const end = () => {
+      if (!active) return;
+      active = false;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "end" } }));
+    };
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      active = true;
+      this._fly?.cancel?.();
+      this._fly = null;
+      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
+      this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
+    });
   }
   _createClusterEl(g) {
     const el = document.createElement("div");
@@ -1779,6 +1904,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
                   <button data-geocode>解析地址并填入坐标</button>
                   <span class="cmc-set-hint" data-geo-hint></span>
                 </div>
+                <span class="cmc-set-hint">地图上可直接拖家里的图标改位置，拖半径圈右侧白点改半径</span>
                 <label>高德 Web 服务 Key <input type="text" data-lazy data-d="amap_key" placeholder="可选，仅用于地址解析"></label>
               </div>
 
@@ -1828,6 +1954,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         this._openMoreInfo(id);
       }
     });
+    this._engine.addEventListener("marker-drag", (e) => this._onHomeDrag(e.detail));
+    this._engine.addEventListener("circle-radius", (e) => this._onHomeRadius(e.detail));
     this._engine.addEventListener("selection-cleared", () => {
       this._writeSelection(null);
       if (this._panelView === "detail") {
@@ -2370,6 +2498,55 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     setHint(`已定位：${cfg.home_lat}, ${cfg.home_lng}`);
     Promise.resolve().then(() => this._update());
   }
+  _syncHomeFields() {
+    const d = this.shadowRoot?.querySelector('[data-view="settings"]');
+    if (!d) return;
+    const cfg = this._config || {};
+    const a = d.querySelector('[data-d="home_lat"]');
+    const b = d.querySelector('[data-d="home_lng"]');
+    const r = d.querySelector('[data-d="home_radius"]');
+    if (a) a.value = cfg.home_lat ?? "";
+    if (b) b.value = cfg.home_lng ?? "";
+    if (r) r.value = cfg.home_radius ?? "";
+  }
+  _setGeoHint(t) {
+    const h = this.shadowRoot?.querySelector("[data-geo-hint]");
+    if (h) h.textContent = t;
+  }
+  /* 地图上拖动家里的小房子：高德底图坐标 → WGS84 后写进 home_lat/home_lng */
+  _onHomeDrag(d) {
+    if (!d || d.entityId !== "zone.home") return;
+    if (d.phase === "start") {
+      this._engine._userMoved = true;
+      return;
+    }
+    let lat = d.lat, lng = d.lng;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (this._basemapShift) [lat, lng] = GCJ.gcj2wgs(lat, lng);
+    this._config = { ...this._config, home_lat: Number(lat.toFixed(6)), home_lng: Number(lng.toFixed(6)) };
+    this._syncHomeFields();
+    if (d.phase === "end") {
+      this._saveRuntime();
+      this._persistConfig(this._config);
+      this._setGeoHint(`已拖动到位：${this._config.home_lat}, ${this._config.home_lng}`);
+      Promise.resolve().then(() => this._update());
+    }
+  }
+  /* 拖动半径圈手柄：米数直接写 home_radius */
+  _onHomeRadius(d) {
+    if (!d || d.entityId !== "zone.home") return;
+    if (d.phase !== "start" && Number.isFinite(d.radius)) {
+      this._config = { ...this._config, home_radius: Math.round(d.radius) };
+      this._syncHomeFields();
+    }
+    if (d.phase === "end") {
+      this._engine._userMoved = true;
+      this._saveRuntime();
+      this._persistConfig(this._config);
+      this._setGeoHint(`已设置半径：${Math.round(d.radius)} 米`);
+      Promise.resolve().then(() => this._update());
+    }
+  }
   /* 抽屉：改配置 → 立即重绘 + 存到本浏览器 + 通知外部 */
   _onDrawerChange(el) {
     const k = el.dataset.d;
@@ -2905,6 +3082,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           clusterable: false,
           // 家/区域不参与聚合，永远单独显示
           home: true,
+          draggable: z.entity_id === "zone.home",
+          // 只能拖家（其他区域没有对应的覆盖配置）
           icon: z.attributes.icon || "mdi:home"
         });
         pts.push({ lat, lng });
@@ -2919,7 +3098,9 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
             dashed: true,
             fillOpacity: 0.12,
             strokeOpacity: 0.55,
-            strokeWidth: 2
+            strokeWidth: 2,
+            handle: z.entity_id === "zone.home"
+            // 家半径圈带一个可拖动的小手柄
           });
           if (cfg.fit_zones) {
             const dLat = r / 111320;
@@ -2990,17 +3171,26 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
     return Math.max(base, Math.min(pad, Math.floor(Math.min(w, h) * 0.35)));
   }
+  _cfgHidden() {
+    return Array.isArray(this._config?.hidden_entities) ? this._config.hidden_entities : [];
+  }
   /* ---- 概览列表（对齐官方 hui-map-overview 的分组与文案） ---- */
   _listEntries() {
     const hass = this._hass;
     if (!hass) return { people: [], devices: [], zones: [] };
     const ids = new Set(this._collectEntities().map((e) => e.entity_id));
     const people = [], devices = [], zones = [];
+    const hiddenIds = this._cfgHidden();
+    Object.values(hass.states).forEach((st) => {
+      if (!st.entity_id.startsWith("person.")) return;
+      if (hiddenIds.includes(st.entity_id)) return;
+      if (this._config.respect_hidden !== false && this._hiddenIds?.has(st.entity_id)) return;
+      people.push(st);
+    });
     ids.forEach((id) => {
       const st = hass.states[id];
       if (!st) return;
-      if (id.startsWith("person.")) people.push(st);
-      else if (id.startsWith("device_tracker.") || id.startsWith("geo_location.")) devices.push(st);
+      if (id.startsWith("device_tracker.") || id.startsWith("geo_location.")) devices.push(st);
     });
     Object.values(hass.states).forEach((st) => {
       if (st.entity_id.startsWith("zone.") && !st.attributes.passive) zones.push(st);
@@ -3634,4 +3824,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.2.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.2.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
