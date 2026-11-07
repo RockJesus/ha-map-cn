@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.0.5 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.0.6 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -342,8 +342,9 @@ class CnTileEngine extends EventTarget {
   /* 选中 / 取消选中实体：官方聚焦语义，标记加光环 */
   setSelected(entityId) {
     this._selectedEntity = entityId || null;
-    this._markerEls.forEach((el, i) => {
-      el.classList.toggle("is-selected", !!entityId && this._markers[i]?.entityId === entityId);
+    // 可能在 setMarkers 之前被调用（如重建后恢复选中态），两个数组都要兜底
+    (this._markerEls || []).forEach((el, i) => {
+      el.classList.toggle("is-selected", !!entityId && this._markers?.[i]?.entityId === entityId);
     });
   }
 
@@ -1191,7 +1192,12 @@ class HaCnMapCard extends HTMLElement {
   _render() {
     // 重建会把引擎换掉：先记住旧视野，切底图/主题时不该把人踢回北京
     const prevView = this._engine
-      ? { c: { ...this._engine.center }, z: this._engine.zoom, moved: this._engine._userMoved }
+      ? {
+          c: { ...this._engine.center },
+          z: this._engine.zoom,
+          moved: this._engine._userMoved,
+          sel: this._engine._selectedEntity || null, // 重建后要恢复选中光环，否则详情页"选中却无光环"
+        }
       : null;
     const cfg = this._config;
     const base = BASEMAPS[cfg.basemap] || BASEMAPS.amap;
@@ -1864,6 +1870,9 @@ class HaCnMapCard extends HTMLElement {
       this._engine.center = prevView.c;
       this._engine.zoom = prevView.z;
       this._engine._userMoved = prevView.moved;
+      if (prevView.sel && this._hass?.states?.[prevView.sel]) {
+        this._engine.setSelected(prevView.sel);
+      }
     }
     if (this._hass) this._update(); else this._engine.render();
     // 必须补一帧：_didFit 已为 true 时 _update 走不到 render()，
@@ -2140,6 +2149,35 @@ class HaCnMapCard extends HTMLElement {
 
   /* 聚焦实体：官方点击标记 / 点击列表项的"选中 + 飞行"语义。
      全屏且面板展开时，把目标点放在让开面板后的可视区域中心 */
+  /* URL 深链：?entity_id=person.zhangsan / ?entity=… / #person.zhangsan 都可。
+     用途是把「某人现在在哪」做成可分享的链接；只读不写回，免得污染用户地址栏 */
+  _applyUrlSelection() {
+    if (this._urlApplied || !this._hass) return;
+    let raw = "";
+    try {
+      const q = new URLSearchParams(window.location.search);
+      raw = q.get("entity_id") || q.get("entity") || "";
+    } catch (_) { /* 某些内嵌 WebView 没有 URLSearchParams */ }
+    const hash = String(window.location.hash || "").replace(/^#/, "");
+    if (!raw && hash) {
+      if (hash.includes("=")) {
+        try {
+          const hp = new URLSearchParams(hash);
+          raw = hp.get("entity_id") || hp.get("entity") || "";
+        } catch (_) {}
+      } else if (/^(person|device_tracker|zone|geo_location)\./.test(hash)) {
+        raw = hash;
+      }
+    }
+    if (!raw) return;
+    let id = raw;
+    try { id = decodeURIComponent(raw); } catch (_) {}
+    const st = this._hass.states[id];
+    if (!st || typeof st.attributes.latitude !== "number") return;
+    this._urlApplied = true;
+    this.focusEntity(id);
+  }
+
   focusEntity(entityId, zoom) {
     const st = this._hass?.states?.[entityId];
     if (!st || typeof st.attributes.latitude !== "number") return;
@@ -2451,6 +2489,13 @@ class HaCnMapCard extends HTMLElement {
       this._didFit = true;
     } else if (!this._didFit) {
       this._engine.render();
+    }
+    // URL 深链：链接里带 ?entity_id=… 时首次渲染后直接定位到该实体
+    this._applyUrlSelection();
+    // 详情页开着时保证标记仍处于选中态：setMarkers 重建 DOM 时若找不到会把它清空
+    if (this._panelView === "detail" && this._detailEntity &&
+        this._engine._selectedEntity !== this._detailEntity) {
+      this._engine.setSelected(this._detailEntity);
     }
     // 列表里的状态文字（"离家 · 4 分钟前"）需要跟着 hass 刷新
     if (this._panelView === "detail") this._renderDetailHeader();
@@ -3083,4 +3128,4 @@ window.customCards.push({
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.0.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.0.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
