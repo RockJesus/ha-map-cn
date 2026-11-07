@@ -16,7 +16,7 @@
 3. 搜索安装 → **重启 HA**（或刷新浏览器）
 4. **资源会自动注册**，无需手动添加
 
-> 安装包是仓库根的 `ha-cn-map-card.js`（`hacs.json` 声明 `filename`，`content_in_root: true`），esbuild 打包的单文件，开箱即装。
+> 安装包是 **GitHub Release 里的 `ha-cn-map-card.js` 单文件 asset**（`hacs.json` 用 `filename` + `hide_default_branch` 声明），esbuild 打包、无运行时依赖，开箱即装。
 > 如果 HACS 版本较旧没自动加，手动加一条：`/hacsfiles/ha-map-cn/ha-cn-map-card.js`，类型 **JavaScript Module**。
 
 ### 更新后看不到新功能？
