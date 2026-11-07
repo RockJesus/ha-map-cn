@@ -138,10 +138,27 @@ aspect_ratio: ""             # 如 "16:9"；填了忽略 height
 show_zone_radius: true       # 按 zone.radius 画虚线半径圈
 fit_zones: false             # 自动缩放时把半径圈算进视野
 dedupe_trackers: true        # person 已覆盖的 device_tracker 不再单独画点
-respect_hidden: true         # 跳过实体注册表里隐藏的实体（hidden_by 非空，v1.1.3）
+respect_hidden: true         # 跳过实体注册表里隐藏的实体（hidden_by 非空，v1.1.4）
 ```
 
 > 完整字段以 `setConfig` 默认值为准（[源码](ha-cn-map-card.js)）；抽屉与可视化编辑器改过的选项会存在浏览器本地，优先于 YAML，`persist: false` 可关闭这一行为。
+
+### 条件显示（conditions，v1.1.4）
+
+和官方条件卡片同一语义：`conditions` 里每一条都满足才渲染这张卡，否则整张卡隐藏：
+
+```yaml
+conditions:
+  - entity: binary_sensor.workday      # 状态匹配
+    state: "on"
+  - entity: person.zhangsan            # 状态不匹配
+    state_not: "home"
+  - entity: sensor.car_battery         # 属性匹配（attribute 指定取值来源）
+    attribute: battery_level
+    state: "80"
+```
+
+支持 `state` / `state_not` / `attribute` 三种字段；实体不存在视为不满足；`conditions` 缺省或为空数组时永远显示。只写 YAML，图形编辑器暂不提供这一项。
 
 ### 底图对比
 
@@ -420,6 +437,8 @@ images/                 # README 截图
 
 ## 版本历史
 
+- **v1.1.4**：**conditions 条件显示**——官方条件卡片同款语义：`conditions` 里每一条都满足才渲染这张卡，否则整张卡隐藏。支持 `state` / `state_not` / `attribute` 三种匹配，实体不存在视为不满足，状态变化实时评估。空数组或缺省永远显示，老配置零影响
+- **v1.1.3**：**尊重实体注册表的 hidden 标志**——你在 HA 设置里点「隐藏」的实体不再出现在地图上。启动时拉一次 `config/entity_registry/list`，`hidden_by` 非空的实体从自动收集中剔除；新增 `respect_hidden`（默认开），**显式写进 `entities:` 的照画**；拉不到注册表（旧版本 HA）自动降级。顺带修掉一个隐藏 bug：`entities:` 写对象形式且没开 `show_all` 时该实体根本不渲染（对象条目被当成 id 查了 `hass.states`）
 - **v1.1.2**：**仓库只留跑卡片要用的东西**——`examples/` 整个删掉：里头是 7 个 mock 预览页、3 个本地调试页（`dettest` / `bleedtest` / `filltest`，硬编码着 `localhost:8935`，换台机器打开就是白屏）和一份配置示例，占仓库七成体积，对装卡片的人零价值。README 真正引用的 6 张截图迁到 `images/` 并对齐路径，`.hacsignore` 改为只排除 `.github/`，`.gitignore` 清掉早已不存在的 `card-src` / `_research` 条目。现在仓库就剩：一张卡、一份 README、一份 LICENSE、一份 HACS 元数据
 - **v1.1.1**：**补 v1.1.0 的版本串**——上一版打包时改了仓库文件却漏了卡片自身的版本串，导致市场里装完 `installed_version` 显示 v1.1.0、磁盘文件里却还是 `v1.0.9`，控制台横幅也对不上。这版把版本串补齐（内容与 v1.1.0 相同），顺便换掉市场按版本号做的下载缓存键
 - **v1.1.0**：**仓库瘦身 + 文档只留这一份**——之前工作区根目录还躺着一份 v0.4 时代的旧 README，配置表写的还是早已废弃的 `provider` / `style`（现在叫 `basemap`），照着配必然报错；已删除，内容合并到这里。同时按 HACS 规范补齐仓库元数据：`hacs.json` 显式声明 `content_in_root`，新增 `.hacsignore` 排除 `examples/`（那几张截图有几百 KB，装卡片的人用不上），README 的配置示例补上 v1.0.x 新增的 `theme_mode` / `label_mode` / `aspect_ratio` / `show_zone_radius` / `fit_zones` / `dedupe_trackers` 与 `entities` 对象写法，并加了隐私说明（瓦片请求只带 `z/x/y`，位置数据不出你的浏览器）

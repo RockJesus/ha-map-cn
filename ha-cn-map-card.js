@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v1.1.3 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v1.1.4 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -1047,6 +1047,7 @@ class HaCnMapCard extends HTMLElement {
       height: 360,
       aspect_ratio: "",          // 如 "16:9"，填了就忽略 height（官方 aspect_ratio 语义）
       entities: [],
+      conditions: [],            // 条件显示：每条都满足才渲染，否则整卡隐藏（官方条件卡片语义）
       geo_location_sources: [],
       title: "",
       theme_mode: "auto",        // auto（跟随 HA 主题）| light | dark
@@ -1977,6 +1978,7 @@ class HaCnMapCard extends HTMLElement {
     // 换底图后地图会是一片空白（v1.0.3 修）
     this._engine.render();
     this._applyAspect();
+    this._applyConditions();   // 换配置后立即评估（不满足时连渲染都省掉）
     this._renderList();
   }
 
@@ -1999,7 +2001,7 @@ class HaCnMapCard extends HTMLElement {
     if (cfg.entities?.length) {
       // entities 支持字符串与对象两种写法（对象：{entity, color, name, label_mode, attribute, unit}）。
       // 之前直接 [...cfg.entities] 原样拷贝，对象条目会被 hass.states[id] 查成 undefined 滤掉——
-      // 只写 entities 不开 show_all 时对象实体根本不上地图（v1.1.3 顺带修）
+      // 只写 entities 不开 show_all 时对象实体根本不上地图（v1.1.4 顺带修）
       ids = cfg.entities.map((e) => (typeof e === "object" ? e.entity : e)).filter(Boolean);
     }
     if (cfg.show_all) {
@@ -2509,7 +2511,34 @@ class HaCnMapCard extends HTMLElement {
     return s;
   }
 
+  /* ---- 条件显示（官方条件卡片语义）----
+     conditions: [{entity, state?, state_not?, attribute?}]，全部满足才显示。
+     entity 不存在视为不满足；空/缺省永远显示。attribute 存在时比较属性值而非状态 */
+  _meetsConditions() {
+    const cs = this._config?.conditions;
+    const hass = this._hass;
+    if (!Array.isArray(cs) || !cs.length || !hass) return true;
+    return cs.every((c) => {
+      const st = c?.entity ? hass.states[c.entity] : null;
+      if (!st) return false;
+      const val = c.attribute != null
+        ? String(st.attributes?.[c.attribute])
+        : String(st.state);
+      if (c.state != null && val !== String(c.state)) return false;
+      if (c.state_not != null && val === String(c.state_not)) return false;
+      return true;
+    });
+  }
+
+  /* 评估条件并切换整卡可见性；返回 true = 当前隐藏，_update 不必再走渲染 */
+  _applyConditions() {
+    const ok = this._meetsConditions();
+    if (typeof this.style !== "undefined") this.style.display = ok ? "" : "none";
+    return !ok;
+  }
+
   _update() {
+    if (this._applyConditions()) return;   // conditions 不满足：整卡隐藏，布局不留空白
     const hass = this._hass, cfg = this._config;
     const states = this._collectEntities();
     const markers = [];
@@ -3313,4 +3342,4 @@ window.customCards.push({
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
 });
 
-console.info("%c ha-cn-map-card v1.1.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.1.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
