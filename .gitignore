@@ -1,5 +1,3 @@
 node_modules/
-card-src/node_modules/
-_research/
 __pycache__/
 *.pyc

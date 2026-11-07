@@ -1,3 +1,2 @@
-# HACS 下载时排除（examples 里的截图对运行没意义，省体积）
-examples/
+# HACS 下载时排除（CI 配置装卡片的人用不上；README 引用的截图必须留在 images/）
 .github/
