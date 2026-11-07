@@ -1,5 +1,5 @@
 /**
- * ha-cn-map-card v0.9.8 — 国内底图 HA 地图卡片（HACS 自定义卡片）
+ * ha-cn-map-card v0.9.9 — 国内底图 HA 地图卡片（HACS 自定义卡片）
  *
  * 零依赖：内置轻量 XYZ 瓦片引擎（投影/平移/缩放/标记），不引 Leaflet。
  * 底图：amap（高德，免 Key，标记自动 GCJ-02 纠偏）| tianditu（需 Key，无偏移）
@@ -1576,12 +1576,12 @@ class HaCnMapCard extends HTMLElement {
       if (this._focusOnMarkerClick) {
         const wasSelected = this._engine._selectedEntity === id;
         if (wasSelected) {
-          this._hass.callService("homeassistant", "more_info", { entity_id: id });
+          this._openMoreInfo(id);
         } else {
           this.focusEntity(id);
         }
       } else {
-        this._hass.callService("homeassistant", "more_info", { entity_id: id });
+        this._openMoreInfo(id);
       }
     });
     // 点空白处/Esc 取消选中时：详情页退回列表（官方行为）
@@ -2001,6 +2001,17 @@ class HaCnMapCard extends HTMLElement {
       this._engine.render();
     }
     if (this._hass) this._update();
+  }
+
+  /* 打开实体详情弹窗。
+     HA 没有 homeassistant.more_info 这个服务（已对实例实测：该域只有 turn_on /
+     toggle / restart 等），旧代码 callService 属于静默失败。正确做法与官方一致：
+     发 hass-more-info 事件，composed 才能穿出 shadow root 被 lovelace 接住。 */
+  _openMoreInfo(entityId) {
+    if (!entityId) return;
+    const ev = new Event("hass-more-info", { bubbles: true, composed: true });
+    ev.detail = { entityId };
+    this.dispatchEvent(ev);
   }
 
   /* 聚焦实体：官方点击标记 / 点击列表项的"选中 + 飞行"语义。
@@ -2459,7 +2470,7 @@ class HaCnMapCard extends HTMLElement {
         if (!this._hass?.states?.[id]) return;
         // 对齐官方：点列表项 = 聚焦飞行 + 选中；已选中时再点开 more-info
         if (this._engine?._selectedEntity === id) {
-          this._hass.callService("homeassistant", "more_info", { entity_id: id });
+          this._openMoreInfo(id);
         } else {
           this.focusEntity(id);
         }
@@ -2861,4 +2872,4 @@ window.customCards.push({
   preview: true,
 });
 
-console.info("%c ha-cn-map-card v0.9.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v0.9.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
