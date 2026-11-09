@@ -2586,6 +2586,29 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const h = this.shadowRoot?.querySelector("[data-geo-hint]");
     if (h) h.textContent = t;
   }
+  /* 同步到 HA 核心区域（设置 → 区域与地点 → 我的家）：调用 zone.edit 服务，
+     然后清掉卡片本地的 home_lat/home_lng/home_radius 覆盖，后续读 zone.home 本身 */
+  async _syncHomeToZone(patch, done) {
+    if (!this._hass?.callService) {
+      this._setGeoHint(done);
+      return;
+    }
+    try {
+      await this._hass.callService("zone", "edit", { entity_id: "zone.home", ...patch });
+      const next = { ...this._config };
+      delete next.home_lat;
+      delete next.home_lng;
+      delete next.home_radius;
+      this._config = next;
+      this._saveRuntime();
+      this._persistConfig(next);
+      this._setGeoHint(`${done}（已同步到家区域）`);
+      Promise.resolve().then(() => this._update());
+    } catch (err) {
+      console.warn("[ha-cn-map-card] zone.edit failed", err);
+      this._setGeoHint(`${done}（同步到 HA 失败：${err?.message || err}）`);
+    }
+  }
   /* 地图上拖动家里的小房子：高德底图坐标 → WGS84 后写进 home_lat/home_lng */
   _onHomeDrag(d) {
     if (!d || d.entityId !== "zone.home") return;
@@ -2596,28 +2619,28 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     let lat = d.lat, lng = d.lng;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     if (this._basemapShift) [lat, lng] = GCJ.gcj2wgs(lat, lng);
-    this._config = { ...this._config, home_lat: Number(lat.toFixed(6)), home_lng: Number(lng.toFixed(6)) };
+    lat = Number(lat.toFixed(6));
+    lng = Number(lng.toFixed(6));
+    this._config = { ...this._config, home_lat: lat, home_lng: lng };
     this._syncHomeFields();
     if (d.phase === "end") {
-      this._saveRuntime();
-      this._persistConfig(this._config);
-      this._setGeoHint(`已拖动到位：${this._config.home_lat}, ${this._config.home_lng}`);
-      Promise.resolve().then(() => this._update());
+      this._setGeoHint(`已拖动到位：${lat}, ${lng}，正在同步…`);
+      this._syncHomeToZone({ latitude: lat, longitude: lng }, `已同步家位置：${lat}, ${lng}`);
     }
   }
   /* 拖动半径圈手柄：米数直接写 home_radius */
   _onHomeRadius(d) {
     if (!d || d.entityId !== "zone.home") return;
     if (d.phase !== "start" && Number.isFinite(d.radius)) {
-      this._config = { ...this._config, home_radius: Math.round(d.radius) };
+      const r = Math.round(d.radius);
+      this._config = { ...this._config, home_radius: r };
       this._syncHomeFields();
     }
     if (d.phase === "end") {
       this._engine._userMoved = true;
-      this._saveRuntime();
-      this._persistConfig(this._config);
-      this._setGeoHint(`已设置半径：${Math.round(d.radius)} 米`);
-      Promise.resolve().then(() => this._update());
+      const r = Math.round(d.radius);
+      this._setGeoHint(`已设置半径：${r} 米，正在同步…`);
+      this._syncHomeToZone({ radius: r }, `已同步家半径：${r} 米`);
     }
   }
   /* 抽屉：改配置 → 立即重绘 + 存到本浏览器 + 通知外部 */
@@ -3897,4 +3920,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.3.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.3.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
