@@ -5,6 +5,7 @@
  * HA 约定：独立自定义元素，实现 hass / setConfig 两个 setter，
  * 变更时 fireEvent(card, "config-changed", { config })
  * ================================================================== */
+import { escapeHtml, escapeAttr } from "./shared.js";
 const BASEMAP_OPTIONS = [
   { value: "amap", label: "高德地图（默认，免 Key）" },
   { value: "amap-satellite", label: "高德卫星影像" },
@@ -337,7 +338,7 @@ class HaCnMapCardEditor extends HTMLElement {
       .sort()
       .map((id) => {
         const n = states[id].attributes.friendly_name || id;
-        return `<option value="${id}">${n} (${id})</option>`;
+        return `<option value="${escapeAttr(id)}">${escapeHtml(n)} (${escapeHtml(id)})</option>`;
       });
     sel.innerHTML = opts.length ? opts.join("") : `<option value="">（没有匹配的实体）</option>`;
   }
@@ -354,9 +355,9 @@ class HaCnMapCardEditor extends HTMLElement {
       .map((e) => {
         // source 条目（{source: "nmap"}）没有 entity id，展示成「来源」行（v1.1.5）
         if (typeof e === "object" && !e.entity && e.source) {
-          return `<div class="ent" data-id="__source__${e.source}">
+          return `<div class="ent" data-id="${escapeAttr("__source__" + e.source)}">
             <span class="tag">source</span>
-            <span class="name">geo_location 来源：${e.source}</span>
+            <span class="name">geo_location 来源：${escapeHtml(e.source)}</span>
             <button class="del" title="移除">✕</button>
           </div>`;
         }
@@ -365,9 +366,9 @@ class HaCnMapCardEditor extends HTMLElement {
         const st = this._hass?.states?.[id];
         const name = (typeof e === "object" && e.name) || st?.attributes?.friendly_name || id;
         const dom = id.split(".")[0];
-        return `<div class="ent" data-id="${id}">
-          <span class="tag">${dom}</span>
-          <span class="name">${name}</span>
+        return `<div class="ent" data-id="${escapeAttr(id)}">
+          <span class="tag">${escapeHtml(dom)}</span>
+          <span class="name">${escapeHtml(name)}</span>
           <button class="del" title="移除">✕</button>
         </div>`;
       })

@@ -1410,7 +1410,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (typeof this.style !== "undefined") this.style.height = isFull ? "" : h;
     this._isFull = isFull;
     this._zoomSide = zoomSide;
-    const titleHtml = cfg.title ? `<div class="cmc-title">${cfg.title}</div>` : "";
+    const titleHtml = cfg.title ? `<div class="cmc-title">${escapeHtml(cfg.title)}</div>` : "";
     const overlayOpen = this._panelOpen === true;
     const phone = this._isPhone();
     this._phone = phone;
@@ -3365,7 +3365,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const rows = [];
     const mkRow = (st, name, sub, picture) => `
       <ha-list-item-button class="cmc-item" data-entity="${st.entity_id}">
-        <div class="cmc-item-av" slot="start" aria-hidden="true">${picture ? `<img src="${escapeAttr(picture)}" referrerpolicy="no-referrer" alt="">` : /^[a-z]+:/.test(this._icon(st)) ? `<ha-icon icon="${this._icon(st)}"></ha-icon>` : escapeHtml(this._initial(name))}</div>
+        <div class="cmc-item-av" slot="start" aria-hidden="true">${picture ? `<img src="${escapeAttr(picture)}" referrerpolicy="no-referrer" alt="">` : /^[a-z]+:/.test(this._icon(st)) ? `<ha-icon icon="${escapeAttr(this._icon(st))}"></ha-icon>` : escapeHtml(this._initial(name))}</div>
         <span slot="headline">${escapeHtml(name)}</span>
         <span slot="supporting-text">${escapeHtml(sub)}</span>
       </ha-list-item-button>`;
@@ -3746,7 +3746,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
       return filter ? id.startsWith(filter) : true;
     }).sort().map((id) => {
       const n = states[id].attributes.friendly_name || id;
-      return `<option value="${id}">${n} (${id})</option>`;
+      return `<option value="${escapeAttr(id)}">${escapeHtml(n)} (${escapeHtml(id)})</option>`;
     });
     sel.innerHTML = opts.length ? opts.join("") : `<option value="">（没有匹配的实体）</option>`;
   }
@@ -3760,9 +3760,9 @@ var HaCnMapCardEditor = class extends HTMLElement {
     }
     host.innerHTML = ents.map((e) => {
       if (typeof e === "object" && !e.entity && e.source) {
-        return `<div class="ent" data-id="__source__${e.source}">
+        return `<div class="ent" data-id="${escapeAttr("__source__" + e.source)}">
             <span class="tag">source</span>
-            <span class="name">geo_location 来源：${e.source}</span>
+            <span class="name">geo_location 来源：${escapeHtml(e.source)}</span>
             <button class="del" title="移除">✕</button>
           </div>`;
       }
@@ -3771,9 +3771,9 @@ var HaCnMapCardEditor = class extends HTMLElement {
       const st = this._hass?.states?.[id];
       const name = typeof e === "object" && e.name || st?.attributes?.friendly_name || id;
       const dom = id.split(".")[0];
-      return `<div class="ent" data-id="${id}">
-          <span class="tag">${dom}</span>
-          <span class="name">${name}</span>
+      return `<div class="ent" data-id="${escapeAttr(id)}">
+          <span class="tag">${escapeHtml(dom)}</span>
+          <span class="name">${escapeHtml(name)}</span>
           <button class="del" title="移除">✕</button>
         </div>`;
     }).join("");
@@ -3841,4 +3841,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.3.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.3.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

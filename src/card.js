@@ -384,7 +384,7 @@ class HaCnMapCard extends HTMLElement {
     this._zoomSide = zoomSide;
 
     const titleHtml = cfg.title
-      ? `<div class="cmc-title">${cfg.title}</div>` : "";
+      ? `<div class="cmc-title">${escapeHtml(cfg.title)}</div>` : "";
     const overlayOpen = this._panelOpen === true;
     // 手机（<=600px）走官方同款 ha-snap-bottom-sheet；宽屏保持左侧浮层
     const phone = this._isPhone();
@@ -2434,7 +2434,7 @@ class HaCnMapCard extends HTMLElement {
       <ha-list-item-button class="cmc-item" data-entity="${st.entity_id}">
         <div class="cmc-item-av" slot="start" aria-hidden="true">${
           picture ? `<img src="${escapeAttr(picture)}" referrerpolicy="no-referrer" alt="">`
-          : /^[a-z]+:/.test(this._icon(st)) ? `<ha-icon icon="${this._icon(st)}"></ha-icon>`
+          : /^[a-z]+:/.test(this._icon(st)) ? `<ha-icon icon="${escapeAttr(this._icon(st))}"></ha-icon>`
           : escapeHtml(this._initial(name))}</div>
         <span slot="headline">${escapeHtml(name)}</span>
         <span slot="supporting-text">${escapeHtml(sub)}</span>
