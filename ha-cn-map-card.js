@@ -1588,9 +1588,10 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         .cmc-panel-btn svg { width:22px; height:22px; fill:currentColor; }
         .cmc-panel-btn.hide { opacity:0; pointer-events:none; transform:scale(.6); }
         .cmc-panel-btn:hover { filter:brightness(1.08); }
-        /* 手机：抽屉收起后底部留 52px 条，按钮放条上方左侧 */
+        /* 手机：抽屉完全隐藏，只留左下角圆形按钮（对齐官方）；比例尺挪到按钮右侧 */
         @media (max-width: 600px) {
-          .cmc-panel-btn { top:auto; bottom:62px; left:10px; }
+          .cmc-panel-btn { top:auto; bottom:16px; left:10px; }
+          .cmc-scale { left:64px; bottom:26px; }
         }
 
         .cmc-attribution { color:var(--cmc-sub); }
@@ -1616,7 +1617,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
             top:auto; left:0; right:0; bottom:0; width:auto;
             border-radius:16px 16px 0 0;
             height:max(120px, min(280px, 62%));
-            transform:translateY(calc(100% - 52px));
+            transform:translateY(100%);
           }
           .cmc-panel.dock-auto.open { transform:none; top:45%; height:auto; }
         }
@@ -1628,7 +1629,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         .cmc-panel.dock-bottom.open { top:45%; height:auto; }
         /* 详情页（最近活动）内容更高：紧凑卡片里也把抽屉抬高一点，别只剩两行 */
         .cmc-panel.dock-bottom.open.is-detail { top:18%; }
-        .cmc-panel.dock-bottom:not(.open) { transform:translateY(calc(100% - 52px)); }
+        .cmc-panel.dock-bottom:not(.open) { transform:translateY(100%); }
         /* 手机：内容交给官方 ha-snap-bottom-sheet 定位/拖拽，容器只负责排版 */
         .cmc-panel.in-sheet {
           position:static; width:auto; max-height:none; height:auto;
@@ -3825,4 +3826,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.2.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.3.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
