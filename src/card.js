@@ -510,11 +510,8 @@ class HaCnMapCard extends HTMLElement {
           box-shadow:0 0 0 1px rgba(0,0,0,.12);
         }
         .cmc-scale .bar { height:5px; margin-top:3px; border:1px solid #111; border-top:none; }
-        /* 底部抽屉展开时把比例尺顶上去，别被压住 */
+        /* 桌面左侧面板展开时把比例尺顶上去，别被压住；手机端见顶部居中规则，不受此影响 */
         .cmc-card:has(.cmc-panel.open.dock-bottom) .cmc-scale { bottom:45%; transition:bottom .28s ease; }
-        @media (max-width: 600px) {
-          .cmc-card:has(.cmc-panel.open.dock-auto) .cmc-scale { bottom:45%; }
-        }
         /* ---- 标记：官方 48px 圆角方块 + 白边 ---- */
         .cmc-marker img { width:44px; height:44px; border-radius:50%; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); object-fit:cover; display:block; }
         .cmc-marker.is-offline img,
