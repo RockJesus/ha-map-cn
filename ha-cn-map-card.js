@@ -577,6 +577,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         hd.setAttribute("stroke", ci.color || "#03a9f4");
         hd.setAttribute("stroke-width", "2");
         hd.setAttribute("style", "cursor:ew-resize;pointer-events:all");
+        hd.setAttribute("class", "cmc-radius-handle");
         group.appendChild(hd);
         this._attachRadiusHandle(hd, el, ci, x, y);
       }
@@ -745,11 +746,28 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       this._clusters.push({ x: g.x, y: g.y, members: g.members.map((m) => m.marker) });
     }
   }
-  /* 区域图标拖动（仅 zone.home）：拖动期间只更新内存坐标，松手由卡片落盘 */
+  /* 区域图标拖动（仅 zone.home）：必须长按 350ms 才进入可拖状态，防止误触。
+     拖动期间只更新内存坐标，松手由卡片落盘 */
   _attachMarkerDrag(el, m) {
     if (!m.draggable) return;
     el.style.cursor = "grab";
+    const LONG_PRESS = 350;
+    let armTimer = null;
+    let armed = false;
+    let startPt = { x: 0, y: 0 };
+    const clearArm = () => {
+      if (armTimer) {
+        clearTimeout(armTimer);
+        armTimer = null;
+      }
+      armed = false;
+      el.classList.remove("cmc-armed");
+    };
     const move = (e) => {
+      if (!armed) {
+        if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 8) clearArm();
+        return;
+      }
       if (!this._dragMarker) return;
       e.preventDefault();
       const ll = this.latLngAt(e.clientX, e.clientY);
@@ -768,35 +786,58 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: ll.lat, lng: ll.lng, phase: "move" } }));
     };
     const end = () => {
+      clearArm();
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
       if (!this._dragMarker) return;
       this._dragMarker = null;
       el.style.cursor = "grab";
       if (this._dragMoved) this._suppressClickUntil = Date.now() + 400;
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      window.removeEventListener("pointercancel", end);
       this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: m.lat, lng: m.lng, phase: "end" } }));
     };
     el.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      e.stopPropagation();
-      e.preventDefault();
-      this._dragMarker = m.entityId;
+      armed = false;
       this._dragMoved = false;
-      this._dragStart = { x: e.clientX, y: e.clientY };
+      startPt = { x: e.clientX, y: e.clientY };
       this._fly?.cancel?.();
       this._fly = null;
-      el.style.cursor = "grabbing";
-      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointermove", move, { passive: true });
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
-      this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, phase: "start" } }));
+      armTimer = setTimeout(() => {
+        armed = true;
+        this._dragMarker = m.entityId;
+        this._dragMoved = false;
+        this._dragStart = { x: startPt.x, y: startPt.y };
+        el.style.cursor = "grabbing";
+        el.classList.add("cmc-armed");
+        this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, phase: "start" } }));
+      }, LONG_PRESS);
     });
   }
-  /* 半径手柄拖动：跟着指针到圆心的距离算米数，实时改圆，松手由卡片落盘 */
+  /* 半径手柄拖动：必须长按 350ms 才进入可拖状态，防止误触。
+     跟着指针到圆心的距离算米数，实时改圆，松手由卡片落盘 */
   _attachRadiusHandle(handle, circleEl, ci, cx, cy) {
+    const LONG_PRESS = 350;
     let active = false;
+    let armTimer = null;
+    let armed = false;
+    let startPt = { x: 0, y: 0 };
+    const clearArm = () => {
+      if (armTimer) {
+        clearTimeout(armTimer);
+        armTimer = null;
+      }
+      armed = false;
+      handle.classList.remove("cmc-armed");
+    };
     const move = (e) => {
+      if (!armed) {
+        if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 8) clearArm();
+        return;
+      }
       if (!active) return;
       e.preventDefault();
       const r = this.container.getBoundingClientRect();
@@ -810,24 +851,30 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: meters, phase: "move" } }));
     };
     const end = () => {
-      if (!active) return;
-      active = false;
+      clearArm();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
+      if (!active) return;
+      active = false;
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "end" } }));
     };
     handle.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      e.stopPropagation();
-      e.preventDefault();
-      active = true;
+      armed = false;
+      active = false;
+      startPt = { x: e.clientX, y: e.clientY };
       this._fly?.cancel?.();
       this._fly = null;
-      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointermove", move, { passive: true });
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
-      this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
+      armTimer = setTimeout(() => {
+        armed = true;
+        active = true;
+        handle.classList.add("cmc-armed");
+        this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
+      }, LONG_PRESS);
     });
   }
   _createClusterEl(g) {
@@ -1555,6 +1602,15 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           border-color:var(--primary-color, #03a9f4);
           box-shadow:0 0 0 5px color-mix(in srgb, var(--primary-color, #03a9f4) 30%, transparent), 0 1px 4px rgba(0,0,0,.4);
         }
+        /* 长按进入可拖状态（防误触）：给 home 标记一个明确的高亮反馈 */
+        .cmc-marker.cmc-armed img,
+        .cmc-marker.cmc-armed .cmc-fallback {
+          border-color:var(--accent-color, #ffb300);
+          box-shadow:0 0 0 6px color-mix(in srgb, var(--accent-color, #ffb300) 35%, transparent), 0 1px 6px rgba(0,0,0,.5);
+        }
+        /* 半径手柄被长按 arm 时同步高亮（SVG 圆） */
+        svg .cmc-radius-handle.cmc-armed,
+        .cmc-radius-handle.cmc-armed { filter:drop-shadow(0 0 4px var(--accent-color, #ffb300)); }
         /* 图标内部禁止 flex 拉伸：ha-icon / img 都会被父级叠加居中，压到文字行上 */
         .cmc-marker > *:first-child { flex:0 0 auto; }
         .cmc-marker .cmc-fallback {
@@ -3841,4 +3897,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.3.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.3.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

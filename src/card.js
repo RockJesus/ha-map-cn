@@ -522,6 +522,15 @@ class HaCnMapCard extends HTMLElement {
           border-color:var(--primary-color, #03a9f4);
           box-shadow:0 0 0 5px color-mix(in srgb, var(--primary-color, #03a9f4) 30%, transparent), 0 1px 4px rgba(0,0,0,.4);
         }
+        /* 长按进入可拖状态（防误触）：给 home 标记一个明确的高亮反馈 */
+        .cmc-marker.cmc-armed img,
+        .cmc-marker.cmc-armed .cmc-fallback {
+          border-color:var(--accent-color, #ffb300);
+          box-shadow:0 0 0 6px color-mix(in srgb, var(--accent-color, #ffb300) 35%, transparent), 0 1px 6px rgba(0,0,0,.5);
+        }
+        /* 半径手柄被长按 arm 时同步高亮（SVG 圆） */
+        svg .cmc-radius-handle.cmc-armed,
+        .cmc-radius-handle.cmc-armed { filter:drop-shadow(0 0 4px var(--accent-color, #ffb300)); }
         /* 图标内部禁止 flex 拉伸：ha-icon / img 都会被父级叠加居中，压到文字行上 */
         .cmc-marker > *:first-child { flex:0 0 auto; }
         .cmc-marker .cmc-fallback {

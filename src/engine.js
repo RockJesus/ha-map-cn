@@ -435,6 +435,7 @@ class CnTileEngine extends EventTarget {
         hd.setAttribute("stroke", ci.color || "#03a9f4");
         hd.setAttribute("stroke-width", "2");
         hd.setAttribute("style", "cursor:ew-resize;pointer-events:all");
+        hd.setAttribute("class", "cmc-radius-handle");
         group.appendChild(hd);
         this._attachRadiusHandle(hd, el, ci, x, y);
       }
@@ -609,11 +610,26 @@ class CnTileEngine extends EventTarget {
     }
   }
 
-  /* 区域图标拖动（仅 zone.home）：拖动期间只更新内存坐标，松手由卡片落盘 */
+  /* 区域图标拖动（仅 zone.home）：必须长按 350ms 才进入可拖状态，防止误触。
+     拖动期间只更新内存坐标，松手由卡片落盘 */
   _attachMarkerDrag(el, m) {
     if (!m.draggable) return;
     el.style.cursor = "grab";
+    const LONG_PRESS = 350;
+    let armTimer = null;
+    let armed = false;
+    let startPt = { x: 0, y: 0 };
+    const clearArm = () => {
+      if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+      armed = false;
+      el.classList.remove("cmc-armed");
+    };
     const move = (e) => {
+      // arm 之前：手指稍微一动就取消长按（把这一次触摸当成普通点按，不吞地图 pan）
+      if (!armed) {
+        if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 8) clearArm();
+        return;
+      }
       if (!this._dragMarker) return;
       e.preventDefault();
       const ll = this.latLngAt(e.clientX, e.clientY);
@@ -631,36 +647,58 @@ class CnTileEngine extends EventTarget {
       this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: ll.lat, lng: ll.lng, phase: "move" } }));
     };
     const end = () => {
+      clearArm();
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
       if (!this._dragMarker) return;
       this._dragMarker = null;
       el.style.cursor = "grab";
       // 松手后卡片会 _update() 重建标记，浏览器补发的 click 可能落在新元素上，
       // 用一个短时间窗统一吞掉，避免拖动后误开详情
       if (this._dragMoved) this._suppressClickUntil = Date.now() + 400;
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      window.removeEventListener("pointercancel", end);
       this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: m.lat, lng: m.lng, phase: "end" } }));
     };
     el.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      e.stopPropagation(); e.preventDefault();
-      this._dragMarker = m.entityId;
+      // 不立即 stopPropagation/preventDefault：arm 之前让地图正常响应 pan/click
+      armed = false;
       this._dragMoved = false;
-      this._dragStart = { x: e.clientX, y: e.clientY };
+      startPt = { x: e.clientX, y: e.clientY };
       this._fly?.cancel?.(); this._fly = null;
-      el.style.cursor = "grabbing";
-      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointermove", move, { passive: true });
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
-      this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, phase: "start" } }));
+      armTimer = setTimeout(() => {
+        armed = true;
+        this._dragMarker = m.entityId;
+        this._dragMoved = false;
+        this._dragStart = { x: startPt.x, y: startPt.y };
+        el.style.cursor = "grabbing";
+        el.classList.add("cmc-armed");
+        this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, phase: "start" } }));
+      }, LONG_PRESS);
     });
   }
 
-  /* 半径手柄拖动：跟着指针到圆心的距离算米数，实时改圆，松手由卡片落盘 */
+  /* 半径手柄拖动：必须长按 350ms 才进入可拖状态，防止误触。
+     跟着指针到圆心的距离算米数，实时改圆，松手由卡片落盘 */
   _attachRadiusHandle(handle, circleEl, ci, cx, cy) {
+    const LONG_PRESS = 350;
     let active = false;
+    let armTimer = null;
+    let armed = false;
+    let startPt = { x: 0, y: 0 };
+    const clearArm = () => {
+      if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+      armed = false;
+      handle.classList.remove("cmc-armed");
+    };
     const move = (e) => {
+      if (!armed) {
+        if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 8) clearArm();
+        return;
+      }
       if (!active) return;
       e.preventDefault();
       const r = this.container.getBoundingClientRect();
@@ -674,22 +712,29 @@ class CnTileEngine extends EventTarget {
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: meters, phase: "move" } }));
     };
     const end = () => {
-      if (!active) return;
-      active = false;
+      clearArm();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
+      if (!active) return;
+      active = false;
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "end" } }));
     };
     handle.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      e.stopPropagation(); e.preventDefault();
-      active = true;
+      armed = false;
+      active = false;
+      startPt = { x: e.clientX, y: e.clientY };
       this._fly?.cancel?.(); this._fly = null;
-      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointermove", move, { passive: true });
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
-      this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
+      armTimer = setTimeout(() => {
+        armed = true;
+        active = true;
+        handle.classList.add("cmc-armed");
+        this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
+      }, LONG_PRESS);
     });
   }
 
