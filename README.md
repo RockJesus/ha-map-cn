@@ -4,20 +4,22 @@
 > **不改 HA 源码、不装代理、不需要服务器能翻墙**——瓦片由浏览器直接加载。
 > 交互与布局对齐官方 `hui-map-card`：panel 视图自动铺满 + 底部/侧边概览面板。
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
 [![release](https://img.shields.io/github/v/release/RockJesus/ha-map-cn?display_name=tag)](https://github.com/RockJesus/ha-map-cn/releases)
 [![HACS Action](https://github.com/RockJesus/ha-map-cn/actions/workflows/hacs.yaml/badge.svg)](https://github.com/RockJesus/ha-map-cn/actions/workflows/hacs.yaml)
 [![Lint](https://github.com/RockJesus/ha-map-cn/actions/workflows/lint.yml/badge.svg)](https://github.com/RockJesus/ha-map-cn/actions/workflows/lint.yml)
 
-## 安装（HACS，资源自动添加）
+## 安装（HACS 默认仓库）
 
-1. HACS → 右上角 ⋮ → **自定义存储库**
-2. 填 `https://github.com/RockJesus/ha-map-cn`，类别选 **Lovelace / Dashboard**
-3. 搜索安装 → **重启 HA**（或刷新浏览器）
-4. **资源会自动注册**，无需手动添加
+1. HACS → **探索并下载存储库** → 搜「**中国地图 / China Map Card**」
+2. 点 **下载**，HACS 会自动注册 Lovelace 资源
+3. 刷新浏览器（或重启 HA）即可在卡片选择器里看到「中国地图卡片」
 
-> 安装包是 **GitHub Release 里的 `ha-cn-map-card.js` 单文件 asset**（`hacs.json` 用 `filename` + `hide_default_branch` 声明），esbuild 打包、无运行时依赖，开箱即装。
-> 如果 HACS 版本较旧没自动加，手动加一条：`/hacsfiles/ha-map-cn/ha-cn-map-card.js`，类型 **JavaScript Module**。
+> 本卡片已进入 HACS 默认仓库，绝大多数用户不需要再加自定义存储库。
+> 安装包是 GitHub Release 里的 `ha-cn-map-card.js` 单文件 asset（esbuild 打包、零运行时依赖）。
+> 如果你的 HACS 还没刷到最新目录（合入后最多 8 小时），临时用自定义存储库兜底：
+> HACS → 右上角 ⋮ → **自定义存储库** → 填 `https://github.com/RockJesus/ha-map-cn`，类别 **Lovelace / Dashboard**。
+> 仍看不到资源时手动加一条：`/hacsfiles/ha-map-cn/ha-cn-map-card.js`，类型 **JavaScript Module**。
 
 ### 更新后看不到新功能？
 
@@ -36,6 +38,10 @@
 ### 手动安装（不用 HACS）
 
 下载 `ha-cn-map-card.js`（发布产物已是自足的单文件）放到 `/config/www/`，资源里加 `/local/ha-cn-map-card.js`，类型选 **JavaScript Module**。
+
+## 更新日志
+
+- **v1.3.9**：README 安装段改为引导用户直接在 HACS 搜索（已进入默认仓库），自定义存储库步骤降级为兜底；徽章换成 HACS-Default。
 
 ## 截图
 
