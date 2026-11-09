@@ -572,10 +572,12 @@ class HaCnMapCard extends HTMLElement {
         .cmc-panel-btn svg { width:22px; height:22px; fill:currentColor; }
         .cmc-panel-btn.hide { opacity:0; pointer-events:none; transform:scale(.6); }
         .cmc-panel-btn:hover { filter:brightness(1.08); }
-        /* 手机：抽屉完全隐藏，只留左下角圆形按钮（对齐官方）；比例尺底部居中，避开按钮 */
+        /* 手机：抽屉完全隐藏，只留左下角圆形按钮（对齐官方）；比例尺底部居中，避开按钮；
+           抽屉展开时面板从 top:45% 起，比例尺挪到抽屉上沿外侧，避免被面板盖住 */
         @media (max-width: 600px) {
           .cmc-panel-btn { top:auto; bottom:16px; left:10px; }
           .cmc-scale { left:50%; transform:translateX(-50%); bottom:14px; }
+          .cmc-card:has(.cmc-panel.open) .cmc-scale { bottom:auto; top:calc(45% + 10px); }
         }
 
         .cmc-attribution { color:var(--cmc-sub); }
