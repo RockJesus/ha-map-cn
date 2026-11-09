@@ -887,7 +887,8 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
   }
   /* ---- 交互 ---- */
   _attachGestures() {
-    let dragging = false, lastX = 0, lastY = 0, pinchDist = 0;
+    const pts = /* @__PURE__ */ new Map();
+    let pinchD0 = 0, pinchZ0 = 0, pinchMoved = false;
     const el = this.container;
     el.style.touchAction = "none";
     el.addEventListener("click", (e) => {
@@ -907,46 +908,62 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * my))) * 180 / Math.PI;
       this.setView(lat, lng);
     };
-    el.addEventListener("pointerdown", (e) => {
-      dragging = true;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      this._fly?.cancel?.();
-      this._fly = null;
-      el.setPointerCapture(e.pointerId);
-    });
-    el.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      panBy(e.clientX - lastX, e.clientY - lastY);
-      lastX = e.clientX;
-      lastY = e.clientY;
-    });
-    el.addEventListener("pointerup", () => dragging = false);
-    el.addEventListener("pointercancel", () => dragging = false);
     const anchorAt = (clientX, clientY) => {
       const r = el.getBoundingClientRect();
       return { x: clientX - r.left, y: clientY - r.top };
     };
+    el.addEventListener("pointerdown", (e) => {
+      this._fly?.cancel?.();
+      this._fly = null;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY });
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+      }
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        pinchD0 = Math.hypot(a.x - b.x, a.y - b.y);
+        pinchZ0 = this.zoom;
+        pinchMoved = false;
+      }
+    });
+    el.addEventListener("pointermove", (e) => {
+      const p = pts.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinchD0 > 0 && d > 0) {
+          if (Math.abs(d - pinchD0) > 6) pinchMoved = true;
+          this.setZoom(Math.max(2, Math.min(19, pinchZ0 + Math.log2(d / pinchD0))), {
+            anchor: anchorAt((a.x + b.x) / 2, (a.y + b.y) / 2)
+          });
+        }
+        return;
+      }
+      panBy(e.clientX - p.px, e.clientY - p.py);
+      p.px = e.clientX;
+      p.py = e.clientY;
+    });
+    const endPointer = (e) => {
+      if (pinchMoved) this._suppressClickUntil = Date.now() + 400;
+      pts.delete(e.pointerId);
+      if (pts.size < 2) pinchD0 = 0;
+      if (pts.size === 1) {
+        const q = [...pts.values()][0];
+        q.px = q.x;
+        q.py = q.y;
+      }
+    };
+    el.addEventListener("pointerup", endPointer);
+    el.addEventListener("pointercancel", endPointer);
     el.addEventListener("wheel", (e) => {
       e.preventDefault();
       this.setZoom(this.zoom + (e.deltaY < 0 ? 1 : -1), { anchor: anchorAt(e.clientX, e.clientY) });
     }, { passive: false });
     el.addEventListener("dblclick", (e) => this.setZoom(this.zoom + 1, { anchor: anchorAt(e.clientX, e.clientY) }));
-    el.addEventListener("touchmove", (e) => {
-      if (e.touches.length === 2) {
-        const d = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        const anchor = anchorAt(
-          (e.touches[0].clientX + e.touches[1].clientX) / 2,
-          (e.touches[0].clientY + e.touches[1].clientY) / 2
-        );
-        if (pinchDist) this.setZoom(this.zoom + (d > pinchDist ? 1 : -1), { anchor });
-        pinchDist = d;
-      }
-    }, { passive: true });
-    el.addEventListener("touchend", () => pinchDist = 0);
     el.tabIndex = 0;
     el.style.outline = "none";
     el.addEventListener("keydown", (e) => {
@@ -3824,4 +3841,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.3.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.3.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
