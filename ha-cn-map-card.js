@@ -2109,6 +2109,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     this._engine.addEventListener("marker-click", (e) => {
       const id = e.detail.entityId;
+      const sb = this.shadowRoot?.querySelector(".cmc-scale");
+      if (sb) {
+        sb.textContent = `点标记:${id}`;
+        setTimeout(() => sb.textContent = "", 1500);
+      }
       const ent = this._hass?.states?.[id];
       if (!ent || !this._hass) return;
       if (this._focusOnMarkerClick) {
@@ -3590,6 +3595,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         const id = b.dataset.entity;
+        const sb = this.shadowRoot?.querySelector(".cmc-scale");
+        if (sb) {
+          sb.textContent = `点列表:${id}`;
+          setTimeout(() => sb.textContent = "", 1500);
+        }
         if (!this._hass?.states?.[id]) return;
         if (this._engine?._selectedEntity === id) {
           this._openMoreInfo(id);
@@ -4040,4 +4050,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.5.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

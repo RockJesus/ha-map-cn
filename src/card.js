@@ -947,6 +947,8 @@ class HaCnMapCard extends HTMLElement {
     this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     this._engine.addEventListener("marker-click", (e) => {
       const id = e.detail.entityId;
+      const sb = this.shadowRoot?.querySelector(".cmc-scale");
+      if (sb) { sb.textContent = `点标记:${id}`; setTimeout(()=>sb.textContent="",1500); }
       const ent = this._hass?.states?.[id];
       if (!ent || !this._hass) return;
       // 官方交互：第一次点击=聚焦飞行+选中（打开最近活动详情），第二次点同一标记才打开 more-info
@@ -2539,6 +2541,8 @@ class HaCnMapCard extends HTMLElement {
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         const id = b.dataset.entity;
+        const sb = this.shadowRoot?.querySelector(".cmc-scale");
+        if (sb) { sb.textContent = `点列表:${id}`; setTimeout(()=>sb.textContent="",1500); }
         if (!this._hass?.states?.[id]) return;
         // 对齐官方：点列表项 = 聚焦飞行 + 选中；已选中时再点开 more-info
         if (this._engine?._selectedEntity === id) {
