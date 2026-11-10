@@ -414,22 +414,35 @@ class CnTileEngine extends EventTarget {
       // 米 → 像素：当前纬度下 1 像素的米数
       const mPerPx = (156543.03392 * Math.cos((ci.lat * Math.PI) / 180)) / n;
       const r = ci.radius / mPerPx;
-      if (r < 2 || r > Math.max(w, h) * 3) continue; // 半径太小画不清、太大没意义
-      const el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      el.setAttribute("cx", x.toFixed(1));
-      el.setAttribute("cy", y.toFixed(1));
-      el.setAttribute("r", r.toFixed(1));
-      el.setAttribute("fill", ci.color || "#03a9f4");
-      el.setAttribute("fill-opacity", String(ci.fillOpacity ?? 0.10));
-      el.setAttribute("stroke", ci.color || "#03a9f4");
-      el.setAttribute("stroke-opacity", String(ci.strokeOpacity ?? 0.30));
-      el.setAttribute("stroke-width", String(ci.strokeWidth ?? 1.5));
-      if (ci.dashed) el.setAttribute("stroke-dasharray", "5 4");
-      group.appendChild(el);
+      const drawCircle = r >= 2;
+      if (drawCircle) {
+        const el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        el.setAttribute("cx", x.toFixed(1));
+        el.setAttribute("cy", y.toFixed(1));
+        el.setAttribute("r", r.toFixed(1));
+        el.setAttribute("fill", ci.color || "#03a9f4");
+        el.setAttribute("fill-opacity", String(ci.fillOpacity ?? 0.10));
+        el.setAttribute("stroke", ci.color || "#03a9f4");
+        el.setAttribute("stroke-opacity", String(ci.strokeOpacity ?? 0.30));
+        el.setAttribute("stroke-width", String(ci.strokeWidth ?? 1.5));
+        if (ci.dashed) el.setAttribute("stroke-dasharray", "5 4");
+        group.appendChild(el);
+      } else {
+        // 半径太小画不清时仍保留一个隐形圆，避免 ci 为 null
+        var el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        el.setAttribute("cx", x.toFixed(1));
+        el.setAttribute("cy", y.toFixed(1));
+        el.setAttribute("r", "0");
+        group.appendChild(el);
+      }
       if (ci.handle) {
+        // 手柄位置：有半径圈时贴在圈右缘；半径太小画不出圈时，固定在 home 图标右侧 22px 处，
+        // 保证缩放到全国视图也能长按到它
+        const hx = drawCircle ? x + r : x + 22;
+        const hy = y;
         const hd = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        hd.setAttribute("cx", (x + r).toFixed(1));
-        hd.setAttribute("cy", y.toFixed(1));
+        hd.setAttribute("cx", hx.toFixed(1));
+        hd.setAttribute("cy", hy.toFixed(1));
         hd.setAttribute("r", "7");
         hd.setAttribute("fill", "#fff");
         hd.setAttribute("stroke", ci.color || "#03a9f4");
@@ -437,7 +450,15 @@ class CnTileEngine extends EventTarget {
         hd.setAttribute("style", "cursor:ew-resize;pointer-events:all");
         hd.setAttribute("class", "cmc-radius-handle");
         group.appendChild(hd);
-        this._attachRadiusHandle(hd, el, ci, x, y);
+        // 隐形大点击热区（28px），手机好按
+        const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        hit.setAttribute("cx", hx.toFixed(1));
+        hit.setAttribute("cy", hy.toFixed(1));
+        hit.setAttribute("r", "18");
+        hit.setAttribute("fill", "rgba(0,0,0,0)");
+        hit.setAttribute("style", "pointer-events:all");
+        group.appendChild(hit);
+        this._attachRadiusHandle(hd, hit, ci, x, y, mPerPx);
       }
     }
   }
@@ -688,11 +709,11 @@ class CnTileEngine extends EventTarget {
 
   /* 半径手柄拖动：必须长按 350ms 才进入可拖状态，防止误触。
      跟着指针到圆心的距离算米数，实时改圆，松手由卡片落盘 */
-  _attachRadiusHandle(handle, circleEl, ci, cx, cy) {
+  _attachRadiusHandle(handle, hitEl, ci, cx, cy, mPerPx0) {
     const LONG_PRESS = 350;
     let active = false;
-    let armTimer = null;
     let armed = false;
+    let armTimer = null;
     let startPt = { x: 0, y: 0 };
     const clearArm = () => {
       if (armTimer) { clearTimeout(armTimer); armTimer = null; }
@@ -705,15 +726,14 @@ class CnTileEngine extends EventTarget {
         return;
       }
       if (!active) return;
-      e.preventDefault();
       const r = this.container.getBoundingClientRect();
       const px = e.clientX - r.left, py = e.clientY - r.top;
-      const mPerPx = (156543.03392 * Math.cos((ci.lat * Math.PI) / 180)) / 2 ** this.zoom;
+      const mPerPx = mPerPx0 || (156543.03392 * Math.cos((ci.lat * Math.PI) / 180)) / 2 ** this.zoom;
       const meters = Math.max(20, Math.round(Math.hypot(px - cx, py - cy) * mPerPx));
       ci.radius = meters;
-      const rr = meters / mPerPx;
-      circleEl.setAttribute("r", rr.toFixed(1));
-      handle.setAttribute("cx", (cx + rr).toFixed(1));
+      // 同步更新可见手柄位置（贴在新半径边缘）
+      handle.setAttribute("cx", (cx + meters / mPerPx).toFixed(1));
+      hitEl.setAttribute("cx", (cx + meters / mPerPx).toFixed(1));
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: meters, phase: "move" } }));
     };
     const end = (e) => {
@@ -727,7 +747,7 @@ class CnTileEngine extends EventTarget {
       active = false;
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "end" } }));
     };
-    handle.addEventListener("pointerdown", (e) => {
+    const onDown = (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
       armed = false;
       active = false;
@@ -742,10 +762,12 @@ class CnTileEngine extends EventTarget {
         handle.classList.add("cmc-armed");
         if (this._suspendedPointers) this._suspendedPointers.add(e.pointerId);
         try { this.container.releasePointerCapture(e.pointerId); } catch {}
-        try { handle.setPointerCapture(e.pointerId); } catch {}
+        try { hitEl.setPointerCapture(e.pointerId); } catch {}
         this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
       }, LONG_PRESS);
-    });
+    };
+    handle.addEventListener("pointerdown", onDown);
+    hitEl.addEventListener("pointerdown", onDown);
   }
 
   _createClusterEl(g) {
