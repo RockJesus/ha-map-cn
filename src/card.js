@@ -137,6 +137,9 @@ class HaCnMapCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    // HA 2024.10+ 已经把 zone.edit 服务移除了（zone 域只剩 reload），提前缓存一下，
+    // 拖动 home 后不再盲调一个不存在的服务、再弹「未找到 zone.edit 动作」
+    this._zoneEditSupported = !!(hass?.services?.zone?.edit);
     // 主题可能是 auto：hass.themes.darkMode 变了要立刻切（不必重建整张卡片）
     const dark = this._resolveDark();
     if (dark !== this._dark) {
@@ -1545,8 +1548,12 @@ class HaCnMapCard extends HTMLElement {
   async _syncHomeToZone(patch, done) {
     this._saveRuntime();
     this._persistConfig(this._config);
+    if (!this._zoneEditSupported) {
+      // HA 新版本没有 zone 编辑服务：只在本卡生效，不弹错误
+      this._setGeoHint(`${done}（已保存到本卡片；到 设置 → 区域与地点 → 我的家 可手动同步）`);
+      return;
+    }
     this._setGeoHint(done);
-    if (!this._hass?.callService) return;
     try {
       await this._hass.callService("zone", "edit", { entity_id: "zone.home", ...patch });
       // 同步成功：清掉本卡覆盖，让卡片直接用 HA zone.home 的最新值
@@ -1558,8 +1565,8 @@ class HaCnMapCard extends HTMLElement {
       this._setGeoHint(`${done}（已同步到家区域）`);
       Promise.resolve().then(() => this._update());
     } catch (err) {
-      console.warn("[ha-cn-map-card] zone.edit unavailable:", err);
-      this._setGeoHint(`${done}（HA 此版本无 zone 编辑服务，改动仅本卡生效；请到 设置 → 区域与地点 → 我的家 手动更新）`);
+      console.warn("[ha-cn-map-card] zone.edit failed:", err);
+      this._setGeoHint(`${done}（同步到 HA 失败：${err?.message || err}）`);
       Promise.resolve().then(() => this._update());
     }
   }

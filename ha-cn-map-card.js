@@ -1281,6 +1281,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    this._zoneEditSupported = !!hass?.services?.zone?.edit;
     const dark = this._resolveDark();
     if (dark !== this._dark) {
       this._dark = dark;
@@ -2622,8 +2623,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   async _syncHomeToZone(patch, done) {
     this._saveRuntime();
     this._persistConfig(this._config);
+    if (!this._zoneEditSupported) {
+      this._setGeoHint(`${done}（已保存到本卡片；到 设置 → 区域与地点 → 我的家 可手动同步）`);
+      return;
+    }
     this._setGeoHint(done);
-    if (!this._hass?.callService) return;
     try {
       await this._hass.callService("zone", "edit", { entity_id: "zone.home", ...patch });
       const next = { ...this._config };
@@ -2636,8 +2640,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._setGeoHint(`${done}（已同步到家区域）`);
       Promise.resolve().then(() => this._update());
     } catch (err) {
-      console.warn("[ha-cn-map-card] zone.edit unavailable:", err);
-      this._setGeoHint(`${done}（HA 此版本无 zone 编辑服务，改动仅本卡生效；请到 设置 → 区域与地点 → 我的家 手动更新）`);
+      console.warn("[ha-cn-map-card] zone.edit failed:", err);
+      this._setGeoHint(`${done}（同步到 HA 失败：${err?.message || err}）`);
       Promise.resolve().then(() => this._update());
     }
   }
@@ -3950,4 +3954,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.4.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.4.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
