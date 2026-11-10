@@ -1911,12 +1911,12 @@ class HaCnMapCard extends HTMLElement {
     // 像素偏移 → 经纬度偏移（当前 zoom 下）
     const mPerLng = 360 / (2 ** z * 256);
     const mPerLat = mPerLng / Math.cos((lat * Math.PI) / 180);
-    this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z, 550, { forceZoom: true });
+    this._engine.setView(lat + offY * mPerLat, lng + offX * mPerLng, z);
     // 临时调试：在比例尺位置闪一下目标，确认 focusEntity 真的被调起
     const sb = this.shadowRoot?.querySelector(".cmc-scale");
     if (sb) {
-      sb.textContent = `飞→${entityId.split(".")[1]} z${z} from${this._engine.zoom.toFixed(1)}`;
-      setTimeout(() => { sb.textContent = `550ms后 zoom=${this._engine.zoom.toFixed(1)} center=${this._engine.center.lat.toFixed(2)},${this._engine.center.lng.toFixed(2)}`; }, 800);
+      sb.textContent = `setView→${entityId.split(".")[1]} z${z} was${this._engine.zoom.toFixed(1)}`;
+      setTimeout(() => { sb.textContent = `after=${this._engine.zoom.toFixed(1)}`; }, 400);
       setTimeout(() => { sb.textContent = ""; this._engine?.renderScale?.(); }, 2500);
     }
   }

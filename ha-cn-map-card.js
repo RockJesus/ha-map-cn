@@ -3042,13 +3042,13 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
     const mPerLng = 360 / (2 ** z * 256);
     const mPerLat = mPerLng / Math.cos(lat * Math.PI / 180);
-    this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z, 550, { forceZoom: true });
+    this._engine.setView(lat + offY * mPerLat, lng + offX * mPerLng, z);
     const sb = this.shadowRoot?.querySelector(".cmc-scale");
     if (sb) {
-      sb.textContent = `飞→${entityId.split(".")[1]} z${z} from${this._engine.zoom.toFixed(1)}`;
+      sb.textContent = `setView→${entityId.split(".")[1]} z${z} was${this._engine.zoom.toFixed(1)}`;
       setTimeout(() => {
-        sb.textContent = `550ms后 zoom=${this._engine.zoom.toFixed(1)} center=${this._engine.center.lat.toFixed(2)},${this._engine.center.lng.toFixed(2)}`;
-      }, 800);
+        sb.textContent = `after=${this._engine.zoom.toFixed(1)}`;
+      }, 400);
       setTimeout(() => {
         sb.textContent = "";
         this._engine?.renderScale?.();
@@ -4057,4 +4057,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.5.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
