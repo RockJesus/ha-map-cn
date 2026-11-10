@@ -1055,6 +1055,21 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     });
     const endPointer = (e) => {
       if (pinchMoved) this._suppressClickUntil = Date.now() + 400;
+      const p = pts.get(e.pointerId);
+      const dragged = p ? Math.hypot(e.clientX - p.px, e.clientY - p.py) > 10 : false;
+      const now = Date.now();
+      const lastTap = this._lastTap || {};
+      const dxT = e.clientX - (lastTap.x || 0);
+      const dyT = e.clientY - (lastTap.y || 0);
+      if (!pinchMoved && !dragged && now - (lastTap.t || 0) < 300 && Math.hypot(dxT, dyT) < 30) {
+        this.setZoom(this.zoom + 1, { anchor: anchorAt(e.clientX, e.clientY) });
+        this._suppressClickUntil = now + 400;
+        this._lastTap = {};
+      } else if (!dragged) {
+        this._lastTap = { t: now, x: e.clientX, y: e.clientY };
+      } else {
+        this._lastTap = {};
+      }
       pts.delete(e.pointerId);
       this._suspendedPointers.delete(e.pointerId);
       if (pts.size < 2) pinchD0 = 0;
@@ -4013,4 +4028,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.5.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

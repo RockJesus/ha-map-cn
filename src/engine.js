@@ -910,6 +910,22 @@ class CnTileEngine extends EventTarget {
     });
     const endPointer = (e) => {
       if (pinchMoved) this._suppressClickUntil = Date.now() + 400; // 捏合后别误触选中
+      // 双击放大（移动端 dblclick 不可靠，手动判定）：300ms 内连续两次点同一点，且没拖动
+      const p = pts.get(e.pointerId);
+      const dragged = p ? Math.hypot(e.clientX - p.px, e.clientY - p.py) > 10 : false;
+      const now = Date.now();
+      const lastTap = this._lastTap || {};
+      const dxT = e.clientX - (lastTap.x || 0);
+      const dyT = e.clientY - (lastTap.y || 0);
+      if (!pinchMoved && !dragged && now - (lastTap.t || 0) < 300 && Math.hypot(dxT, dyT) < 30) {
+        this.setZoom(this.zoom + 1, { anchor: anchorAt(e.clientX, e.clientY) });
+        this._suppressClickUntil = now + 400;
+        this._lastTap = {};
+      } else if (!dragged) {
+        this._lastTap = { t: now, x: e.clientX, y: e.clientY };
+      } else {
+        this._lastTap = {};
+      }
       pts.delete(e.pointerId);
       this._suspendedPointers.delete(e.pointerId);
       if (pts.size < 2) pinchD0 = 0;
