@@ -1895,6 +1895,7 @@ class HaCnMapCard extends HTMLElement {
     // 选中即打开详情（最近活动），对齐官方 hui-map-overview 的聚焦语义
     this._showDetail(entityId);
     this._userSelected = true; // 阻止抽屉展开后的自动 refit 把视角抢走
+    this._engine._userMoved = true; // 用户主动选了实体，后续 fitBounds 不再抢视角
     // 聚焦人员时直接缩到街道级（z=16），不要按最近标记距离算——
     // 否则一个人员在家、另一个在外地，最近标记相距数百公里，算法会把 zoom 拉回全国视图
     const z = Math.max(Number(zoom ?? 0) || 16, 16);
