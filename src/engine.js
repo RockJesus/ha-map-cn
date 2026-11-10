@@ -89,7 +89,7 @@ class CnTileEngine extends EventTarget {
   /* 平滑飞行：官方点击标记 / 点击列表项时地图以动画平移+缩放到目标。
      线性插值 zoom（对数尺度视觉上更匀），经纬度按已走进度插值；
      期间用户任何手势立即接管（取消动画），避免"抢方向盘"的手感 */
-  flyTo(lat, lng, zoom, duration = 550) {
+  flyTo(lat, lng, zoom, duration = 550, opts = {}) {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     if (zoom != null && !Number.isFinite(zoom)) zoom = null;
     if (typeof window === "undefined" || !window.requestAnimationFrame) {
@@ -103,6 +103,7 @@ class CnTileEngine extends EventTarget {
     }
     const toZ = Math.max(3, Math.min(18, zoom ?? this.zoom));
     // 视野里已经能看到目标时不缩放，只平移（官方 #54774 的"聚焦飞行语义"）
+    // 但 opts.forceZoom=true（用户主动点选实体）时，一律缩放到 toZ，让用户看清目标
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
     const c = CnTileEngine.tileXY(from.lat, from.lng, from.z);
@@ -110,7 +111,7 @@ class CnTileEngine extends EventTarget {
     const n = 2 ** from.z;
     const px = (p.x - c.x) * n * 256 + w / 2;
     const py = (p.y - c.y) * n * 256 + h / 2;
-    const targetZ = (px > 40 && px < w - 40 && py > 60 && py < h - 40) ? from.z : toZ;
+    const targetZ = opts.forceZoom ? toZ : ((px > 40 && px < w - 40 && py > 60 && py < h - 40) ? from.z : toZ);
     if (targetZ === from.z && Math.hypot(px - w / 2, py - h / 2) < 2) return; // 已居中，不动画
     const t0 = performance.now();
     this._fly?.cancel?.();

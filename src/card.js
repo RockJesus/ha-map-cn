@@ -1901,7 +1901,7 @@ class HaCnMapCard extends HTMLElement {
     // 像素偏移 → 经纬度偏移（当前 zoom 下）
     const mPerLng = 360 / (2 ** z * 256);
     const mPerLat = mPerLng / Math.cos((lat * Math.PI) / 180);
-    this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z);
+    this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z, 550, { forceZoom: true });
   }
 
   /* ---- 实体详情（最近活动）---- */

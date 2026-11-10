@@ -254,7 +254,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
   /* 平滑飞行：官方点击标记 / 点击列表项时地图以动画平移+缩放到目标。
      线性插值 zoom（对数尺度视觉上更匀），经纬度按已走进度插值；
      期间用户任何手势立即接管（取消动画），避免"抢方向盘"的手感 */
-  flyTo(lat, lng, zoom, duration = 550) {
+  flyTo(lat, lng, zoom, duration = 550, opts = {}) {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     if (zoom != null && !Number.isFinite(zoom)) zoom = null;
     if (typeof window === "undefined" || !window.requestAnimationFrame) {
@@ -274,7 +274,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     const n = 2 ** from.z;
     const px = (p.x - c.x) * n * 256 + w / 2;
     const py = (p.y - c.y) * n * 256 + h / 2;
-    const targetZ = px > 40 && px < w - 40 && py > 60 && py < h - 40 ? from.z : toZ;
+    const targetZ = opts.forceZoom ? toZ : px > 40 && px < w - 40 && py > 60 && py < h - 40 ? from.z : toZ;
     if (targetZ === from.z && Math.hypot(px - w / 2, py - h / 2) < 2) return;
     const t0 = performance.now();
     this._fly?.cancel?.();
@@ -3013,7 +3013,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
     const mPerLng = 360 / (2 ** z * 256);
     const mPerLat = mPerLng / Math.cos(lat * Math.PI / 180);
-    this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z);
+    this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z, 550, { forceZoom: true });
   }
   /* ---- 实体详情（最近活动）---- */
   _showDetail(entityId) {
@@ -4012,4 +4012,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.5.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
