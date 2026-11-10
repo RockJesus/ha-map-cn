@@ -2145,12 +2145,15 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         const d = e.detail || {};
         this._sheetH = Math.round(Number(d.height) || 0);
         this._sheetHalf = Math.round(Number(d.halfHeight) || 0);
-        if (this._engine && !this._engine._userMoved) {
-          this._didFit = false;
-          this._update();
-        } else {
-          this._engine?.render();
-        }
+        this._engine?.render();
+        if (this._fitRefitTimer) clearTimeout(this._fitRefitTimer);
+        this._fitRefitTimer = setTimeout(() => {
+          this._fitRefitTimer = null;
+          if (this._engine && !this._engine._userMoved) {
+            this._didFit = false;
+            this._update();
+          }
+        }, 250);
       });
     } else {
       this._sheet = null;
@@ -3996,4 +3999,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.4.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.4.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

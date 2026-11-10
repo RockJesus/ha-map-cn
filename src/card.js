@@ -1010,13 +1010,16 @@ class HaCnMapCard extends HTMLElement {
         const d = e.detail || {};
         this._sheetH = Math.round(Number(d.height) || 0);
         this._sheetHalf = Math.round(Number(d.halfHeight) || 0);
-        // 用户还没手动拖动/缩放时，抽屉高度变化后重新 fit 一次，让 home 落在可视区中点
-        if (this._engine && !this._engine._userMoved) {
-          this._didFit = false;
-          this._update();
-        } else {
-          this._engine?.render();
-        }
+        // 抽屉拖拽过程中会高频触发；只做轻量重绘，等拖拽停了再重新 fit 一次
+        this._engine?.render();
+        if (this._fitRefitTimer) clearTimeout(this._fitRefitTimer);
+        this._fitRefitTimer = setTimeout(() => {
+          this._fitRefitTimer = null;
+          if (this._engine && !this._engine._userMoved) {
+            this._didFit = false;
+            this._update();
+          }
+        }, 250);
       });
     } else {
       this._sheet = null;
