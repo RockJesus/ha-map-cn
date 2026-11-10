@@ -1603,12 +1603,14 @@ class HaCnMapCard extends HTMLElement {
     if (!d || d.entityId !== "zone.home") return;
     if (d.phase !== "start" && Number.isFinite(d.radius)) {
       const r = Math.round(d.radius);
+      if (!Number.isFinite(r) || r < 20 || r > 100000) return;
       this._config = { ...this._config, home_radius: r };
       this._syncHomeFields();
     }
     if (d.phase === "end") {
       this._engine._userMoved = true;
       const r = Math.round(d.radius);
+      if (!Number.isFinite(r) || r < 20 || r > 100000) return;
       this._syncHomeToZone({ radius: r }, `家半径已设为：${r} 米`);
     }
   }

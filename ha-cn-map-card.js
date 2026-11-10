@@ -399,8 +399,10 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
   /* 比例尺：取一个整齐的距离，换算成屏幕像素宽度 */
   _updateScale(w) {
     if (!this.scaleEl) return;
+    if (!Number.isFinite(this.zoom) || !Number.isFinite(this.center.lat)) return;
     const lat = this.center.lat;
     const mPerPx = 156543.03392 * Math.cos(lat * Math.PI / 180) / 2 ** this.zoom;
+    if (!Number.isFinite(mPerPx) || mPerPx <= 0) return;
     const targetPx = Math.min(120, w * 0.28);
     const rawM = mPerPx * targetPx;
     const pow = 10 ** Math.floor(Math.log10(rawM));
@@ -551,29 +553,24 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     const group = this._circleGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     this.pathLayer.appendChild(group);
     for (const ci of list) {
+      if (!Number.isFinite(ci.lat) || !Number.isFinite(ci.lng) || !Number.isFinite(ci.radius)) continue;
       const q = _CnTileEngine.project(ci.lat, ci.lng);
       const x = (q.x - c.x) * n * 256 + w / 2;
       const y = (q.y - c.y) * n * 256 + h / 2;
       const mPerPx = 156543.03392 * Math.cos(ci.lat * Math.PI / 180) / n;
       const r = ci.radius / mPerPx;
-      const drawCircle = r >= 2;
+      const drawCircle = Number.isFinite(r) && r >= 2 && r <= Math.max(w, h) * 3;
       if (drawCircle) {
-        const el2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        el2.setAttribute("cx", x.toFixed(1));
-        el2.setAttribute("cy", y.toFixed(1));
-        el2.setAttribute("r", r.toFixed(1));
-        el2.setAttribute("fill", ci.color || "#03a9f4");
-        el2.setAttribute("fill-opacity", String(ci.fillOpacity ?? 0.1));
-        el2.setAttribute("stroke", ci.color || "#03a9f4");
-        el2.setAttribute("stroke-opacity", String(ci.strokeOpacity ?? 0.3));
-        el2.setAttribute("stroke-width", String(ci.strokeWidth ?? 1.5));
-        if (ci.dashed) el2.setAttribute("stroke-dasharray", "5 4");
-        group.appendChild(el2);
-      } else {
-        var el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        const el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         el.setAttribute("cx", x.toFixed(1));
         el.setAttribute("cy", y.toFixed(1));
-        el.setAttribute("r", "0");
+        el.setAttribute("r", r.toFixed(1));
+        el.setAttribute("fill", ci.color || "#03a9f4");
+        el.setAttribute("fill-opacity", String(ci.fillOpacity ?? 0.1));
+        el.setAttribute("stroke", ci.color || "#03a9f4");
+        el.setAttribute("stroke-opacity", String(ci.strokeOpacity ?? 0.3));
+        el.setAttribute("stroke-width", String(ci.strokeWidth ?? 1.5));
+        if (ci.dashed) el.setAttribute("stroke-dasharray", "5 4");
         group.appendChild(el);
       }
       if (ci.handle) {
@@ -874,6 +871,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       const px = e.clientX - r.left, py = e.clientY - r.top;
       const mPerPx = mPerPx0 || 156543.03392 * Math.cos(ci.lat * Math.PI / 180) / 2 ** this.zoom;
       const meters = Math.max(20, Math.round(Math.hypot(px - cx, py - cy) * mPerPx));
+      if (!Number.isFinite(meters)) return;
       ci.radius = meters;
       handle.setAttribute("cx", (cx + meters / mPerPx).toFixed(1));
       hitEl.setAttribute("cx", (cx + meters / mPerPx).toFixed(1));
@@ -2713,12 +2711,14 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (!d || d.entityId !== "zone.home") return;
     if (d.phase !== "start" && Number.isFinite(d.radius)) {
       const r = Math.round(d.radius);
+      if (!Number.isFinite(r) || r < 20 || r > 1e5) return;
       this._config = { ...this._config, home_radius: r };
       this._syncHomeFields();
     }
     if (d.phase === "end") {
       this._engine._userMoved = true;
       const r = Math.round(d.radius);
+      if (!Number.isFinite(r) || r < 20 || r > 1e5) return;
       this._syncHomeToZone({ radius: r }, `家半径已设为：${r} 米`);
     }
   }
@@ -3999,4 +3999,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.4.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.4.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

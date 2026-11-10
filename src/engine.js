@@ -240,9 +240,11 @@ class CnTileEngine extends EventTarget {
   /* 比例尺：取一个整齐的距离，换算成屏幕像素宽度 */
   _updateScale(w) {
     if (!this.scaleEl) return;
+    if (!Number.isFinite(this.zoom) || !Number.isFinite(this.center.lat)) return;
     const lat = this.center.lat;
     const mPerPx =
       (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** this.zoom;
+    if (!Number.isFinite(mPerPx) || mPerPx <= 0) return;
     const targetPx = Math.min(120, w * 0.28);
     const rawM = mPerPx * targetPx;
     const pow = 10 ** Math.floor(Math.log10(rawM));
@@ -408,13 +410,14 @@ class CnTileEngine extends EventTarget {
     const group = this._circleGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     this.pathLayer.appendChild(group);
     for (const ci of list) {
+      if (!Number.isFinite(ci.lat) || !Number.isFinite(ci.lng) || !Number.isFinite(ci.radius)) continue;
       const q = CnTileEngine.project(ci.lat, ci.lng);
       const x = (q.x - c.x) * n * 256 + w / 2;
       const y = (q.y - c.y) * n * 256 + h / 2;
       // 米 → 像素：当前纬度下 1 像素的米数
       const mPerPx = (156543.03392 * Math.cos((ci.lat * Math.PI) / 180)) / n;
       const r = ci.radius / mPerPx;
-      const drawCircle = r >= 2;
+      const drawCircle = Number.isFinite(r) && r >= 2 && r <= Math.max(w, h) * 3;
       if (drawCircle) {
         const el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         el.setAttribute("cx", x.toFixed(1));
@@ -426,13 +429,6 @@ class CnTileEngine extends EventTarget {
         el.setAttribute("stroke-opacity", String(ci.strokeOpacity ?? 0.30));
         el.setAttribute("stroke-width", String(ci.strokeWidth ?? 1.5));
         if (ci.dashed) el.setAttribute("stroke-dasharray", "5 4");
-        group.appendChild(el);
-      } else {
-        // 半径太小画不清时仍保留一个隐形圆，避免 ci 为 null
-        var el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        el.setAttribute("cx", x.toFixed(1));
-        el.setAttribute("cy", y.toFixed(1));
-        el.setAttribute("r", "0");
         group.appendChild(el);
       }
       if (ci.handle) {
@@ -731,6 +727,7 @@ class CnTileEngine extends EventTarget {
       const px = e.clientX - r.left, py = e.clientY - r.top;
       const mPerPx = mPerPx0 || (156543.03392 * Math.cos((ci.lat * Math.PI) / 180)) / 2 ** this.zoom;
       const meters = Math.max(20, Math.round(Math.hypot(px - cx, py - cy) * mPerPx));
+      if (!Number.isFinite(meters)) return;
       ci.radius = meters;
       // 同步更新可见手柄位置（贴在新半径边缘）
       handle.setAttribute("cx", (cx + meters / mPerPx).toFixed(1));
