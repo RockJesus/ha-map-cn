@@ -3045,14 +3045,18 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._engine.setView(lat + offY * mPerLat, lng + offX * mPerLng, z);
     const sb = this.shadowRoot?.querySelector(".cmc-scale");
     if (sb) {
-      sb.textContent = `setView→${entityId.split(".")[1]} z${z} was${this._engine.zoom.toFixed(1)}`;
+      const z0 = this._engine.zoom;
+      const c0 = this._engine.center;
+      sb.textContent = `setView z=${z} now=${z0.toFixed(1)} at=${c0.lat.toFixed(2)},${c0.lng.toFixed(2)}`;
       setTimeout(() => {
-        sb.textContent = `after=${this._engine.zoom.toFixed(1)}`;
+        const z1 = this._engine.zoom;
+        const c1 = this._engine.center;
+        sb.textContent = `after400 z=${z1.toFixed(1)} at=${c1.lat.toFixed(2)},${c1.lng.toFixed(2)} userMoved=${this._engine._userMoved} didFit=${this._didFit} userSel=${this._userSelected}`;
       }, 400);
       setTimeout(() => {
         sb.textContent = "";
         this._engine?.renderScale?.();
-      }, 2500);
+      }, 3e3);
     }
   }
   /* ---- 实体详情（最近活动）---- */
@@ -4057,4 +4061,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.5.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

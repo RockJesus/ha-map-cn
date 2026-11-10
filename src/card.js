@@ -1915,9 +1915,15 @@ class HaCnMapCard extends HTMLElement {
     // 临时调试：在比例尺位置闪一下目标，确认 focusEntity 真的被调起
     const sb = this.shadowRoot?.querySelector(".cmc-scale");
     if (sb) {
-      sb.textContent = `setView→${entityId.split(".")[1]} z${z} was${this._engine.zoom.toFixed(1)}`;
-      setTimeout(() => { sb.textContent = `after=${this._engine.zoom.toFixed(1)}`; }, 400);
-      setTimeout(() => { sb.textContent = ""; this._engine?.renderScale?.(); }, 2500);
+      const z0 = this._engine.zoom;
+      const c0 = this._engine.center;
+      sb.textContent = `setView z=${z} now=${z0.toFixed(1)} at=${c0.lat.toFixed(2)},${c0.lng.toFixed(2)}`;
+      setTimeout(() => {
+        const z1 = this._engine.zoom;
+        const c1 = this._engine.center;
+        sb.textContent = `after400 z=${z1.toFixed(1)} at=${c1.lat.toFixed(2)},${c1.lng.toFixed(2)} userMoved=${this._engine._userMoved} didFit=${this._didFit} userSel=${this._userSelected}`;
+      }, 400);
+      setTimeout(() => { sb.textContent = ""; this._engine?.renderScale?.(); }, 3000);
     }
   }
 
