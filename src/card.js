@@ -1887,7 +1887,9 @@ class HaCnMapCard extends HTMLElement {
     // 选中即打开详情（最近活动），对齐官方 hui-map-overview 的聚焦语义
     this._showDetail(entityId);
     this._userSelected = true; // 阻止抽屉展开后的自动 refit 把视角抢走
-    const z = this._focusZoom(lat, lng, Math.max(zoom ?? 0, this._engine.zoom, 13));
+    // 聚焦人员时直接缩到街道级（z=16），不要按最近标记距离算——
+    // 否则一个人员在家、另一个在外地，最近标记相距数百公里，算法会把 zoom 拉回全国视图
+    const z = Math.max(Number(zoom ?? 0) || 16, 16);
     let offX = 0, offY = 0; // 像素偏移：面板 dock 在哪侧就把中心往对侧挪
     if (this._isFull && this._panelOpen) {
       const dockBottom = window.innerWidth <= 600;

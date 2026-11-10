@@ -3003,7 +3003,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._writeSelection(entityId);
     this._showDetail(entityId);
     this._userSelected = true;
-    const z = this._focusZoom(lat, lng, Math.max(zoom ?? 0, this._engine.zoom, 13));
+    const z = Math.max(Number(zoom ?? 0) || 16, 16);
     let offX = 0, offY = 0;
     if (this._isFull && this._panelOpen) {
       const dockBottom = window.innerWidth <= 600;
@@ -4012,4 +4012,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.5.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
