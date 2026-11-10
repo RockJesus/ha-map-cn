@@ -127,7 +127,11 @@ class CnTileEngine extends EventTarget {
       else this._fly = null;
     };
     this._fly = { cancelled: false, cancel: () => { this._fly.cancelled = true; cancelAnimationFrame(raf); } };
-    raf = requestAnimationFrame(step);
+    raf = requestAnimationFrame((t) => {
+      console.log("[ha-cn-map] flyTo first frame", t0, t, "cancelled=", this._fly?.cancelled);
+      step(t);
+    });
+    console.log("[ha-cn-map] flyTo scheduled", { from, toZ, targetZ, w, h, px, py });
   }
 
   addTileSet({ url, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {

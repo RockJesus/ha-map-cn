@@ -1916,6 +1916,7 @@ class HaCnMapCard extends HTMLElement {
     const sb = this.shadowRoot?.querySelector(".cmc-scale");
     if (sb) {
       sb.textContent = `飞→${entityId.split(".")[1]} z${z} from${this._engine.zoom.toFixed(1)}`;
+      setTimeout(() => { sb.textContent = `550ms后 zoom=${this._engine.zoom.toFixed(1)} center=${this._engine.center.lat.toFixed(2)},${this._engine.center.lng.toFixed(2)}`; }, 800);
       setTimeout(() => { sb.textContent = ""; this._engine?.renderScale?.(); }, 2500);
     }
   }

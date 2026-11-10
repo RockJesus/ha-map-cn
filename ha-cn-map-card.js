@@ -293,7 +293,11 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       this._fly.cancelled = true;
       cancelAnimationFrame(raf);
     } };
-    raf = requestAnimationFrame(step);
+    raf = requestAnimationFrame((t) => {
+      console.log("[ha-cn-map] flyTo first frame", t0, t, "cancelled=", this._fly?.cancelled);
+      step(t);
+    });
+    console.log("[ha-cn-map] flyTo scheduled", { from, toZ, targetZ, w, h, px, py });
   }
   addTileSet({ url, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
     const ts = { url, maxZoom, zIndex, opacity, els: /* @__PURE__ */ new Map(), id: ++this._tileSeq };
@@ -3043,6 +3047,9 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (sb) {
       sb.textContent = `飞→${entityId.split(".")[1]} z${z} from${this._engine.zoom.toFixed(1)}`;
       setTimeout(() => {
+        sb.textContent = `550ms后 zoom=${this._engine.zoom.toFixed(1)} center=${this._engine.center.lat.toFixed(2)},${this._engine.center.lng.toFixed(2)}`;
+      }, 800);
+      setTimeout(() => {
         sb.textContent = "";
         this._engine?.renderScale?.();
       }, 2500);
@@ -4050,4 +4057,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.5.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
