@@ -1010,7 +1010,13 @@ class HaCnMapCard extends HTMLElement {
         const d = e.detail || {};
         this._sheetH = Math.round(Number(d.height) || 0);
         this._sheetHalf = Math.round(Number(d.halfHeight) || 0);
-        this._engine?.render();
+        // 用户还没手动拖动/缩放时，抽屉高度变化后重新 fit 一次，让 home 落在可视区中点
+        if (this._engine && !this._engine._userMoved) {
+          this._didFit = false;
+          this._update();
+        } else {
+          this._engine?.render();
+        }
       });
     } else {
       this._sheet = null;
@@ -2268,8 +2274,10 @@ class HaCnMapCard extends HTMLElement {
     // 首次自动适配视野时都要给底部留一块，否则 home 标记被抽屉挡住
     if (this._phone) {
       const sheetH = Number(this._sheetH) || Number(this._sheetHalf) || 0;
-      const pad = sheetH ? Math.round(sheetH * 0.92) : Math.round(h * 0.30);
-      const bottom = Math.max(base, Math.min(pad, Math.floor(h * 0.55)));
+      // 目标：把地理中心放到「可视地图区（屏幕高 - 抽屉高）的中点」，
+      // 即 bottom-padding ≈ 抽屉高 + 可视区高/2 ≈ 抽屉高/2 + 屏高/2
+      const pad = sheetH ? Math.round(sheetH * 0.95) : Math.round(h * 0.45);
+      const bottom = Math.max(base, Math.min(pad, Math.floor(h * 0.75)));
       return { top: base, right: base, bottom, left: base };
     }
     if (!this._isFull || !this._panelOpen) return base;

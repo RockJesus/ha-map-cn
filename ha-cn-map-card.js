@@ -2139,7 +2139,12 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         const d = e.detail || {};
         this._sheetH = Math.round(Number(d.height) || 0);
         this._sheetHalf = Math.round(Number(d.halfHeight) || 0);
-        this._engine?.render();
+        if (this._engine && !this._engine._userMoved) {
+          this._didFit = false;
+          this._update();
+        } else {
+          this._engine?.render();
+        }
       });
     } else {
       this._sheet = null;
@@ -3324,8 +3329,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const base = Math.round(Math.min(w, h) * 0.08);
     if (this._phone) {
       const sheetH = Number(this._sheetH) || Number(this._sheetHalf) || 0;
-      const pad2 = sheetH ? Math.round(sheetH * 0.92) : Math.round(h * 0.3);
-      const bottom = Math.max(base, Math.min(pad2, Math.floor(h * 0.55)));
+      const pad2 = sheetH ? Math.round(sheetH * 0.95) : Math.round(h * 0.45);
+      const bottom = Math.max(base, Math.min(pad2, Math.floor(h * 0.75)));
       return { top: base, right: base, bottom, left: base };
     }
     if (!this._isFull || !this._panelOpen) return base;
@@ -3985,4 +3990,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.4.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.4.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
