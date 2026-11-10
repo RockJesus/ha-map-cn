@@ -1,55 +1,50 @@
-# ha-map-cn · 中国地图卡片
+# 🗺️ ha-map-cn · 中国地图卡片
 
-> Home Assistant 地图卡片，国内底图直连。
-> **不改 HA 源码、不装代理、不需要服务器能翻墙**——瓦片由浏览器直接加载。
-> 交互与布局对齐官方 `hui-map-card`：panel 视图自动铺满 + 底部/侧边概览面板。
+> Home Assistant 里直接能用的国内地图：高德 / 天地图底图，浏览器直连瓦片，不改 HA、不装代理、不需要服务器能翻墙。交互与视觉对齐官方 `hui-map-card`。
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
-[![release](https://img.shields.io/github/v/release/RockJesus/ha-map-cn?display_name=tag)](https://github.com/RockJesus/ha-map-cn/releases)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
+[![latest](https://img.shields.io/github/v/release/RockJesus/ha-map-cn?display_name=tag)](https://github.com/RockJesus/ha-map-cn/releases/latest)
 [![HACS Action](https://github.com/RockJesus/ha-map-cn/actions/workflows/hacs.yaml/badge.svg)](https://github.com/RockJesus/ha-map-cn/actions/workflows/hacs.yaml)
 [![Lint](https://github.com/RockJesus/ha-map-cn/actions/workflows/lint.yml/badge.svg)](https://github.com/RockJesus/ha-map-cn/actions/workflows/lint.yml)
+[![license](https://img.shields.io/github/license/RockJesus/ha-map-cn)](LICENSE)
 
-## 安装（HACS 默认仓库）
+**一键安装**（HACS → 探索并下载 → 搜「China Map Card」）：
 
-1. HACS → **探索并下载存储库** → 搜「**中国地图 / China Map Card**」
-2. 点 **下载**，HACS 会自动注册 Lovelace 资源
-3. 刷新浏览器（或重启 HA）即可在卡片选择器里看到「中国地图卡片」
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=RockJesus&repo=ha-map-cn&category=dashboard)
 
-> 本卡片已进入 HACS 默认仓库，绝大多数用户不需要再加自定义存储库。
-> 安装包是 GitHub Release 里的 `ha-cn-map-card.js` 单文件 asset（esbuild 打包、零运行时依赖）。
-> 如果你的 HACS 还没刷到最新目录（合入后最多 8 小时），临时用自定义存储库兜底：
-> HACS → 右上角 ⋮ → **自定义存储库** → 填 `https://github.com/RockJesus/ha-map-cn`，类别 **Lovelace / Dashboard**。
-> 仍看不到资源时手动加一条：`/hacsfiles/ha-map-cn/ha-cn-map-card.js`，类型 **JavaScript Module**。
+---
 
-### 更新后看不到新功能？
+## ✨ 特性
 
-**HACS 安装（绝大多数人）：什么都不用做。** HACS ≥ 2.0 在每次升级后会自动把资源 URL 改写成
-`?hacstag=<仓库ID><版本号>`（可在 设置 → 仪表盘 → 资源 里看到），版本一变 URL 就变，
-浏览器缓存自动失效。手动改这条 URL 没有必要——下次升级 HACS 会照旧覆写。
+- 🇨🇳 **国内直连底图**：高德街道 / 高德卫星 / 天地图 / 天地图卫星 / OSM，高德自动 GCJ-02 纠偏
+- 📱 **移动端打磨**：底部抽屉（对齐官方 `ha-snap-bottom-sheet`）、双指平滑捏合、长按才允许拖家位置/半径
+- 🧭 **交互对齐官方**：点标记 = 聚焦飞行，再点 = 详情；人 / 设备 / 区域三 Tab 概览、最近活动时间线、GPS 精度圈
+- 📍 **家的位置直接编辑**：地图上长按拖动家图标/半径手柄，松手自动 `zone.edit` 同步回 HA「我的家」
+- 🛰️ **轨迹线**：自动订阅 `history/stream`，悬停显示时间；可选高德实时路况叠加
+- 🎨 **暗色主题**：跟随 HA，自动对瓦片做反相滤镜；卫星影像自动豁免
+- 🪶 **零依赖**：手写轻量瓦片引擎，单文件 ~170 KB，无 Leaflet / MapLibre
 
-**手动安装：** 浏览器会缓存旧 JS，升级后给资源 URL 加版本参数强制刷新：
-
-```
-/local/ha-cn-map-card.js?v=090
-```
-
-每升一版把 `090` 递增即可（如 `100`）。
-
-### 手动安装（不用 HACS）
-
-下载 `ha-cn-map-card.js`（发布产物已是自足的单文件）放到 `/config/www/`，资源里加 `/local/ha-cn-map-card.js`，类型选 **JavaScript Module**。
-
-## 更新日志
-
-- **v1.3.9**：README 安装段改为引导用户直接在 HACS 搜索（已进入默认仓库），自定义存储库步骤降级为兜底；徽章换成 HACS-Default。
-
-## 截图
+## 📸 截图
 
 ![桌面布局](images/layout-desktop.jpg)
 
 ![标记聚合](images/cluster-on.jpg)
 
-## 为什么需要它
+## 🚀 安装
+
+**HACS 默认仓库（推荐）**
+
+1. HACS → **探索并下载存储库** → 搜「**中国地图 / China Map Card**」
+2. 点 **下载**，HACS 自动注册 Lovelace 资源
+3. 刷新浏览器，在卡片选择器里就能看到「中国地图卡片」
+
+**兜底（自定义存储库）**：HACS → 右上角 ⋮ → 自定义存储库 → 填 `https://github.com/RockJesus/ha-map-cn`，类别 **Lovelace / Dashboard**。
+
+**手动安装**：把 Release 里的 `ha-cn-map-card.js` 放到 `/config/www/`，设置 → 仪表盘 → 资源里加 `/local/ha-cn-map-card.js`，类型 **JavaScript Module**。
+
+> HACS ≥ 2.0 会自动用 `?hacstag=<版本>` 给资源 URL 加缓存戳，升级后不需要手动强刷。
+
+## 🧭 为什么需要它
 
 HA 2026.9 起，官方地图改用 OSMF 矢量瓦片，且**瓦片请求由 HA 服务器发出**。国内服务器的出口访问不到 `vector.openstreetmap.org`，所以官方 `type: map` 卡片在全国范围都是纯色底——手机挂代理也没用，因为请求根本不经过手机。
 
@@ -475,62 +470,6 @@ images/                 # README 截图
 一次发布 = 三处同步：`ha-cn-map-card.js` 头部注释与 `console.info` 的版本串、本 README 的版本历史新增一条、同名 git tag + GitHub Release。
 
 ---
-
-## 版本历史
-
-- **v1.3.8**：拖动 home 位置/半径后，自动调用 zone.edit 服务同步到 HA 核心的「设置 → 区域与地点 → 我的家」，不再只是卡片本地覆盖；同步成功后清掉本卡覆盖，后续在 HA UI 改家位置/半径也会立即反映在地图上。
-- **v1.3.7**：防误触——拖动 home 位置标记和半径手柄前必须长按 350ms 才进入可拖状态（长按成功高亮琥珀色光环），短按/滑动不再误改家的位置和半径。
-- **v1.3.6**：安全修复——卡片标题、实体图标、编辑器实体选择器/已选实体行统一用 escapeHtml/escapeAttr 转义，避免实体 friendly_name 或 icon 属性里的引号/尖括号注入 HTML。
-- **v1.3.5**：新增平滑双指捏合缩放地图（以两指中点为锚，捏合时不再误触发拖拽）；单指拖拽平移不受影响。
-- **v1.3.4**：修复手机端展开抽屉后比例尺被撑成巨大白色方块的问题（旧 bottom:45% 与新 top:10px 冲突）。
-- **v1.3.3**：手机端比例尺改为固定顶部居中显示，收起/展开抽屉都不再被遮挡。
-- **v1.3.2**：修复手机端展开概览抽屉后比例尺被抽屉盖住的问题——展开时比例尺自动挪到抽屉上沿。
-- **v1.3.1**：窄屏比例尺改为底部居中，不再与左下角悬浮按钮重叠。
-- **v1.3.0**：修复移动端抽屉收起后仍露出底部标签条的问题——现在完全滑出屏幕，只留左下角圆形按钮（对齐官方 HA 地图卡片）；比例尺在窄屏自动右移避让。
-- **v1.2.9**：按 HA 自定义卡片发布规范补齐——Release 附带单文件 `ha-cn-map-card.js` asset、`hacs.json` 改为 release 资产模式、补齐仓库描述/topics 与 `package.json` 元数据、README 增加截图与发布说明、新增 HACS 侧 `info.md`。功能与 v1.2.8 一致。
-- **v1.2.8**：拖动家图标/半径手柄松手后不再误开「最近活动」详情（松手后 400ms 内吞掉补发的 click）
-- **v1.2.7**：修复「人员」标签页偶发消失（人员按 HA 全部 person 实体列出，不再依赖当前是否有坐标）；新增地图上拖动家的图标改位置、拖动半径圈手柄改半径（松手自动保存，只影响本卡片）
-- **v1.2.6**：修复设置里实体清单排版（勾选框、名称、实体 ID 同行显示）；实体清单只列出真正带坐标的可定位实体
-- **v1.2.5**：设置面板新增「家的区域」与「地图实体」两块——① 默认显示家区域（含半径圈），可自定义家的地址/经纬度/半径（地址可用高德 Web 服务 Key 解析，也可直接填「纬度,经度」），覆盖只作用于卡片、不改 HA 的 zone 配置；② 逐个勾选人员/设备/区域是否上图，并有「全部可定位」总开关（默认开启，对齐官方地图卡）
-- **v1.2.4**：右上角新增两枚按钮——**切换分组**（标记聚合开关，图标随状态在「圈内社区/六边形点阵」间切换）与**重置焦点**（跳回家区域中心 + `default_zoom`，并暂停自动适配）；两者都不会覆盖「显示全部」的全实体适配
-- **v1.2.3**：**修全屏时被侧栏遮挡**——全屏是 `position:fixed` 铺满内容区，但层级只有 5，HA 展开的左侧栏会压在卡片上，导致左上概览面板被裁掉一半；层级提到 1200 后可完整覆盖侧栏，退出全屏恢复原样（Esc / 再点按钮 / 点面板外均可退出）
-- **v1.2.2**：**「显示全部」换图标**——原来的四向十字与「放大 +」视觉上几乎一样，容易误点；改用官方地图卡同款的中心对焦图标（四角括号 + 中心点）。功能不变（重置用户拖动标记并重新适配全部实体/区域），仅图标与 `aria-label` 语义更清晰
-- **v1.2.1**：**手机抽屉改成「可升级」而不是「有或没有」**——`ha-snap-bottom-sheet` 在 HA 里属于按需加载块（只在官方地图卡片的 panel 布局里被 `import`），单独渲染本卡片时通常还没注册，v1.2.0 会直接落到旧抽屉。现在改为：先渲染旧抽屉保证可用，同时 `customElements.whenDefined("ha-snap-bottom-sheet")` 监听注册，一旦前端加载了该组件就自动重渲染成官方三档抽屉（含实测高度驱动留白）。桌面端与其余四项无改动
-- **v1.2.0**：**手机抽屉换成官方组件，列表/键盘/配置全面对齐**——① **手机端 `ha-snap-bottom-sheet`**：宽度 ≤600px 时概览面板改为官方三档抽屉（折叠 / 半屏 / 全屏，可拖拽），折叠后保留一行 Tab 作「peek」；抽屉上报的**真实高度**直接喂给自动适配的留白（不再用 `高度×0.26` 估算），展开、半屏、全屏三种状态下的「显示全部」都能把人放在没被遮住的那块。② **列表行换 `ha-list-base` + `ha-list-item-button`**：头像走 `slot="start"`、名称 `headline`、状态与相对时间 `supporting-text`，点击/水波纹/焦点环交给 HA 统一组件，和官方 map 卡片长得一样。③ **键盘无障碍 + RTL**：Tab 补 `aria-controls` / `id` / `role=tabpanel` / roving `tabindex`，方向键、Home、End 可在可见分组间切换（RTL 下左右自动反转），整卡按 `dir=rtl` 镜像面板与控件位置。④ **配置别名**：`auto_fit`（→ `fit_entities` / `fit_zones`）、`cluster`（→ `show_cluster`）、`map_style`（`auto/light/dark`→`theme_mode`，`streets/satellite`→`basemap`）、`dark_mode`（→ `theme_mode`）、`scale_ruler`（→ `show_scale`，默认仍常显，显式 false 才关），照官方文档写的 YAML 直接能用。⑤ **控件收拢**：右上从 7 枚减到 4 枚（缩放组 / 显示全部 / 地图设置 / 全屏），聚合与路况移入「地图设置」，比例尺开关也进了设置页
-- **v1.1.9**：**继续向官方 map 卡片对齐（第一批）**——① **选中态双向同步**：点标记或列表项会把 `?entity_id=` 写进地址栏，刷新、分享、从别的页面退回来都能还原「选中 + 详情」；点空白处或按 Esc 取消选中时同步清掉参数（用 `replaceState` 替换当前记录，不新增历史，也不惊动 HA 路由）。② **详情页补齐官方两个入口**：「导航」（有坐标才显示；iOS 走 Apple 地图、Android 走 `geo:`、桌面走高德网页版）与「实体设置」（仅管理员可见，直接打开 more-info 的设置页）。③ **Tab 自适应**：只渲染有内容的分组，只剩一组时隐藏滑动药丸，三个分组全空时给一句「地图上还没有可显示的实体」，不再摆三个灰按钮
-- **v1.1.8**：**源码与发布产物分离**——HA 的插件安装只认单文件（tree 模式不进子目录，zip_release 解压后校验又要求 zip 本身在安装目录里），多文件分发两条路都走不通。最终采用标准做法：`src/` 四个模块继续作为源码维护（`src/main.js` 为构建入口），esbuild 打成单文件 `ha-cn-map-card.js` 作为发布产物（`pnpm build`，产物提交进仓库），`hacs.json` 回到 `filename: ha-cn-map-card.js`。功能与 v1.1.6 一致
-- **v1.1.7**：**zip_release 分发（失败版本）**——`hacs.json` 改 `zip_release` + `ha-map-cn.zip`，实测 HA 内置 marketplace 校验要求安装目录里存在 zip 本身，安装报 `The installed content has no ha-map-cn.zip`，方案作废
-- **v1.1.6**：**代码拆分 + ESLint**——单文件按职责拆成四个原生 ES 模块：`src/shared.js`（底图源 / GCJ-02 纠偏 / 常量）、`src/engine.js`（瓦片引擎）、`src/card.js`（卡片主类）、`src/editor.js`（编辑器），入口只负责注册自定义元素；仍是零构建，HACS 下载后相对 import 直接可用。接入 ESLint（flat config，`pnpm lint`，CI 每次推送跑），清掉全部 16 处问题：未用变量、无用赋值、精度丢失的字面量、重复注册等。卡片功能与 v1.1.5 完全一致
-- **v1.1.5**：**entities 对象条目补齐 source / unit / focus**——`{source: "nmap"}` 不写 entity 就纳入该来源的全部 geo_location 实体，还能只给这一路设 label_mode / name / color；`unit` 给数值标签加后缀（`80 %`）；`focus: true` 首帧渲染后聚焦到该实体（URL 深链优先）。顺带修掉：配置了非标准实体条目会把可视化编辑器搞崩（`id.split` 直接抛错）
-- **v1.1.4**：**conditions 条件显示**——官方条件卡片同款语义：`conditions` 里每一条都满足才渲染这张卡，否则整张卡隐藏。支持 `state` / `state_not` / `attribute` 三种匹配，实体不存在视为不满足，状态变化实时评估。空数组或缺省永远显示，老配置零影响
-- **v1.1.3**：**尊重实体注册表的 hidden 标志**——你在 HA 设置里点「隐藏」的实体不再出现在地图上。启动时拉一次 `config/entity_registry/list`，`hidden_by` 非空的实体从自动收集中剔除；新增 `respect_hidden`（默认开），**显式写进 `entities:` 的照画**；拉不到注册表（旧版本 HA）自动降级。顺带修掉一个隐藏 bug：`entities:` 写对象形式且没开 `show_all` 时该实体根本不渲染（对象条目被当成 id 查了 `hass.states`）
-- **v1.1.2**：**仓库只留跑卡片要用的东西**——`examples/` 整个删掉：里头是 7 个 mock 预览页、3 个本地调试页（`dettest` / `bleedtest` / `filltest`，硬编码着 `localhost:8935`，换台机器打开就是白屏）和一份配置示例，占仓库七成体积，对装卡片的人零价值。README 真正引用的 6 张截图迁到 `images/` 并对齐路径，`.hacsignore` 改为只排除 `.github/`，`.gitignore` 清掉早已不存在的 `card-src` / `_research` 条目。现在仓库就剩：一张卡、一份 README、一份 LICENSE、一份 HACS 元数据
-- **v1.1.1**：**补 v1.1.0 的版本串**——上一版打包时改了仓库文件却漏了卡片自身的版本串，导致市场里装完 `installed_version` 显示 v1.1.0、磁盘文件里却还是 `v1.0.9`，控制台横幅也对不上。这版把版本串补齐（内容与 v1.1.0 相同），顺便换掉市场按版本号做的下载缓存键
-- **v1.1.0**：**仓库瘦身 + 文档只留这一份**——之前工作区根目录还躺着一份 v0.4 时代的旧 README，配置表写的还是早已废弃的 `provider` / `style`（现在叫 `basemap`），照着配必然报错；已删除，内容合并到这里。同时按 HACS 规范补齐仓库元数据：`hacs.json` 显式声明 `content_in_root`，新增 `.hacsignore` 排除 `examples/`（那几张截图有几百 KB，装卡片的人用不上），README 的配置示例补上 v1.0.x 新增的 `theme_mode` / `label_mode` / `aspect_ratio` / `show_zone_radius` / `fit_zones` / `dedupe_trackers` 与 `entities` 对象写法，并加了隐私说明（瓦片请求只带 `z/x/y`，位置数据不出你的浏览器）
-- **v1.0.9**：**想做成 16:9 大屏就写 `aspect_ratio`**——新增官方 `aspect_ratio` 配置（`16:9` / `4/3` / `1:1` / `21:9`，`:` `/` `x` 都认），填了就忽略 `height`，卡片按容器宽度自适应高度；`getCardSize()` 也按官方公式折算成格数，masonry 视图不会给你留一坨空白。全屏态不生效（铺满优先）。非法值自动回落 `height`，不会把卡片搞没
-- **v1.0.8**：**轨迹线能问「这是几点」了**——把鼠标移到轨迹上，会浮出那个点的 `HH:MM · 20 分钟前`。实现上没给每个点建元素（24 小时轨迹常有几百个点，那样会把渲染拖垮），而是抽稀成屏幕上间隔 ≥14px、每条最多 80 个透明命中圈，贴着鼠标出提示、移开即消失
-- **v1.0.7**：**标签想显示什么就显示什么**——新增官方 `label_mode` 语义：`name`（默认）/ `state` / `attribute` / `none`。`state` 走 `hass.formatEntityState` 拿本地化文本（「在家」「45 km/h」），不是生硬的 `home`；`attribute` 可以显示任意属性，比如共享汽车的电量。既能全局设，也能在 `entities` 里**逐实体覆盖**：`{entity: device_tracker.car, label_mode: attribute, attribute: battery_level, unit: "%"}`。同一个对象里还支持 `name:` 改显示名、`color:` 改颜色。设置抽屉与可视化编辑器都有入口
-- **v1.0.6**：**「某人现在在哪」可以分享成链接了**——URL 带上 `?entity_id=person.zhangsan`（或 `#person.zhangsan`）打开仪表盘，卡片会自动选中该实体、飞过去并展开它的最近活动。只读不写回，不会污染地址栏。顺带修掉一个重建时的小毛病：切换底图/主题后选中光环会丢，详情页「开着详情却没有选中标记」；现在重建会保留选中态，详情打开时也会自愈
-- **v1.0.5**：**手机上不会再冒出两个重叠头像**——一部手机在 HA 里通常同时有 `person.zhangsan` 和 `device_tracker.zhangsan_iphone`，而 person 的坐标本来就是从那个 tracker 取的。`show_all` 自动收集时两个都画，标记完全重合，聚合气泡里还多算一个人。现在按官方 `hui-map-card` 相同规则过滤：出现在某个 `person.attributes.source` 里的 `device_tracker` 不再单独画点。新增 `dedupe_trackers`（默认开，可关）；**显式写进 `entities:` 的不受影响**——你自己点名要的，就照画
-- **v1.0.4**：**在 sections 视图里终于能正确占格子了**——之前没实现 `getGridOptions()`，sections 布局下卡片只能占满整段、高度还锁死不可调；现在按 `height` 算出默认行数（12 列栅格、56px/行，最少 3 行），面板/全屏态自动切 `columns: "full"`。同时补齐官方卡片 API 的另两项：`preview` 属性（出现在卡片选择器预览时不再真的去订阅 24h 历史轨迹，省一次 WebSocket 往返）和 `documentationURL`（卡片选择器里多一个「文档」入口）；并留了 `getLayoutOptions()` 兼容 HA 2024.x 的旧 sections 接口
-- **v1.0.3**：**夜里不再被白底地图闪瞎**——新增 `theme_mode: auto | light | dark`（默认跟随 HA 主题）。高德/天地图没有暗色瓦片，用 `invert + hue-rotate` 滤镜近似；卫星影像与路况叠加自动豁免，不会变成负片。设置抽屉与可视化编辑器都能切。顺带修掉一个更严重的老问题：**换底图后地图一片空白、还跳回北京**——重建引擎时 `_didFit` 仍为 `true` 使 `_update` 走不到 `render()`，且新引擎用的是默认视野；现在重建会保留原视野并强制补一帧瓦片
-- **v1.0.2**：**区域终于有半径了**——`show_zones` 原来只画一个小房子图标，`radius` 这个 zone 最核心的属性被丢掉了。现在按 `radius` 画虚线半透明圆（家取主题主色，其它区域按 id 取稳定调色板色），区域标记也补上了名字；新增 `show_zone_radius`（默认开）与 `fit_zones`（自动适配视图像官方一样把半径圈算进去，大区域不会被裁掉半个圈）。顺带修掉自动适配用未纠偏坐标导致的中心偏移
-- **v1.0.1**：**聚焦不再「一杆戳到街景」**——点击标记/列表项的缩放改为官方语义：只放大到**与最近的其它标记拉开 80px** 为止（上限 17 级），人多且挨得近时不会放过头。同时修掉两个坐标 bug：① 聚焦用的是未纠偏的 WGS 坐标，而标记画在 GCJ-02 上，高德底图下**飞过去偏 300~500m**；② 面板让位方向反了——桌面左侧浮层展开时目标点被推向面板底下，现在正确落在可视区右侧
-- **v1.0.0**：**缩放不再「跑偏」**——滚轮、双击、双指捏合原来都以地图中心为锚，光标下的点会飘走。现在统一以**手势位置**为锚（与官方 `ha-map` / Leaflet 一致）。顺带修好了底层锚点数学：旧公式量纲错了（世界坐标多除了一层 `2^z`），连聚合气泡点击放大也是歪的；现在地理点漂移 < 1px
-- **v0.9.9**：修复「**点标记第二次不进详情弹窗**」——旧代码调用 `homeassistant.more_info` 服务，但 **HA 根本没有这个服务**（对实例实测：该域只有 `turn_on` / `toggle` / `restart` 等），所以一直静默失败、控制台只有一条 unhandled rejection。现在改为发 **`hass-more-info` 事件**（`composed: true` 才能穿出 shadow root 被 Lovelace 接住），与官方 `ha-map` 及所有社区卡片同一机制。标记二次点击、列表项二次点击两处一并修正
-- **v0.9.8**：**面板折叠后打不开了？加了个弹出按钮**——桌面全屏布局下点「−」收起后，整个面板会滑出屏幕外（`translateX(-100% - 16px)`），没有任何东西可以点回来。现在折叠后左上角会出现一个 👥 悬浮按钮，点一下就弹出面板；手机上按钮出现在底部抽屉条上方，Esc 不会误触发它
-- **v0.9.7**：修复**按 `Esc` 退不回列表**——`Esc` 原先只绑在地图容器的 `keydown` 上，而点标记并不会让容器获得焦点（真实点击后焦点在 `<body>`），所以详情页里按 `Esc` 没反应。现在改为**文档级**监听：详情页任意位置按 `Esc` 都会退回列表并取消选中，全屏模式同理退出
-- **v0.9.6**：**点击设备后显示「最近活动」**（对齐官方 `hui-map-overview` 的 activity 时间线）——选中实体即切到详情页：名字 + `状态 · 相对时间`，下方列出最近 **24 小时**的状态变化（最多 20 条、默认 5 条、可展开），每行 `HH:MM · 相对时间`；选中 `zone.*` 时改为显示人员**进入/离开**该区域的记录。数据走 `history/history_during_period`（与官方同一条 WebSocket 消息），跳过 `unavailable`/`unknown`。点空白或 `Esc` 退回列表。修复：面板内子视图缺少 flex 约束导致列表/详情区不能滚动（内容被卡片裁掉）
-- **v0.9.5**：**修复拖拽方向反了**——之前往右拖地图内容反而往左滑（和所有主流地图相反），现在改为标准语义：**地图跟随手势**，往右拖看西边、往下拖看北边；方向键同步修正（按 `→` 视野向东，`Shift` 大步）
-- **v0.9.4**：**修好"明明在面板视图却不能全屏"**——根因是布局探测用 `parentElement` 往上爬，而卡片挂在 `hui-card`／`hui-grid-section` 的 shadow root 里，`parentElement` 到边界就是 `null`，永远看不到 `hui-panel-view`，于是一律当成紧凑的 360px。现在改为：① 优先读 `hui-card` 赋给卡片的 `layout="panel"`（官方 `hui-map-card` 用的同一信号）；② 兜底遍历**穿透 shadow root**；③ 判定为全屏但实测不足一屏时自动升级 `position:fixed` 自愈。同时：⛶ 按钮改为 CSS 铺满（HA App 的 WebView 不支持 `requestFullscreen`），再点或按 `Esc` 退出，sections 视图也能一键全屏；编辑器新增「显示模式」（自动/总是铺满/总是固定高度）
-- **v0.9.3**：交互与官方对齐——**点击标记/列表项=聚焦飞行+选中**（再次点击才开 more-info，点空白或 `Esc` 取消）；新增平滑飞行 `flyTo`（550ms easeInOutQuad，手势立即接管，全屏时落点避开面板）；新增**键盘快捷键**（`+`/`-` 缩放、方向键平移、`Esc` 取消）；新增 **GPS 精度圈**（`gps_accuracy`，`show_accuracy` 默认开）；**轨迹方向箭头**（沿折线每 90px 一个小三角，白描边避免与同色轨迹线糊在一起）。修复：`setMarkers` 首次调用时 `_markerEls` 未初始化导致 `forEach` 抛错（首屏标记不渲染）；`flyTo` 的小数 zoom 需对瓦片层级取整，否则瓦片 URL 出现小数 z
-- **v0.9.2**：**标记状态行**——名称下方新增一行短状态（区域名 / 在家 / 离家+相对时间 / 车速 / 电量），`unavailable`、`unknown` 实体整枚标记灰显并标「离线」；新增配置 `show_status`（默认开），设置抽屉与可视化编辑器同步支持。修复：状态行与名称被 `inline-block` 排在同一行、垂直居中 padding 叠加导致下层文字被地图瓦片遮住
-- **v0.9.1**：新增 **`fill: true`**——sections（网格）视图里也能真正全屏（`position:fixed` 铺满视口，突破 grid 格子的固定高度限制）；sections 视图自动判定改回紧凑（之前会误判为全屏）；`layout: compact` 在 panel 视图下高度被外部拉伸为整屏的 bug（内联样式压过宿主拉伸）
-- **v0.9.0**：UI 与交互对齐官方 `hui-map-card`——**panel 视图自动铺满全屏**；新增**概览面板**（人/设备/区域三标签、头像+状态+相对时间、点击开 more-info、手机底部抽屉/桌面左侧浮层）；控件改为官方图标样式与顺序（`+`/`−` 成组、右上定位）；比例尺改官方白底样式并避让抽屉；标记改 44px 圆形头像 + 名称胶囊；全屏按钮。修复：`fitPadding` 未 clamp 导致初始缩放被压到 3 级（比例尺显示 1000 km）、`entity_picture` 含引号时 innerHTML 拼断导致图片不显示（改 DOM 构建）、路况叠加在重构中丢失初始化
-- **v0.8.0**：新增**标记聚合**（相近标记合并成气泡，最多 3 个头像 + `+N`，点击放大拆开；家/区域不参与聚合）；新增**设置本地持久化**（抽屉改动写入 `localStorage`，刷新仍生效，可一键恢复默认）；新增「显示名称」开关；修复 `fitBounds` 在两枚标记重合时把缩放解到 18 级"贴脸"的问题（按卡片宽度封顶）；修复复选框关闭状态保存不进去、以及重置按钮误触发页面导航
-- **v0.7.0**：合并旧 map-cn 的核心能力——**轨迹线**（history/stream 订阅）、**实时路况叠加**、**卡片内设置抽屉**；修复 SVG 图层尺寸导致的轨迹不显示
-- **v0.6.0**：新增完整可视化编辑器（无需 YAML）；新增比例尺；新增「显示全部」复位按钮；标记图标按实体域区分（person/device_tracker/其他）
-- **v0.1.0**：首个版本，高德/天地图底图、GCJ-02 自动纠偏、标记与区域显示
 
 ## 已知限制
 
