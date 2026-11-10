@@ -968,6 +968,12 @@ class CnTileEngine extends EventTarget {
 
   fitBounds(points, padding = 40) {
     if (!points.length) return;
+    // 支持不对称 padding：{top,right,bottom,left}（数值 px）。手机上底部抽屉盖地图，
+    // 视野要把中心往上抬，避免 home 标记被抽屉挡住
+    const pad = typeof padding === "object" ? padding : { top: padding, right: padding, bottom: padding, left: padding };
+    const base = {
+      top: pad.top ?? 40, right: pad.right ?? 40, bottom: pad.bottom ?? 40, left: pad.left ?? 40,
+    };
     if (points.length === 1) { this.setView(points[0].lat, points[0].lng, 14); return; }
     let minX = 1, maxX = 0, minY = 1, maxY = 0;
     points.forEach((p) => {
@@ -980,13 +986,21 @@ class CnTileEngine extends EventTarget {
     let best = 3;
     for (let z = 18; z >= 3; z--) {
       const n = 2 ** z;
-      if ((maxX - minX) * n * 256 < w - 2 * padding && (maxY - minY) * n * 256 < h - 2 * padding) { best = z; break; }
+      if ((maxX - minX) * n * 256 < w - base.left - base.right &&
+          (maxY - minY) * n * 256 < h - base.top - base.bottom) { best = z; break; }
     }
     // 多枚标记重合时"能装下"会一路解到最大层级，视觉上等于跳到一栋楼；
     // 按卡片宽度给个上限（宽卡片 16 级，手机窄卡片 15 级），簇内差异再靠聚合气泡表现。
     const fitCap = Math.max(3, Math.min(16, Math.round(w / 140) + 11));
     best = Math.min(best, fitCap);
-    this.setView(latFromY((minY + maxY) / 2), lngFromX((minX + maxX) / 2), best);
+    // 视野中心按不对称 padding 偏移：底部留得多时把地理中心往上抬
+    const n = 2 ** best;
+    const usedW = w - base.left - base.right;
+    const usedH = h - base.top - base.bottom;
+    const cxWorld = (minX + maxX) / 2 + (base.right - base.left) / 2 / n / 256;
+    const cyWorld = (minY + maxY) / 2 + (base.bottom - base.top) / 2 / n / 256;
+    void usedW; void usedH;
+    this.setView(latFromY(cyWorld), lngFromX(cxWorld), best);
 
     function latFromY(y) { return (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI; }
     function lngFromX(x) { return x * 360 - 180; }

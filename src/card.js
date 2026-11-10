@@ -2264,16 +2264,16 @@ class HaCnMapCard extends HTMLElement {
     const w = this._engine?.container.clientWidth || 400;
     const h = this._engine?.container.clientHeight || 300;
     const base = Math.round(Math.min(w, h) * 0.08);
-    if (!this._isFull || !this._panelOpen) return base;
-    let pad;
+    // 手机上底部抽屉（peek / 半屏 / 全屏）会盖在地图下面，不管面板当前开没开，
+    // 首次自动适配视野时都要给底部留一块，否则 home 标记被抽屉挡住
     if (this._phone) {
-      // 手机：吃 ha-snap-bottom-sheet 上报的真实高度（官方 map-overview-resize 的 height）
       const sheetH = Number(this._sheetH) || Number(this._sheetHalf) || 0;
-      pad = sheetH ? Math.round(sheetH * 0.92) : Math.round(h * 0.26);
-    } else {
-      pad = Math.round(w * 0.28) + 12;    // 左侧浮层
+      const pad = sheetH ? Math.round(sheetH * 0.92) : Math.round(h * 0.30);
+      const bottom = Math.max(base, Math.min(pad, Math.floor(h * 0.55)));
+      return { top: base, right: base, bottom, left: base };
     }
-    // 最多留 35%，保证剩余区域还能容纳标记
+    if (!this._isFull || !this._panelOpen) return base;
+    const pad = Math.round(w * 0.28) + 12;    // 左侧浮层
     return Math.max(base, Math.min(pad, Math.floor(Math.min(w, h) * 0.35)));
   }
 

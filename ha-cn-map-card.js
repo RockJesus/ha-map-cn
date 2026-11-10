@@ -1117,6 +1117,13 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
   }
   fitBounds(points, padding = 40) {
     if (!points.length) return;
+    const pad = typeof padding === "object" ? padding : { top: padding, right: padding, bottom: padding, left: padding };
+    const base = {
+      top: pad.top ?? 40,
+      right: pad.right ?? 40,
+      bottom: pad.bottom ?? 40,
+      left: pad.left ?? 40
+    };
     if (points.length === 1) {
       this.setView(points[0].lat, points[0].lng, 14);
       return;
@@ -1133,15 +1140,22 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     const h = this.container.clientHeight || 300;
     let best = 3;
     for (let z = 18; z >= 3; z--) {
-      const n = 2 ** z;
-      if ((maxX - minX) * n * 256 < w - 2 * padding && (maxY - minY) * n * 256 < h - 2 * padding) {
+      const n2 = 2 ** z;
+      if ((maxX - minX) * n2 * 256 < w - base.left - base.right && (maxY - minY) * n2 * 256 < h - base.top - base.bottom) {
         best = z;
         break;
       }
     }
     const fitCap = Math.max(3, Math.min(16, Math.round(w / 140) + 11));
     best = Math.min(best, fitCap);
-    this.setView(latFromY((minY + maxY) / 2), lngFromX((minX + maxX) / 2), best);
+    const n = 2 ** best;
+    const usedW = w - base.left - base.right;
+    const usedH = h - base.top - base.bottom;
+    const cxWorld = (minX + maxX) / 2 + (base.right - base.left) / 2 / n / 256;
+    const cyWorld = (minY + maxY) / 2 + (base.bottom - base.top) / 2 / n / 256;
+    void usedW;
+    void usedH;
+    this.setView(latFromY(cyWorld), lngFromX(cxWorld), best);
     function latFromY(y) {
       return Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180 / Math.PI;
     }
@@ -3308,14 +3322,14 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const w = this._engine?.container.clientWidth || 400;
     const h = this._engine?.container.clientHeight || 300;
     const base = Math.round(Math.min(w, h) * 0.08);
-    if (!this._isFull || !this._panelOpen) return base;
-    let pad;
     if (this._phone) {
       const sheetH = Number(this._sheetH) || Number(this._sheetHalf) || 0;
-      pad = sheetH ? Math.round(sheetH * 0.92) : Math.round(h * 0.26);
-    } else {
-      pad = Math.round(w * 0.28) + 12;
+      const pad2 = sheetH ? Math.round(sheetH * 0.92) : Math.round(h * 0.3);
+      const bottom = Math.max(base, Math.min(pad2, Math.floor(h * 0.55)));
+      return { top: base, right: base, bottom, left: base };
     }
+    if (!this._isFull || !this._panelOpen) return base;
+    const pad = Math.round(w * 0.28) + 12;
     return Math.max(base, Math.min(pad, Math.floor(Math.min(w, h) * 0.35)));
   }
   _cfgHidden() {
@@ -3971,4 +3985,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.4.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.4.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
