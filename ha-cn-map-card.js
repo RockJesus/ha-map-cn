@@ -1376,6 +1376,10 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     RUNTIME_KEYS.forEach((k) => {
       if (opts[k] !== void 0) cfg[k] = opts[k];
     });
+    for (const k of ["home_lat", "home_lng", "home_radius"]) {
+      const v = cfg[k];
+      if (v !== void 0 && v !== null && v !== "" && !Number.isFinite(Number(v))) delete cfg[k];
+    }
     this._config = cfg;
   }
   /* 把当前配置里"运行时可变"的键落盘，下次刷新/切视图仍生效 */
@@ -3999,4 +4003,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.4.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.4.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

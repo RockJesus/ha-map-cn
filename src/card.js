@@ -208,6 +208,11 @@ class HaCnMapCard extends HTMLElement {
     RUNTIME_KEYS.forEach((k) => {
       if (opts[k] !== undefined) cfg[k] = opts[k];
     });
+    // 清理之前 NaN/异常的 home 覆盖值（老版本拖动半径写脏过）
+    for (const k of ["home_lat", "home_lng", "home_radius"]) {
+      const v = cfg[k];
+      if (v !== undefined && v !== null && v !== "" && !Number.isFinite(Number(v))) delete cfg[k];
+    }
     this._config = cfg;
   }
 
