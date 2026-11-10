@@ -835,6 +835,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         el.style.cursor = "grabbing";
         el.classList.add("cmc-armed");
         if (this._suspendedPointers) this._suspendedPointers.add(e.pointerId);
+        this._releaseGesturePointer?.(e.pointerId);
         try {
           this.container.releasePointerCapture(e.pointerId);
         } catch {
@@ -907,6 +908,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         active = true;
         handle.classList.add("cmc-armed");
         if (this._suspendedPointers) this._suspendedPointers.add(e.pointerId);
+        this._releaseGesturePointer?.(e.pointerId);
         try {
           this.container.releasePointerCapture(e.pointerId);
         } catch {
@@ -1020,6 +1022,10 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         pinchMoved = false;
       }
     });
+    this._releaseGesturePointer = (id) => {
+      pts.delete(id);
+      if (pts.size < 2) pinchD0 = 0;
+    };
     el.addEventListener("pointermove", (e) => {
       if (this._suspendedPointers.has(e.pointerId)) return;
       const p = pts.get(e.pointerId);
@@ -3990,4 +3996,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.4.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.4.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

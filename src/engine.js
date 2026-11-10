@@ -700,6 +700,7 @@ class CnTileEngine extends EventTarget {
         el.classList.add("cmc-armed");
         // 告诉地图手势：这根手指不再触发 pan/pinch，并把 pointer capture 从容器转到标记上
         if (this._suspendedPointers) this._suspendedPointers.add(e.pointerId);
+        this._releaseGesturePointer?.(e.pointerId);
         try { this.container.releasePointerCapture(e.pointerId); } catch {}
         try { el.setPointerCapture(e.pointerId); } catch {}
         this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, phase: "start" } }));
@@ -761,6 +762,7 @@ class CnTileEngine extends EventTarget {
         active = true;
         handle.classList.add("cmc-armed");
         if (this._suspendedPointers) this._suspendedPointers.add(e.pointerId);
+        this._releaseGesturePointer?.(e.pointerId);
         try { this.container.releasePointerCapture(e.pointerId); } catch {}
         try { hitEl.setPointerCapture(e.pointerId); } catch {}
         this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
@@ -873,6 +875,12 @@ class CnTileEngine extends EventTarget {
         pinchZ0 = this.zoom; pinchMoved = false;
       }
     });
+    // 标记/手柄 arm 后调用：把这根手指从地图 pan/pinch 状态里彻底清掉，
+    // 否则 pts 里残留旧指针，下次单指 pan 会被误判成双指 pinch
+    this._releaseGesturePointer = (id) => {
+      pts.delete(id);
+      if (pts.size < 2) pinchD0 = 0;
+    };
     el.addEventListener("pointermove", (e) => {
       if (this._suspendedPointers.has(e.pointerId)) return;
       const p = pts.get(e.pointerId);
