@@ -1540,13 +1540,16 @@ class HaCnMapCard extends HTMLElement {
     if (h) h.textContent = t;
   }
 
-  /* 同步到 HA 核心区域（设置 → 区域与地点 → 我的家）：调用 zone.edit 服务，
-     然后清掉卡片本地的 home_lat/home_lng/home_radius 覆盖，后续读 zone.home 本身 */
+  /* 同步到 HA 核心区域（设置 → 区域与地点 → 我的家）。
+     新版 HA（2024.10+）已经没有 zone.edit 服务，失败时只保留本卡覆盖并提示用户手动改。 */
   async _syncHomeToZone(patch, done) {
-    if (!this._hass?.callService) { this._setGeoHint(done); return; }
+    this._saveRuntime();
+    this._persistConfig(this._config);
+    this._setGeoHint(done);
+    if (!this._hass?.callService) return;
     try {
       await this._hass.callService("zone", "edit", { entity_id: "zone.home", ...patch });
-      // 服务调用后清掉本卡覆盖，让卡片直接用 HA zone.home 的最新值
+      // 同步成功：清掉本卡覆盖，让卡片直接用 HA zone.home 的最新值
       const next = { ...this._config };
       delete next.home_lat; delete next.home_lng; delete next.home_radius;
       this._config = next;
@@ -1555,8 +1558,9 @@ class HaCnMapCard extends HTMLElement {
       this._setGeoHint(`${done}（已同步到家区域）`);
       Promise.resolve().then(() => this._update());
     } catch (err) {
-      console.warn("[ha-cn-map-card] zone.edit failed", err);
-      this._setGeoHint(`${done}（同步到 HA 失败：${err?.message || err}）`);
+      console.warn("[ha-cn-map-card] zone.edit unavailable:", err);
+      this._setGeoHint(`${done}（HA 此版本无 zone 编辑服务，改动仅本卡生效；请到 设置 → 区域与地点 → 我的家 手动更新）`);
+      Promise.resolve().then(() => this._update());
     }
   }
 
@@ -1574,8 +1578,7 @@ class HaCnMapCard extends HTMLElement {
     this._config = { ...this._config, home_lat: lat, home_lng: lng };
     this._syncHomeFields();
     if (d.phase === "end") {
-      this._setGeoHint(`已拖动到位：${lat}, ${lng}，正在同步…`);
-      this._syncHomeToZone({ latitude: lat, longitude: lng }, `已同步家位置：${lat}, ${lng}`);
+      this._syncHomeToZone({ latitude: lat, longitude: lng }, `家已挪到：${lat}, ${lng}`);
     }
   }
 
@@ -1590,8 +1593,7 @@ class HaCnMapCard extends HTMLElement {
     if (d.phase === "end") {
       this._engine._userMoved = true;
       const r = Math.round(d.radius);
-      this._setGeoHint(`已设置半径：${r} 米，正在同步…`);
-      this._syncHomeToZone({ radius: r }, `已同步家半径：${r} 米`);
+      this._syncHomeToZone({ radius: r }, `家半径已设为：${r} 米`);
     }
   }
 
