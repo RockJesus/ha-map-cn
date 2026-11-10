@@ -3012,9 +3012,13 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   }
   focusEntity(entityId, zoom) {
     const st = this._hass?.states?.[entityId];
-    if (!st || typeof st.attributes.latitude !== "number") return;
+    if (!st || typeof st.attributes.latitude !== "number") {
+      console.warn("[ha-cn-map] focusEntity early return", entityId, st && st.attributes.latitude);
+      return;
+    }
     let lat = st.attributes.latitude, lng = st.attributes.longitude;
     if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
+    console.log("[ha-cn-map] focusEntity", entityId, lat, lng, "zoom=", this._engine?.zoom);
     this._engine.setSelected(entityId);
     this._writeSelection(entityId);
     this._showDetail(entityId);
@@ -3030,6 +3034,14 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const mPerLng = 360 / (2 ** z * 256);
     const mPerLat = mPerLng / Math.cos(lat * Math.PI / 180);
     this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z, 550, { forceZoom: true });
+    const sb = this.shadowRoot?.querySelector(".cmc-scale");
+    if (sb) {
+      sb.textContent = `飞→${entityId.split(".")[1]} z${z} from${this._engine.zoom.toFixed(1)}`;
+      setTimeout(() => {
+        sb.textContent = "";
+        this._engine?.renderScale?.();
+      }, 2500);
+    }
   }
   /* ---- 实体详情（最近活动）---- */
   _showDetail(entityId) {
@@ -4028,4 +4040,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.5.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

@@ -1879,11 +1879,15 @@ class HaCnMapCard extends HTMLElement {
 
   focusEntity(entityId, zoom) {
     const st = this._hass?.states?.[entityId];
-    if (!st || typeof st.attributes.latitude !== "number") return;
+    if (!st || typeof st.attributes.latitude !== "number") {
+      console.warn("[ha-cn-map] focusEntity early return", entityId, st && st.attributes.latitude);
+      return;
+    }
     let lat = st.attributes.latitude, lng = st.attributes.longitude;
     // 标记是按底图坐标系画的（高德要 GCJ-02 纠偏），聚焦必须用同一套坐标，
     // 否则飞过去会差 300~500m（v1.0.1 修）
     if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
+    console.log("[ha-cn-map] focusEntity", entityId, lat, lng, "zoom=", this._engine?.zoom);
     this._engine.setSelected(entityId);
     this._writeSelection(entityId);
     // 选中即打开详情（最近活动），对齐官方 hui-map-overview 的聚焦语义
@@ -1906,6 +1910,12 @@ class HaCnMapCard extends HTMLElement {
     const mPerLng = 360 / (2 ** z * 256);
     const mPerLat = mPerLng / Math.cos((lat * Math.PI) / 180);
     this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z, 550, { forceZoom: true });
+    // 临时调试：在比例尺位置闪一下目标，确认 focusEntity 真的被调起
+    const sb = this.shadowRoot?.querySelector(".cmc-scale");
+    if (sb) {
+      sb.textContent = `飞→${entityId.split(".")[1]} z${z} from${this._engine.zoom.toFixed(1)}`;
+      setTimeout(() => { sb.textContent = ""; this._engine?.renderScale?.(); }, 2500);
+    }
   }
 
   /* ---- 实体详情（最近活动）---- */
