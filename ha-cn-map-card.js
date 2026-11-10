@@ -293,11 +293,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       this._fly.cancelled = true;
       cancelAnimationFrame(raf);
     } };
-    raf = requestAnimationFrame((t) => {
-      console.log("[ha-cn-map] flyTo first frame", t0, t, "cancelled=", this._fly?.cancelled);
-      step(t);
-    });
-    console.log("[ha-cn-map] flyTo scheduled", { from, toZ, targetZ, w, h, px, py });
+    raf = requestAnimationFrame(step);
   }
   addTileSet({ url, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
     const ts = { url, maxZoom, zIndex, opacity, els: /* @__PURE__ */ new Map(), id: ++this._tileSeq };
@@ -2113,11 +2109,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     this._engine.addEventListener("marker-click", (e) => {
       const id = e.detail.entityId;
-      const sb = this.shadowRoot?.querySelector(".cmc-scale");
-      if (sb) {
-        sb.textContent = `点标记:${id}`;
-        setTimeout(() => sb.textContent = "", 1500);
-      }
       const ent = this._hass?.states?.[id];
       if (!ent || !this._hass) return;
       if (this._focusOnMarkerClick) {
@@ -3021,13 +3012,9 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   }
   focusEntity(entityId, zoom) {
     const st = this._hass?.states?.[entityId];
-    if (!st || typeof st.attributes.latitude !== "number") {
-      console.warn("[ha-cn-map] focusEntity early return", entityId, st && st.attributes.latitude);
-      return;
-    }
+    if (!st || typeof st.attributes.latitude !== "number") return;
     let lat = st.attributes.latitude, lng = st.attributes.longitude;
     if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
-    console.log("[ha-cn-map] focusEntity", entityId, lat, lng, "zoom=", this._engine?.zoom);
     this._engine.setSelected(entityId);
     this._writeSelection(entityId);
     this._showDetail(entityId);
@@ -3043,22 +3030,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
     const mPerLng = 360 / (2 ** z * 256);
     const mPerLat = mPerLng / Math.cos(lat * Math.PI / 180);
-    this._engine.setView(lat + offY * mPerLat, lng + offX * mPerLng, z);
-    const sb = this.shadowRoot?.querySelector(".cmc-scale");
-    if (sb) {
-      const z0 = this._engine.zoom;
-      const c0 = this._engine.center;
-      sb.textContent = `setView z=${z} now=${z0.toFixed(1)} at=${c0.lat.toFixed(2)},${c0.lng.toFixed(2)}`;
-      setTimeout(() => {
-        const z1 = this._engine.zoom;
-        const c1 = this._engine.center;
-        sb.textContent = `after400 z=${z1.toFixed(1)} at=${c1.lat.toFixed(2)},${c1.lng.toFixed(2)} userMoved=${this._engine._userMoved} didFit=${this._didFit} userSel=${this._userSelected}`;
-      }, 400);
-      setTimeout(() => {
-        sb.textContent = "";
-        this._engine?.renderScale?.();
-      }, 3e3);
-    }
+    this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z, 550, { forceZoom: true });
   }
   /* ---- 实体详情（最近活动）---- */
   _showDetail(entityId) {
@@ -3607,11 +3579,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         const id = b.dataset.entity;
-        const sb = this.shadowRoot?.querySelector(".cmc-scale");
-        if (sb) {
-          sb.textContent = `点列表:${id}`;
-          setTimeout(() => sb.textContent = "", 1500);
-        }
         if (!this._hass?.states?.[id]) return;
         if (this._engine?._selectedEntity === id) {
           this._openMoreInfo(id);
@@ -4062,4 +4029,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.6.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.6.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

@@ -947,8 +947,6 @@ class HaCnMapCard extends HTMLElement {
     this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     this._engine.addEventListener("marker-click", (e) => {
       const id = e.detail.entityId;
-      const sb = this.shadowRoot?.querySelector(".cmc-scale");
-      if (sb) { sb.textContent = `点标记:${id}`; setTimeout(()=>sb.textContent="",1500); }
       const ent = this._hass?.states?.[id];
       if (!ent || !this._hass) return;
       // 官方交互：第一次点击=聚焦飞行+选中（打开最近活动详情），第二次点同一标记才打开 more-info
@@ -1881,15 +1879,11 @@ class HaCnMapCard extends HTMLElement {
 
   focusEntity(entityId, zoom) {
     const st = this._hass?.states?.[entityId];
-    if (!st || typeof st.attributes.latitude !== "number") {
-      console.warn("[ha-cn-map] focusEntity early return", entityId, st && st.attributes.latitude);
-      return;
-    }
+    if (!st || typeof st.attributes.latitude !== "number") return;
     let lat = st.attributes.latitude, lng = st.attributes.longitude;
     // 标记是按底图坐标系画的（高德要 GCJ-02 纠偏），聚焦必须用同一套坐标，
     // 否则飞过去会差 300~500m（v1.0.1 修）
     if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
-    console.log("[ha-cn-map] focusEntity", entityId, lat, lng, "zoom=", this._engine?.zoom);
     this._engine.setSelected(entityId);
     this._writeSelection(entityId);
     // 选中即打开详情（最近活动），对齐官方 hui-map-overview 的聚焦语义
@@ -1912,20 +1906,7 @@ class HaCnMapCard extends HTMLElement {
     // 像素偏移 → 经纬度偏移（当前 zoom 下）
     const mPerLng = 360 / (2 ** z * 256);
     const mPerLat = mPerLng / Math.cos((lat * Math.PI) / 180);
-    this._engine.setView(lat + offY * mPerLat, lng + offX * mPerLng, z);
-    // 临时调试：在比例尺位置闪一下目标，确认 focusEntity 真的被调起
-    const sb = this.shadowRoot?.querySelector(".cmc-scale");
-    if (sb) {
-      const z0 = this._engine.zoom;
-      const c0 = this._engine.center;
-      sb.textContent = `setView z=${z} now=${z0.toFixed(1)} at=${c0.lat.toFixed(2)},${c0.lng.toFixed(2)}`;
-      setTimeout(() => {
-        const z1 = this._engine.zoom;
-        const c1 = this._engine.center;
-        sb.textContent = `after400 z=${z1.toFixed(1)} at=${c1.lat.toFixed(2)},${c1.lng.toFixed(2)} userMoved=${this._engine._userMoved} didFit=${this._didFit} userSel=${this._userSelected}`;
-      }, 400);
-      setTimeout(() => { sb.textContent = ""; this._engine?.renderScale?.(); }, 3000);
-    }
+    this._engine.flyTo(lat + offY * mPerLat, lng + offX * mPerLng, z, 550, { forceZoom: true });
   }
 
   /* ---- 实体详情（最近活动）---- */
@@ -2549,8 +2530,6 @@ class HaCnMapCard extends HTMLElement {
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         const id = b.dataset.entity;
-        const sb = this.shadowRoot?.querySelector(".cmc-scale");
-        if (sb) { sb.textContent = `点列表:${id}`; setTimeout(()=>sb.textContent="",1500); }
         if (!this._hass?.states?.[id]) return;
         // 对齐官方：点列表项 = 聚焦飞行 + 选中；已选中时再点开 more-info
         if (this._engine?._selectedEntity === id) {
