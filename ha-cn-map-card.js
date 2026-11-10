@@ -245,6 +245,8 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     return { lat, lng };
   }
   setView(lat, lng, zoom) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (zoom != null && !Number.isFinite(zoom)) zoom = null;
     this.center = { lat, lng };
     if (zoom != null) this.zoom = zoom;
     this.render();
@@ -253,11 +255,17 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
      线性插值 zoom（对数尺度视觉上更匀），经纬度按已走进度插值；
      期间用户任何手势立即接管（取消动画），避免"抢方向盘"的手感 */
   flyTo(lat, lng, zoom, duration = 550) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (zoom != null && !Number.isFinite(zoom)) zoom = null;
     if (typeof window === "undefined" || !window.requestAnimationFrame) {
       this.setView(lat, lng, zoom);
       return;
     }
     const from = { lat: this.center.lat, lng: this.center.lng, z: this.zoom };
+    if (!Number.isFinite(from.lat) || !Number.isFinite(from.lng) || !Number.isFinite(from.z)) {
+      this.setView(lat, lng, zoom ?? 12);
+      return;
+    }
     const toZ = Math.max(3, Math.min(18, zoom ?? this.zoom));
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
@@ -2151,7 +2159,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         if (this._fitRefitTimer) clearTimeout(this._fitRefitTimer);
         this._fitRefitTimer = setTimeout(() => {
           this._fitRefitTimer = null;
-          if (this._engine && !this._engine._userMoved) {
+          if (this._engine && !this._engine._userMoved && !this._userSelected) {
             this._didFit = false;
             this._update();
           }
@@ -2994,6 +3002,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._engine.setSelected(entityId);
     this._writeSelection(entityId);
     this._showDetail(entityId);
+    this._userSelected = true;
     const z = this._focusZoom(lat, lng, Math.max(zoom ?? 0, this._engine.zoom, 13));
     let offX = 0, offY = 0;
     if (this._isFull && this._panelOpen) {
@@ -4003,4 +4012,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.4.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

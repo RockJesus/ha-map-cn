@@ -79,6 +79,8 @@ class CnTileEngine extends EventTarget {
   }
 
   setView(lat, lng, zoom) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (zoom != null && !Number.isFinite(zoom)) zoom = null;
     this.center = { lat, lng };
     if (zoom != null) this.zoom = zoom;
     this.render();
@@ -88,11 +90,17 @@ class CnTileEngine extends EventTarget {
      线性插值 zoom（对数尺度视觉上更匀），经纬度按已走进度插值；
      期间用户任何手势立即接管（取消动画），避免"抢方向盘"的手感 */
   flyTo(lat, lng, zoom, duration = 550) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (zoom != null && !Number.isFinite(zoom)) zoom = null;
     if (typeof window === "undefined" || !window.requestAnimationFrame) {
       this.setView(lat, lng, zoom);
       return;
     }
     const from = { lat: this.center.lat, lng: this.center.lng, z: this.zoom };
+    if (!Number.isFinite(from.lat) || !Number.isFinite(from.lng) || !Number.isFinite(from.z)) {
+      this.setView(lat, lng, zoom ?? 12);
+      return;
+    }
     const toZ = Math.max(3, Math.min(18, zoom ?? this.zoom));
     // 视野里已经能看到目标时不缩放，只平移（官方 #54774 的"聚焦飞行语义"）
     const w = this.container.clientWidth || 400;

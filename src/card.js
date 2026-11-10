@@ -1020,7 +1020,8 @@ class HaCnMapCard extends HTMLElement {
         if (this._fitRefitTimer) clearTimeout(this._fitRefitTimer);
         this._fitRefitTimer = setTimeout(() => {
           this._fitRefitTimer = null;
-          if (this._engine && !this._engine._userMoved) {
+          // 用户刚点过实体（flyTo 已飞过去）就不要自动 refit 把视角抢走
+          if (this._engine && !this._engine._userMoved && !this._userSelected) {
             this._didFit = false;
             this._update();
           }
@@ -1885,6 +1886,7 @@ class HaCnMapCard extends HTMLElement {
     this._writeSelection(entityId);
     // 选中即打开详情（最近活动），对齐官方 hui-map-overview 的聚焦语义
     this._showDetail(entityId);
+    this._userSelected = true; // 阻止抽屉展开后的自动 refit 把视角抢走
     const z = this._focusZoom(lat, lng, Math.max(zoom ?? 0, this._engine.zoom, 13));
     let offX = 0, offY = 0; // 像素偏移：面板 dock 在哪侧就把中心往对侧挪
     if (this._isFull && this._panelOpen) {
