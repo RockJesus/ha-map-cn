@@ -1402,6 +1402,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   /* 解析布局：官方 panel 视图 / sections 紧凑 / 自定义全屏 */
   _resolveLayout() {
     const cfg = this._config;
+    if (this._hass?.editMode) return LAYOUT.COMPACT;
     if (cfg.layout === "compact" || cfg.fullscreen === false) return LAYOUT.COMPACT;
     if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel" || cfg.fill === true) return LAYOUT.FULL;
     if (this.layout === "panel" || this.isPanel === true) return LAYOUT.FULL;
@@ -4012,4 +4013,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.5.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.5.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

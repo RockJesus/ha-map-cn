@@ -230,6 +230,8 @@ class HaCnMapCard extends HTMLElement {
   /* 解析布局：官方 panel 视图 / sections 紧凑 / 自定义全屏 */
   _resolveLayout() {
     const cfg = this._config;
+    // 编辑仪表盘模式下：强制 compact，否则全屏卡片会盖住 HA 顶部的"完成/取消"按钮，用户没法退出编辑
+    if (this._hass?.editMode) return LAYOUT.COMPACT;
     // 用户显式指定 compact 时永远尊重（哪怕在 panel 视图里）
     if (cfg.layout === "compact" || cfg.fullscreen === false) return LAYOUT.COMPACT;
     if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel" || cfg.fill === true) return LAYOUT.FULL;
