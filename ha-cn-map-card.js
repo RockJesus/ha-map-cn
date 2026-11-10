@@ -769,7 +769,6 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         return;
       }
       if (!this._dragMarker) return;
-      e.preventDefault();
       const ll = this.latLngAt(e.clientX, e.clientY);
       if (!ll) return;
       m.lat = ll.lat;
@@ -785,11 +784,16 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       }
       this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: ll.lat, lng: ll.lng, phase: "move" } }));
     };
-    const end = () => {
+    const end = (e) => {
       clearArm();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
+      if (this._suspendedPointers) this._suspendedPointers.delete(e?.pointerId);
+      try {
+        this.container.releasePointerCapture(e?.pointerId);
+      } catch {
+      }
       if (!this._dragMarker) return;
       this._dragMarker = null;
       el.style.cursor = "grab";
@@ -813,6 +817,15 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         this._dragStart = { x: startPt.x, y: startPt.y };
         el.style.cursor = "grabbing";
         el.classList.add("cmc-armed");
+        if (this._suspendedPointers) this._suspendedPointers.add(e.pointerId);
+        try {
+          this.container.releasePointerCapture(e.pointerId);
+        } catch {
+        }
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+        }
         this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, phase: "start" } }));
       }, LONG_PRESS);
     });
@@ -850,11 +863,16 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       handle.setAttribute("cx", (cx + rr).toFixed(1));
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: meters, phase: "move" } }));
     };
-    const end = () => {
+    const end = (e) => {
       clearArm();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
+      if (this._suspendedPointers) this._suspendedPointers.delete(e?.pointerId);
+      try {
+        this.container.releasePointerCapture(e?.pointerId);
+      } catch {
+      }
       if (!active) return;
       active = false;
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "end" } }));
@@ -873,6 +891,15 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         armed = true;
         active = true;
         handle.classList.add("cmc-armed");
+        if (this._suspendedPointers) this._suspendedPointers.add(e.pointerId);
+        try {
+          this.container.releasePointerCapture(e.pointerId);
+        } catch {
+        }
+        try {
+          handle.setPointerCapture(e.pointerId);
+        } catch {
+        }
         this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
       }, LONG_PRESS);
     });
@@ -938,6 +965,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     let pinchD0 = 0, pinchZ0 = 0, pinchMoved = false;
     const el = this.container;
     el.style.touchAction = "none";
+    this._suspendedPointers = this._suspendedPointers || /* @__PURE__ */ new Set();
     el.addEventListener("click", (e) => {
       if (e.target === el || e.target.classList?.contains("cmc-viewport") || e.target.tagName === "IMG") {
         if (this._selectedEntity) {
@@ -962,6 +990,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     el.addEventListener("pointerdown", (e) => {
       this._fly?.cancel?.();
       this._fly = null;
+      if (this._suspendedPointers.has(e.pointerId)) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY });
       try {
         el.setPointerCapture(e.pointerId);
@@ -975,6 +1004,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       }
     });
     el.addEventListener("pointermove", (e) => {
+      if (this._suspendedPointers.has(e.pointerId)) return;
       const p = pts.get(e.pointerId);
       if (!p) return;
       p.x = e.clientX;
@@ -997,6 +1027,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     const endPointer = (e) => {
       if (pinchMoved) this._suppressClickUntil = Date.now() + 400;
       pts.delete(e.pointerId);
+      this._suspendedPointers.delete(e.pointerId);
       if (pts.size < 2) pinchD0 = 0;
       if (pts.size === 1) {
         const q = [...pts.values()][0];
@@ -3919,4 +3950,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.4.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.4.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

@@ -631,7 +631,6 @@ class CnTileEngine extends EventTarget {
         return;
       }
       if (!this._dragMarker) return;
-      e.preventDefault();
       const ll = this.latLngAt(e.clientX, e.clientY);
       if (!ll) return;
       m.lat = ll.lat; m.lng = ll.lng;
@@ -646,11 +645,13 @@ class CnTileEngine extends EventTarget {
       }
       this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: ll.lat, lng: ll.lng, phase: "move" } }));
     };
-    const end = () => {
+    const end = (e) => {
       clearArm();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
+      if (this._suspendedPointers) this._suspendedPointers.delete(e?.pointerId);
+      try { this.container.releasePointerCapture(e?.pointerId); } catch {}
       if (!this._dragMarker) return;
       this._dragMarker = null;
       el.style.cursor = "grab";
@@ -676,6 +677,10 @@ class CnTileEngine extends EventTarget {
         this._dragStart = { x: startPt.x, y: startPt.y };
         el.style.cursor = "grabbing";
         el.classList.add("cmc-armed");
+        // 告诉地图手势：这根手指不再触发 pan/pinch，并把 pointer capture 从容器转到标记上
+        if (this._suspendedPointers) this._suspendedPointers.add(e.pointerId);
+        try { this.container.releasePointerCapture(e.pointerId); } catch {}
+        try { el.setPointerCapture(e.pointerId); } catch {}
         this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, phase: "start" } }));
       }, LONG_PRESS);
     });
@@ -711,11 +716,13 @@ class CnTileEngine extends EventTarget {
       handle.setAttribute("cx", (cx + rr).toFixed(1));
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: meters, phase: "move" } }));
     };
-    const end = () => {
+    const end = (e) => {
       clearArm();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
+      if (this._suspendedPointers) this._suspendedPointers.delete(e?.pointerId);
+      try { this.container.releasePointerCapture(e?.pointerId); } catch {}
       if (!active) return;
       active = false;
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "end" } }));
@@ -733,6 +740,9 @@ class CnTileEngine extends EventTarget {
         armed = true;
         active = true;
         handle.classList.add("cmc-armed");
+        if (this._suspendedPointers) this._suspendedPointers.add(e.pointerId);
+        try { this.container.releasePointerCapture(e.pointerId); } catch {}
+        try { handle.setPointerCapture(e.pointerId); } catch {}
         this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: ci.radius, phase: "start" } }));
       }, LONG_PRESS);
     });
@@ -800,6 +810,10 @@ class CnTileEngine extends EventTarget {
     const pts = new Map(); let pinchD0 = 0, pinchZ0 = 0, pinchMoved = false;
     const el = this.container;
     el.style.touchAction = "none";
+    // 当 home 标记 / 半径手柄长按 arm 后，把对应 pointerId 加入 _suspendedPointers，
+    // 地图 pan/pinch 要忽略它——否则手指在 arm 后继续滑，地图也跟着 pan，
+    // 看起来就是「home 不跟手、地图乱跑」。
+    this._suspendedPointers = this._suspendedPointers || new Set();
     // 点空白处（没点在标记/聚合上）取消选中：官方语义
     el.addEventListener("click", (e) => {
       if (e.target === el || e.target.classList?.contains("cmc-viewport") || e.target.tagName === "IMG") {
@@ -828,6 +842,7 @@ class CnTileEngine extends EventTarget {
     el.addEventListener("pointerdown", (e) => {
       // 用户手势立即接管，取消进行中的飞行动画（官方"抢方向盘"行为）
       this._fly?.cancel?.(); this._fly = null;
+      if (this._suspendedPointers.has(e.pointerId)) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY });
       try { el.setPointerCapture(e.pointerId); } catch {}
       if (pts.size === 2) {
@@ -837,6 +852,7 @@ class CnTileEngine extends EventTarget {
       }
     });
     el.addEventListener("pointermove", (e) => {
+      if (this._suspendedPointers.has(e.pointerId)) return;
       const p = pts.get(e.pointerId);
       if (!p) return;
       p.x = e.clientX; p.y = e.clientY;
@@ -859,6 +875,7 @@ class CnTileEngine extends EventTarget {
     const endPointer = (e) => {
       if (pinchMoved) this._suppressClickUntil = Date.now() + 400; // 捏合后别误触选中
       pts.delete(e.pointerId);
+      this._suspendedPointers.delete(e.pointerId);
       if (pts.size < 2) pinchD0 = 0;
       if (pts.size === 1) { const q = [...pts.values()][0]; q.px = q.x; q.py = q.y; }
     };
