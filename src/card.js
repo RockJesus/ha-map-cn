@@ -187,7 +187,7 @@ class HaCnMapCard extends HTMLElement {
     const r = this._isFull ? null : this._parseAspect(this._config?.aspect_ratio);
     card.classList.toggle("is-aspect", !!r);
     card.style.aspectRatio = r ? `${r.w} / ${r.h}` : "";
-    this.style.height = this._isFull ? "" : r ? "auto" : (this._config?.height ? `${this._config.height}px` : "100%");
+    this.style.height = this._isFull ? "100%" : r ? "auto" : (this._config?.height ? `${this._config.height}px` : "");
   }
 
   /* 暗色判定：显式 theme_mode 优先，auto 跟随 HA 主题，再兜底系统偏好 */
@@ -314,7 +314,7 @@ class HaCnMapCard extends HTMLElement {
       this.classList.add("cmc-bleed");
     } else if (!on && has) {
       this.classList.remove("cmc-bleed");
-      this.style.height = this._layout === LAYOUT.FULL ? "" : (this._config?.height ? `${this._config.height}px` : "100%");
+      this.style.height = this._layout === LAYOUT.FULL ? "100%" : (this._config?.height ? `${this._config.height}px` : "");
     }
     const btn = this.shadowRoot?.querySelector("[data-fs]");
     if (btn) {
@@ -386,9 +386,15 @@ class HaCnMapCard extends HTMLElement {
     // fill：sections 视图里也铺满（bleed 会接管实际铺满）
     const fill = cfg.fill === true;
     const ar = this._parseAspect(cfg.aspect_ratio);
-    const h = isFull ? "100%" : ar ? "auto" : (cfg.height ? `${cfg.height}px` : "100%");
-    // 内联压过外部对宿主元素的 height:100% 拉伸（panel 视图会这样干）
-    if (typeof this.style !== "undefined") this.style.height = isFull ? "" : h;
+    // host 高度策略：
+    // - isFull(panel 铺满)：height:100%
+    // - cfg.height 显式配置：固定 px
+    // - aspect_ratio：auto（按比例撑高）
+    // - 其他（sections/masonry/网格）：不设高度，让 HA 网格自然给 host 高度；
+    //   .cmc-card 用 position:absolute;inset:0 撑满 host，避免 height:100% 链断时塌缩
+    const h = isFull ? "100%" : ar ? "auto" : (cfg.height ? `${cfg.height}px` : "");
+    // 内联压过外部对宿主的 height：仅在有明确值时设置，空串 = 让父级/网格决定
+    if (typeof this.style !== "undefined") this.style.height = h || "";
     this._isFull = isFull;
     this._zoomSide = zoomSide;
 
@@ -424,7 +430,9 @@ class HaCnMapCard extends HTMLElement {
       <style>
         :host {
           display:block;
+          position:relative;
           height:${h};
+          min-height:${isFull ? "0" : (cfg.height ? "0" : "300px")};
           ${(isFull || fill) ? "min-height:0;" : ""}
           --cmc-radius: var(--ha-card-border-radius, 12px);
           --cmc-surface: var(--card-background-color, #fff);
@@ -464,9 +472,9 @@ class HaCnMapCard extends HTMLElement {
           transform:translate(-50%, -100%); transition:opacity .1s;
         }
         .cmc-tip[hidden] { display:none; }
-        .cmc-card.is-aspect { height:auto; }
+        .cmc-card.is-aspect { height:auto; position:relative; }
         .cmc-card {
-          width:100%; height:100%; position:relative; overflow:hidden;
+          position:absolute; inset:0; overflow:hidden;
           border-radius:var(--cmc-radius);
           background:${isFull ? "var(--map-background-color, #121212)" : "var(--cmc-surface)"};
           ${isFull ? "border:none;" : "border:1px solid var(--ha-card-border-color, rgba(0,0,0,.12));"}
