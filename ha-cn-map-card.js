@@ -773,7 +773,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
   _attachMarkerDrag(el, m) {
     if (!m.draggable) return;
     el.style.cursor = "grab";
-    const LONG_PRESS = 350;
+    const LONG_PRESS = 180;
     let armTimer = null;
     let armed = false;
     let startPt = { x: 0, y: 0 };
@@ -803,6 +803,12 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       if (!this._dragMoved && Math.hypot(e.clientX - this._dragStart.x, e.clientY - this._dragStart.y) > 4) {
         this._dragMoved = true;
         el.dataset.dragged = "1";
+      }
+      const circ = (this._accCircles || []).find((c) => c.entityId === m.entityId);
+      if (circ) {
+        circ.lat = ll.lat;
+        circ.lng = ll.lng;
+        this._layoutCircles();
       }
       this.dispatchEvent(new CustomEvent("marker-drag", { detail: { entityId: m.entityId, lat: ll.lat, lng: ll.lng, phase: "move" } }));
     };
@@ -856,7 +862,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
   /* 半径手柄拖动：必须长按 350ms 才进入可拖状态，防止误触。
      跟着指针到圆心的距离算米数，实时改圆，松手由卡片落盘 */
   _attachRadiusHandle(handle, hitEl, ci, cx, cy, mPerPx0) {
-    const LONG_PRESS = 350;
+    const LONG_PRESS = 180;
     let active = false;
     let armed = false;
     let armTimer = null;
@@ -881,8 +887,20 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       const meters = Math.max(20, Math.round(Math.hypot(px - cx, py - cy) * mPerPx));
       if (!Number.isFinite(meters)) return;
       ci.radius = meters;
-      handle.setAttribute("cx", (cx + meters / mPerPx).toFixed(1));
-      hitEl.setAttribute("cx", (cx + meters / mPerPx).toFixed(1));
+      const newR = meters / mPerPx;
+      if (Number.isFinite(newR) && newR >= 2) {
+        const parent = handle.parentNode;
+        if (parent) {
+          for (const child of parent.children) {
+            if (child.tagName === "circle" && child !== handle && child !== hitEl && child.getAttribute("fill") === (ci.color || "#03a9f4")) {
+              child.setAttribute("r", newR.toFixed(1));
+              break;
+            }
+          }
+        }
+      }
+      handle.setAttribute("cx", (cx + newR).toFixed(1));
+      hitEl.setAttribute("cx", (cx + newR).toFixed(1));
       this.dispatchEvent(new CustomEvent("circle-radius", { detail: { entityId: ci.entityId, radius: meters, phase: "move" } }));
     };
     const end = (e) => {
@@ -4029,4 +4047,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.6.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.6.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
