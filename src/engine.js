@@ -649,8 +649,7 @@ class CnTileEngine extends EventTarget {
       if (armTimer) { clearTimeout(armTimer); armTimer = null; }
       armed = false;
       el.classList.remove("cmc-armed");
-    };
-    const move = (e) => {
+    };    const move = (e) => {
       // arm 之前：手指稍微一动就取消长按（把这一次触摸当成普通点按，不吞地图 pan）
       if (!armed) {
         if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 8) clearArm();
@@ -700,6 +699,7 @@ class CnTileEngine extends EventTarget {
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
       armTimer = setTimeout(() => {
+        if (this._homeLocked) return;
         armed = true;
         this._dragMarker = m.entityId;
         this._dragMoved = false;
@@ -781,6 +781,7 @@ class CnTileEngine extends EventTarget {
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
       armTimer = setTimeout(() => {
+        if (this._homeLocked) return;
         armed = true;
         active = true;
         handle.classList.add("cmc-armed");

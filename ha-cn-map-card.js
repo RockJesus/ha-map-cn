@@ -105,7 +105,9 @@ var ICONS = {
   history: "M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 1,1 13,19C11.07,19 9.36,18.16 8.19,16.85L6.77,18.27A9,9 0 1,0 13,3Z",
   fullscreen: "M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z",
   fullscreenExit: "M5,16H8V19H10V16A2,2 0 0,0 8,14H5V16M16,16V19H14V16A2,2 0 0,1 16,14H19V16H16M10,5V8A2,2 0 0,1 8,10H5V8H8V5H10M14,5H16V8H19V10H16A2,2 0 0,1 14,8V5Z",
-  people: "M16,13C15.71,13 15.38,13 15.03,13.05C16.19,13.89 17,15 17,16.5V19H23V16.5C23,14.17 18.33,13 16,13M8,13C5.67,13 1,14.17 1,16.5V19H15V16.5C15,14.17 10.33,13 8,13M8,11C9.66,11 11,9.66 11,8C11,6.34 9.66,5 8,5C6.34,5 5,6.34 5,8C5,9.66 6.34,11 8,11M16,11C17.66,11 19,9.66 19,8C19,6.34 17.66,5 16,5C14.34,5 13,6.34 13,8C13,9.66 14.34,11 16,11Z"
+  people: "M16,13C15.71,13 15.38,13 15.03,13.05C16.19,13.89 17,15 17,16.5V19H23V16.5C23,14.17 18.33,13 16,13M8,13C5.67,13 1,14.17 1,16.5V19H15V16.5C15,14.17 10.33,13 8,13M8,11C9.66,11 11,9.66 11,8C11,6.34 9.66,5 8,5C6.34,5 5,6.34 5,8C5,9.66 6.34,11 8,11M16,11C17.66,11 19,9.66 19,8C19,6.34 17.66,5 16,5C14.34,5 13,6.34 13,8C13,9.66 14.34,11 16,11Z",
+  lock: "M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10A2,2 0 0,1 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z",
+  lockOpen: "M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10A2,2 0 0,1 6,8H7V6A5,5 0 0,1 17.71,3.71L16.3,5.12A3,3 0 0,0 9,6V8H18V10H6V20H18V10H20V8H18Z"
 };
 var BASEMAPS = {
   amap: {
@@ -839,6 +841,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
       armTimer = setTimeout(() => {
+        if (this._homeLocked) return;
         armed = true;
         this._dragMarker = m.entityId;
         this._dragMoved = false;
@@ -928,6 +931,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
       armTimer = setTimeout(() => {
+        if (this._homeLocked) return;
         armed = true;
         active = true;
         handle.classList.add("cmc-armed");
@@ -1969,6 +1973,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           <button data-cluster aria-label="切换分组" title="切换分组" aria-pressed="${cfg.show_cluster !== false}"><svg viewBox="0 0 24 24"><path d="${cfg.show_cluster !== false ? ICONS.cluster : ICONS.clusterOff}"/></svg></button>
           <button data-reset-focus aria-label="重置焦点" title="重置焦点"><svg viewBox="0 0 24 24"><path d="${ICONS.resetFocus}"/></svg></button>
           <button data-gear aria-label="地图设置" title="地图设置"><svg viewBox="0 0 24 24"><path d="${ICONS.cog}"/></svg></button>
+          <button data-lock aria-label="锁定家位置" title="锁定家位置" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.lockOpen}"/></svg></button>
           <button data-fs aria-label="全屏" title="全屏" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.fullscreen}"/></svg></button>
         </div>
 
@@ -2371,6 +2376,17 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       e.stopPropagation();
       this._toggleBleed();
     });
+    const lockBtn = this.shadowRoot.querySelector("[data-lock]");
+    if (lockBtn) {
+      lockBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._homeLocked = !this._homeLocked;
+        lockBtn.setAttribute("aria-pressed", this._homeLocked ? "true" : "false");
+        lockBtn.setAttribute("aria-label", this._homeLocked ? "解锁家位置" : "锁定家位置");
+        lockBtn.querySelector("path")?.setAttribute("d", this._homeLocked ? ICONS.lock : ICONS.lockOpen);
+        if (this._engine) this._engine._homeLocked = this._homeLocked;
+      });
+    }
     document.addEventListener("fullscreenchange", this._onFsChange = () => {
       if (document.fullscreenElement === this) this._engine?.render();
     });
@@ -4047,4 +4063,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.6.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.6.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

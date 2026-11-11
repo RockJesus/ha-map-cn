@@ -786,6 +786,7 @@ class HaCnMapCard extends HTMLElement {
           <button data-cluster aria-label="切换分组" title="切换分组" aria-pressed="${cfg.show_cluster !== false}"><svg viewBox="0 0 24 24"><path d="${cfg.show_cluster !== false ? ICONS.cluster : ICONS.clusterOff}"/></svg></button>
           <button data-reset-focus aria-label="重置焦点" title="重置焦点"><svg viewBox="0 0 24 24"><path d="${ICONS.resetFocus}"/></svg></button>
           <button data-gear aria-label="地图设置" title="地图设置"><svg viewBox="0 0 24 24"><path d="${ICONS.cog}"/></svg></button>
+          <button data-lock aria-label="锁定家位置" title="锁定家位置" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.lockOpen}"/></svg></button>
           <button data-fs aria-label="全屏" title="全屏" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.fullscreen}"/></svg></button>
         </div>
 
@@ -1219,6 +1220,18 @@ class HaCnMapCard extends HTMLElement {
       // 所以这里用 CSS 的 position:fixed 铺满视口 —— 任何视图类型都能用。
       this._toggleBleed();
     });
+    // 锁定/解锁 home：锁定后 home 标记和半径手柄不再响应拖动，防止误触
+    const lockBtn = this.shadowRoot.querySelector("[data-lock]");
+    if (lockBtn) {
+      lockBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._homeLocked = !this._homeLocked;
+        lockBtn.setAttribute("aria-pressed", this._homeLocked ? "true" : "false");
+        lockBtn.setAttribute("aria-label", this._homeLocked ? "解锁家位置" : "锁定家位置");
+        lockBtn.querySelector("path")?.setAttribute("d", this._homeLocked ? ICONS.lock : ICONS.lockOpen);
+        if (this._engine) this._engine._homeLocked = this._homeLocked;
+      });
+    }
     // 全屏时点地图空白处不收起面板（官方行为），只在面板外点按才收起
     document.addEventListener("fullscreenchange", this._onFsChange = () => {
       if (document.fullscreenElement === this) this._engine?.render();
