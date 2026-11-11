@@ -1973,7 +1973,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           <button data-cluster aria-label="切换分组" title="切换分组" aria-pressed="${cfg.show_cluster !== false}"><svg viewBox="0 0 24 24"><path d="${cfg.show_cluster !== false ? ICONS.cluster : ICONS.clusterOff}"/></svg></button>
           <button data-reset-focus aria-label="重置焦点" title="重置焦点"><svg viewBox="0 0 24 24"><path d="${ICONS.resetFocus}"/></svg></button>
           <button data-gear aria-label="地图设置" title="地图设置"><svg viewBox="0 0 24 24"><path d="${ICONS.cog}"/></svg></button>
-          <button data-lock aria-label="锁定家位置" title="锁定家位置" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.lockOpen}"/></svg></button>
+          <button data-lock aria-label="解锁家位置" title="解锁家位置" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="${ICONS.lock}"/></svg></button>
           <button data-fs aria-label="全屏" title="全屏" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICONS.fullscreen}"/></svg></button>
         </div>
 
@@ -2117,6 +2117,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._applyBleed(this._wantBleed(), true);
     const mapEl = this.shadowRoot.querySelector(".cmc-map");
     this._engine = new CnTileEngine(mapEl);
+    this._homeLocked = true;
+    this._engine._homeLocked = true;
     this._engine.onTrackHover = (info) => this._showTrackTip(info);
     this._engine.removeTileSets();
     base.layers.forEach((l, i) => {
@@ -4063,4 +4065,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.6.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.6.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
