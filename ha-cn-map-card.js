@@ -349,12 +349,15 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       const n = 2 ** z;
       const cz = 2 ** (this.zoom - z);
       const cxz = c.x / cz, cyz = c.y / cz;
-      const half = Math.max(w, h) / 256 * (1 / scale) / 2 + 2;
+      const half = Math.max(w, h) / 256 * (1 / scale) / 2 + 3;
       const tx0 = Math.floor(cxz - half);
       const tx1 = Math.ceil(cxz + half);
       const ty0 = Math.floor(cyz - half);
       const ty1 = Math.ceil(cyz + half);
       const keep = /* @__PURE__ */ new Set();
+      const midX = (tx0 + tx1) / 2;
+      const midY = (ty0 + ty1) / 2;
+      const diag = Math.max(1, Math.hypot(tx1 - tx0, ty1 - ty0) / 2);
       for (let ty = ty0; ty <= ty1; ty++) {
         for (let tx = tx0; tx <= tx1; tx++) {
           if (ty < 0 || ty >= n) continue;
@@ -366,12 +369,25 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
             img = document.createElement("img");
             img.className = "cmc-tile";
             img.loading = "eager";
+            img.decoding = "async";
             img.style.cssText = "position:absolute;width:256px;height:256px;user-select:none;-webkit-user-drag:none;image-rendering:auto";
             img.src = ts.url(wx, ty, z);
             img.referrerPolicy = "no-referrer";
             img.onerror = () => {
               img.style.visibility = "hidden";
             };
+            const d = Math.hypot(tx - midX, ty - midY) / diag;
+            if (d < 0.4) {
+              try {
+                img.fetchPriority = "high";
+              } catch (_e) {
+              }
+            } else if (d > 0.8) {
+              try {
+                img.fetchPriority = "low";
+              } catch (_e) {
+              }
+            }
             ts.els.set(key, img);
             ts.layer.appendChild(img);
           }
@@ -385,10 +401,18 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
           img.style.height = `${size}px`;
         }
       }
+      const now = Date.now();
       ts.els.forEach((img, key) => {
-        if (!keep.has(key)) {
+        if (keep.has(key)) {
+          img.__lastSeen = now;
+          return;
+        }
+        if (!img.__lastSeen) img.__lastSeen = now - 6e3;
+        if (now - img.__lastSeen > 5e3) {
           img.remove();
           ts.els.delete(key);
+        } else {
+          img.style.visibility = "hidden";
         }
       });
     });
@@ -4061,4 +4085,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.6.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.6.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

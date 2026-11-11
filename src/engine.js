@@ -188,12 +188,16 @@ class CnTileEngine extends EventTarget {
       // 当前视口在 z 级瓦片坐标系里的浮点范围（c 是 zoom 级，除回去）
       const cz = 2 ** (this.zoom - z);
       const cxz = c.x / cz, cyz = c.y / cz;
-      const half = (Math.max(w, h) / 256) * (1 / scale) / 2 + 2;
+      const half = (Math.max(w, h) / 256) * (1 / scale) / 2 + 3;
       const tx0 = Math.floor(cxz - half);
       const tx1 = Math.ceil(cxz + half);
       const ty0 = Math.floor(cyz - half);
       const ty1 = Math.ceil(cyz + half);
       const keep = new Set();
+      // 到视口中心的瓦片格子距离，越近越先加载（fetchPriority=high）
+      const midX = (tx0 + tx1) / 2;
+      const midY = (ty0 + ty1) / 2;
+      const diag = Math.max(1, Math.hypot(tx1 - tx0, ty1 - ty0) / 2);
 
       for (let ty = ty0; ty <= ty1; ty++) {
         for (let tx = tx0; tx <= tx1; tx++) {
@@ -206,11 +210,16 @@ class CnTileEngine extends EventTarget {
             img = document.createElement("img");
             img.className = "cmc-tile";
             img.loading = "eager";
+            img.decoding = "async";
             img.style.cssText =
               "position:absolute;width:256px;height:256px;user-select:none;-webkit-user-drag:none;image-rendering:auto";
             img.src = ts.url(wx, ty, z);
             img.referrerPolicy = "no-referrer";
             img.onerror = () => { img.style.visibility = "hidden"; };
+            // 中心瓦片高优先级，边缘瓦片低优先级（浏览器会自动调度）
+            const d = Math.hypot(tx - midX, ty - midY) / diag;
+            if (d < 0.4) { try { img.fetchPriority = "high"; } catch (_e) {} }
+            else if (d > 0.8) { try { img.fetchPriority = "low"; } catch (_e) {} }
             ts.els.set(key, img);
             ts.layer.appendChild(img);
           }
@@ -225,8 +234,14 @@ class CnTileEngine extends EventTarget {
           img.style.height = `${size}px`;
         }
       }
+      // 离屏瓦片不立刻 remove：保留一个短暂宽限期，往回拖时能立刻显示（浏览器 HTTP 缓存仍命中）
+      // 5 秒后统一清掉过期瓦片，避免内存膨胀。
+      const now = Date.now();
       ts.els.forEach((img, key) => {
-        if (!keep.has(key)) { img.remove(); ts.els.delete(key); }
+        if (keep.has(key)) { img.__lastSeen = now; return; }
+        if (!img.__lastSeen) img.__lastSeen = now - 6000; // 新离屏的立刻可清
+        if (now - img.__lastSeen > 5000) { img.remove(); ts.els.delete(key); }
+        else { img.style.visibility = "hidden"; }
       });
     });
 
