@@ -137,9 +137,8 @@ class HaCnMapCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    // HA 2024.10+ 已经把 zone.edit 服务移除了（zone 域只剩 reload），提前缓存一下，
-    // 拖动 home 后不再盲调一个不存在的服务、再弹「未找到 zone.edit 动作」
-    this._zoneEditSupported = !!(hass?.services?.zone?.edit);
+    // 写回内置 zone.home：HA 2024.10+ 没有 zone.edit 服务，改用 WS config/core/update
+    // （实测 2026.11 可写 latitude/longitude/radius 并直接驱动 zone.home 实体）
     // 主题可能是 auto：hass.themes.darkMode 变了要立刻切（不必重建整张卡片）
     const dark = this._resolveDark();
     if (dark !== this._dark) {
@@ -1575,19 +1574,15 @@ class HaCnMapCard extends HTMLElement {
     if (h) h.textContent = t;
   }
 
-  /* 同步到 HA 核心区域（设置 → 区域与地点 → 我的家）。
-     新版 HA（2024.10+）已经没有 zone.edit 服务，失败时只保留本卡覆盖并提示用户手动改。 */
+  /* 同步到 HA 核心「我的家」（设置 → 区域与地点 → 我的家）。
+     HA 2024.10+ 移除了 zone.edit 服务；实测 WS config/core/update 可以直接写
+     latitude/longitude/radius 并落到 zone.home 实体，不需要 config entry。 */
   async _syncHomeToZone(patch, done) {
     this._saveRuntime();
     this._persistConfig(this._config);
-    if (!this._zoneEditSupported) {
-      // HA 新版本没有 zone 编辑服务：只在本卡生效，不弹错误
-      this._setGeoHint(`${done}（已保存到本卡片；到 设置 → 区域与地点 → 我的家 可手动同步）`);
-      return;
-    }
     this._setGeoHint(done);
     try {
-      await this._hass.callService("zone", "edit", { entity_id: "zone.home", ...patch });
+      await this._hass.callWS({ type: "config/core/update", ...patch });
       // 同步成功：清掉本卡覆盖，让卡片直接用 HA zone.home 的最新值
       const next = { ...this._config };
       delete next.home_lat; delete next.home_lng; delete next.home_radius;
@@ -1597,7 +1592,7 @@ class HaCnMapCard extends HTMLElement {
       this._setGeoHint(`${done}（已同步到家区域）`);
       Promise.resolve().then(() => this._update());
     } catch (err) {
-      console.warn("[ha-cn-map-card] zone.edit failed:", err);
+      console.warn("[ha-cn-map-card] config/core/update failed:", err);
       this._setGeoHint(`${done}（同步到 HA 失败：${err?.message || err}）`);
       Promise.resolve().then(() => this._update());
     }

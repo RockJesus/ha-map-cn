@@ -1361,7 +1361,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
-    this._zoneEditSupported = !!hass?.services?.zone?.edit;
     const dark = this._resolveDark();
     if (dark !== this._dark) {
       this._dark = dark;
@@ -2725,18 +2724,15 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const h = this.shadowRoot?.querySelector("[data-geo-hint]");
     if (h) h.textContent = t;
   }
-  /* 同步到 HA 核心区域（设置 → 区域与地点 → 我的家）。
-     新版 HA（2024.10+）已经没有 zone.edit 服务，失败时只保留本卡覆盖并提示用户手动改。 */
+  /* 同步到 HA 核心「我的家」（设置 → 区域与地点 → 我的家）。
+     HA 2024.10+ 移除了 zone.edit 服务；实测 WS config/core/update 可以直接写
+     latitude/longitude/radius 并落到 zone.home 实体，不需要 config entry。 */
   async _syncHomeToZone(patch, done) {
     this._saveRuntime();
     this._persistConfig(this._config);
-    if (!this._zoneEditSupported) {
-      this._setGeoHint(`${done}（已保存到本卡片；到 设置 → 区域与地点 → 我的家 可手动同步）`);
-      return;
-    }
     this._setGeoHint(done);
     try {
-      await this._hass.callService("zone", "edit", { entity_id: "zone.home", ...patch });
+      await this._hass.callWS({ type: "config/core/update", ...patch });
       const next = { ...this._config };
       delete next.home_lat;
       delete next.home_lng;
@@ -2747,7 +2743,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._setGeoHint(`${done}（已同步到家区域）`);
       Promise.resolve().then(() => this._update());
     } catch (err) {
-      console.warn("[ha-cn-map-card] zone.edit failed:", err);
+      console.warn("[ha-cn-map-card] config/core/update failed:", err);
       this._setGeoHint(`${done}（同步到 HA 失败：${err?.message || err}）`);
       Promise.resolve().then(() => this._update());
     }
@@ -4065,4 +4061,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.6.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.6.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
