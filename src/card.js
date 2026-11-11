@@ -386,7 +386,7 @@ class HaCnMapCard extends HTMLElement {
     // fill：sections 视图里也铺满（bleed 会接管实际铺满）
     const fill = cfg.fill === true;
     const ar = this._parseAspect(cfg.aspect_ratio);
-    const h = isFull ? "100%" : ar ? "auto" : `${cfg.height || 360}px`;
+    const h = isFull ? "100%" : ar ? "auto" : (cfg.height ? `${cfg.height}px` : "100%");
     // 内联压过外部对宿主元素的 height:100% 拉伸（panel 视图会这样干）
     if (typeof this.style !== "undefined") this.style.height = isFull ? "" : h;
     this._isFull = isFull;
@@ -485,7 +485,7 @@ class HaCnMapCard extends HTMLElement {
           font-size:18px; background:var(--cmc-surface); color:var(--cmc-text);
           box-shadow:var(--cmc-shadow);
         }
-        /* ---- 控件：官方 ha-icon-button 外形（48 圆、无底色、白底胶囊分组） ---- */
+        /* ---- 控件：半透明黑底 + 白描边，深色地图上也清晰 ---- */
         .cmc-ctrl {
           position:absolute; z-index:14; display:flex; flex-direction:column; gap:6px;
           top:${cfg.title ? 56 : 8}px;
@@ -495,19 +495,20 @@ class HaCnMapCard extends HTMLElement {
         .cmc-ctrl > .cmc-ctrl-group + button { margin-top:2px; }
         .cmc-ctrl-group {
           display:flex; flex-direction:column;
-          background:var(--cmc-surface); border-radius:24px;
-          box-shadow:var(--cmc-shadow); overflow:hidden;
+          background:rgba(0,0,0,.55); border-radius:24px;
+          box-shadow:0 1px 4px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.12); overflow:hidden;
         }
-        .cmc-ctrl-group > button + button { border-top:1px solid var(--cmc-divider); border-radius:0; }
+        .cmc-ctrl-group > button + button { border-top:1px solid rgba(255,255,255,.15); border-radius:0; }
         .cmc-ctrl button {
-          width:40px; height:40px; border:none; background:var(--cmc-surface);
-          color:var(--cmc-text); cursor:pointer; display:flex; align-items:center;
-          justify-content:center; padding:0; border-radius:20px; box-shadow:var(--cmc-shadow);
+          width:40px; height:40px; border:none; background:rgba(0,0,0,.55);
+          color:#fff; cursor:pointer; display:flex; align-items:center;
+          justify-content:center; padding:0; border-radius:20px;
+          box-shadow:0 1px 4px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.12);
           transition:background .15s;
           -webkit-tap-highlight-color:transparent;
         }
-        .cmc-ctrl-group button { box-shadow:none; border-radius:0; }
-        .cmc-ctrl button:hover { background:var(--cmc-fill); }
+        .cmc-ctrl-group button { box-shadow:none; border-radius:0; background:transparent; }
+        .cmc-ctrl button:hover { background:rgba(0,0,0,.75); }
         .cmc-ctrl button[aria-pressed="true"] { color:var(--primary-color, #03a9f4); }
         .cmc-ctrl svg { width:22px; height:22px; fill:currentColor; pointer-events:none; }
         /* ---- 比例尺：官方左下角白底小块 ---- */
@@ -579,8 +580,8 @@ class HaCnMapCard extends HTMLElement {
         .cmc-panel-btn {
           position:absolute; z-index:19; top:12px; left:12px;
           width:44px; height:44px; border-radius:22px; border:none;
-          background:var(--cmc-surface); color:var(--cmc-text);
-          box-shadow:var(--cmc-shadow); cursor:pointer;
+          background:rgba(0,0,0,.55); color:#fff;
+          box-shadow:0 1px 4px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.12); cursor:pointer;
           display:flex; align-items:center; justify-content:center;
           padding:0; transition:opacity .2s ease, transform .28s ease;
         }
