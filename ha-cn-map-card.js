@@ -1851,6 +1851,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           transform:none; transition:none;
         }
         .cmc-panel.in-sheet .cmc-panel-handle { display:none; }
+        /* 桌面非抽屉模式：不需要拖拽把手 */
+        .cmc-panel:not(.in-sheet) .cmc-panel-handle { display:none; }
         /* RTL：左侧浮层镜像到右侧（官方面板同样按 dir 镜像） */
         .cmc-card.is-rtl .cmc-panel.dock-auto {
           left:auto; right:12px; transform:translateX(calc(100% + 16px));
@@ -2012,9 +2014,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         <div class="cmc-panel ${sheetOk ? "in-sheet" : `dock-${isFull ? "auto" : "bottom"}${overlayOpen ? " open" : ""}`}" data-panel>          <div class="cmc-panel-handle" data-handle></div>
           <div data-view="list">
             <div class="cmc-panel-h">
-              ${isFull ? `<button class="cmc-panel-close" data-back aria-label="收起面板">
-                <svg viewBox="0 0 24 24"><path d="${ICONS.chevronLeft}"/></svg>
-              </button>` : ""}
               <div class="cmc-tabs" role="tablist" aria-label="地图概览分组">
                 <span class="pill" aria-hidden="true"></span>
                 <button type="button" role="tab" id="cmc-tab-people" aria-controls="cmc-tabpanel" aria-selected="true" tabindex="0" data-tab="people">人</button>
@@ -4088,4 +4087,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.7.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.7.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
