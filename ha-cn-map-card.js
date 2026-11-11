@@ -1426,7 +1426,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const r = this._isFull ? null : this._parseAspect(this._config?.aspect_ratio);
     card.classList.toggle("is-aspect", !!r);
     card.style.aspectRatio = r ? `${r.w} / ${r.h}` : "";
-    this.style.height = this._isFull ? "" : r ? "auto" : `${this._config?.height || 360}px`;
+    this.style.height = this._isFull ? "" : r ? "auto" : this._config?.height ? `${this._config.height}px` : "100%";
   }
   /* 暗色判定：显式 theme_mode 优先，auto 跟随 HA 主题，再兜底系统偏好 */
   _resolveDark() {
@@ -1530,7 +1530,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this.classList.add("cmc-bleed");
     } else if (!on && has) {
       this.classList.remove("cmc-bleed");
-      this.style.height = this._layout === LAYOUT.FULL ? "" : `${this._config?.height || 360}px`;
+      this.style.height = this._layout === LAYOUT.FULL ? "" : this._config?.height ? `${this._config.height}px` : "100%";
     }
     const btn = this.shadowRoot?.querySelector("[data-fs]");
     if (btn) {
@@ -4086,4 +4086,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.6.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.6.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
