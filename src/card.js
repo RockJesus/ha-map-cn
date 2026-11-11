@@ -381,8 +381,8 @@ class HaCnMapCard extends HTMLElement {
     const base = BASEMAPS[cfg.basemap] || BASEMAPS.amap;
     const layout = this._layout = this._resolveLayout();
     const isFull = layout === LAYOUT.FULL;
-    // 官方在 panel 布局把缩放控件放右上、其它情况左上
-    const zoomSide = isFull ? "right" : "left";
+    // 工具栏统一放右缘（对齐官方地图 UX；小卡片/手机窄屏不再换到左缘）
+    const zoomSide = "right";
     // fill：sections 视图里也铺满（bleed 会接管实际铺满）
     const fill = cfg.fill === true;
     const ar = this._parseAspect(cfg.aspect_ratio);

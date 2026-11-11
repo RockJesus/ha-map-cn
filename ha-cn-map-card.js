@@ -978,7 +978,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
   _createClusterEl(g) {
     const el = document.createElement("div");
     el.className = "cmc-cluster";
-    el.style.cssText = "position:absolute;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;display:flex;align-items:center";
+    el.style.cssText = "position:absolute;transform:translate(-50%,-130%);pointer-events:auto;cursor:pointer;display:flex;align-items:center;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4));";
     const shown = g.members.slice(0, CLUSTER_MAX_AVATAR);
     const useCount = g.members.every((m) => !m.marker.picture && !(m.marker.short || "").trim());
     if (useCount) {
@@ -1590,7 +1590,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const base = BASEMAPS[cfg.basemap] || BASEMAPS.amap;
     const layout = this._layout = this._resolveLayout();
     const isFull = layout === LAYOUT.FULL;
-    const zoomSide = isFull ? "right" : "left";
+    const zoomSide = "right";
     const fill = cfg.fill === true;
     const ar = this._parseAspect(cfg.aspect_ratio);
     const h = isFull ? "100%" : ar ? "auto" : `${cfg.height || 360}px`;
@@ -4085,4 +4085,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.6.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.6.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

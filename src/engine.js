@@ -815,7 +815,7 @@ class CnTileEngine extends EventTarget {
     const el = document.createElement("div");
     el.className = "cmc-cluster";
     el.style.cssText =
-      "position:absolute;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;display:flex;align-items:center";
+      "position:absolute;transform:translate(-50%,-130%);pointer-events:auto;cursor:pointer;display:flex;align-items:center;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4));";
     const shown = g.members.slice(0, CLUSTER_MAX_AVATAR);
     // 全是"没有位置"的实体（比如同一个家里但没坐标的设备）：直接显示数量，别画一堆空头像
     const useCount = g.members.every((m) => !m.marker.picture && !(m.marker.short || "").trim());
