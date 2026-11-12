@@ -273,8 +273,14 @@ class HaCnMapCard extends HTMLElement {
       const r = el.getBoundingClientRect();
       // sections 视图：卡片被困在固定高度的 grid 格子里，铺满没意义 → compact（想全屏请开 fill / 点全屏按钮）
       if (/^(hui-grid-section|hui-sections-view)$/.test(tag)) return LAYOUT.COMPACT;
-      // 卡片直接挂在视图容器上 → 官方 panel 布局
-      if (/^(hui-panel-view|hui-masonry-view|hui-grid-view)$/.test(tag)) {
+      // panel 视图：卡片撑满整个面板 → FULL
+      // masonry 视图：卡片网格，每张卡独立高度，永远 COMPACT（不自动撑满）
+      // grid 视图（桌面非 sections）：卡片随网格行拉伸，按高度判断
+      if (tag === "hui-panel-view") {
+        return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
+      }
+      if (tag === "hui-masonry-view") return LAYOUT.COMPACT;
+      if (tag === "hui-grid-view") {
         return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
       }
       // 过渡容器（hass-tabs-subpage / hui-view 等）：高度接近视口且明显高于我 → 可铺满
