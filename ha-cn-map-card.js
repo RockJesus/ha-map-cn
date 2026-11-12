@@ -1384,7 +1384,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._render();
   }
   set hass(hass) {
-    const prevEditCtx = this._inEditContext();
+    const prevEditCtx = this._inEditState ?? this._inEditContext();
     this._hass = hass;
     const dark = this._resolveDark();
     if (dark !== this._dark) {
@@ -2925,6 +2925,10 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._mq = null;
       this._onMq = null;
     }
+    if (this._editObserver) {
+      this._editObserver.disconnect();
+      this._editObserver = null;
+    }
   }
   connectedCallback() {
     if (!this._onPop) {
@@ -2973,6 +2977,21 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         });
       });
       this._ro.observe(this);
+    }
+    if (typeof MutationObserver === "function" && !this._editObserver) {
+      this._editObserver = new MutationObserver(() => {
+        const now = this._inEditContext();
+        if (now !== this._inEditState) {
+          this._inEditState = now;
+          this._bleedUser = now ? false : void 0;
+          if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
+          this.classList.toggle("cmc-preview", now);
+          const layoutNow = this._resolveLayout();
+          if (layoutNow !== this._layout) this._syncLayout();
+        }
+      });
+      this._editObserver.observe(document.body, { childList: true, subtree: true });
+      this._inEditState = this._inEditContext();
     }
     if (typeof window.matchMedia === "function" && !this._mq) {
       this._mq = window.matchMedia("(max-width: 600px)");
@@ -4136,4 +4155,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.7.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.7.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

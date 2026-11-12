@@ -136,7 +136,7 @@ class HaCnMapCard extends HTMLElement {
   }
 
   set hass(hass) {
-    const prevEditCtx = this._inEditContext();
+    const prevEditCtx = this._inEditState ?? this._inEditContext();
     this._hass = hass;
     // 写回内置 zone.home：HA 2024.10+ 没有 zone.edit 服务，改用 WS config/core/update
     // （实测 2026.11 可写 latitude/longitude/radius 并直接驱动 zone.home 实体）
@@ -1754,6 +1754,7 @@ class HaCnMapCard extends HTMLElement {
     if (this._onLoc) { window.removeEventListener("location-changed", this._onLoc); this._onLoc = null; }
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
     if (this._mq && this._onMq) { this._mq.removeEventListener?.("change", this._onMq); this._mq = null; this._onMq = null; }
+    if (this._editObserver) { this._editObserver.disconnect(); this._editObserver = null; }
   }
 
   connectedCallback() {
@@ -1809,6 +1810,23 @@ class HaCnMapCard extends HTMLElement {
         });
       });
       this._ro.observe(this);
+    }
+    // 监听编辑模式切换：进入/退出编辑模式时 set hass 不一定触发（lovelace 状态变化），
+    // 必须靠 MutationObserver 捕获 hui-edit-view / hui-card-editor / 弹窗的挂载与卸载
+    if (typeof MutationObserver === "function" && !this._editObserver) {
+      this._editObserver = new MutationObserver(() => {
+        const now = this._inEditContext();
+        if (now !== this._inEditState) {
+          this._inEditState = now;
+          this._bleedUser = now ? false : undefined;
+          if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
+          this.classList.toggle("cmc-preview", now);
+          const layoutNow = this._resolveLayout();
+          if (layoutNow !== this._layout) this._syncLayout();
+        }
+      });
+      this._editObserver.observe(document.body, { childList: true, subtree: true });
+      this._inEditState = this._inEditContext();
     }
     // 手机/宽屏切换：抽屉形态要换（ha-snap-bottom-sheet ↔ 左侧浮层），整卡重建一次
     if (typeof window.matchMedia === "function" && !this._mq) {
