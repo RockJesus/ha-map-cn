@@ -1504,10 +1504,10 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   _inEditContext() {
     for (const el of this._ancestors(10)) {
       const tag = (el.localName || "").toLowerCase();
-      if (tag === "hui-dialog-add-card" || tag === "hui-card-picker" || tag === "ha-dialog" || tag === "hui-dialog-edit-lovelace" || tag === "hui-dialog-select-view" || tag === "hui-edit-view" || tag === "hui-editor" || tag === "ha-editor" || tag === "hui-card-editor" || tag === "hui-edit-dashboard-view") return true;
+      if (tag === "hui-dialog-add-card" || tag === "hui-card-picker" || tag === "ha-dialog" || tag === "hui-dialog-edit-lovelace" || tag === "hui-dialog-select-view" || tag === "hui-edit-view" || tag === "hui-editor" || tag === "ha-editor" || tag === "hui-card-editor" || tag === "hui-edit-dashboard-view" || tag === "hui-dialog-edit-card") return true;
     }
     try {
-      if (document.querySelector("hui-edit-view, hui-editor, hui-card-editor")) return true;
+      if (document.querySelector("hui-edit-view, hui-editor, hui-card-editor, hui-dialog-edit-card, hui-dialog-add-card, hui-card-picker")) return true;
     } catch (_) {
     }
     return false;
@@ -4161,4 +4161,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.8.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.8.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

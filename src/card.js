@@ -284,11 +284,12 @@ class HaCnMapCard extends HTMLElement {
           tag === "hui-dialog-select-view" ||
           tag === "hui-edit-view" || tag === "hui-editor" ||
           tag === "ha-editor" || tag === "hui-card-editor" ||
-          tag === "hui-edit-dashboard-view") return true;
+          tag === "hui-edit-dashboard-view" ||
+          tag === "hui-dialog-edit-card") return true;
     }
-    // 兜底：document.body 下直接存在 hui-edit-view（编辑模式下 HA 会把整个 dashboard 包进 hui-edit-view）
+    // 兜底：body 下存在编辑器/选择器/卡片配置弹窗（这些 overlay 不挂在卡片祖先链上）
     try {
-      if (document.querySelector("hui-edit-view, hui-editor, hui-card-editor")) return true;
+      if (document.querySelector("hui-edit-view, hui-editor, hui-card-editor, hui-dialog-edit-card, hui-dialog-add-card, hui-card-picker")) return true;
     } catch (_) { /* noop */ }
     return false;
   }
