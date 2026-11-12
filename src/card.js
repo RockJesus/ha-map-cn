@@ -231,6 +231,8 @@ class HaCnMapCard extends HTMLElement {
     const cfg = this._config;
     // 编辑仪表盘模式下：强制 compact，否则全屏卡片会盖住 HA 顶部的"完成/取消"按钮，用户没法退出编辑
     if (this._hass?.editMode) return LAYOUT.COMPACT;
+    // "添加到仪表板"卡片选择器弹窗里预览时：强制 compact，否则 position:fixed 会盖住整个弹窗
+    if (this._inPicker()) return LAYOUT.COMPACT;
     // 用户显式指定 compact 时永远尊重（哪怕在 panel 视图里）
     if (cfg.layout === "compact" || cfg.fullscreen === false) return LAYOUT.COMPACT;
     if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel" || cfg.fill === true) return LAYOUT.FULL;
@@ -264,6 +266,17 @@ class HaCnMapCard extends HTMLElement {
   /* 自动判定：往上看几层，找真正给我分配高度的那个祖先。
      HA 的嵌套关系不固定（panel 视图 shadowRoot > hui-card > 卡片；
      sections 视图 hui-grid-section shadowRoot > grid > 格子 > hui-card > 卡片），所以逐层试。 */
+  /* 是否在"添加到仪表板"卡片选择器/弹窗预览中 */
+  _inPicker() {
+    for (const el of this._ancestors(8)) {
+      const tag = (el.localName || "").toLowerCase();
+      if (tag === "hui-dialog-add-card" || tag === "hui-card-picker" ||
+          tag === "ha-dialog" || tag === "hui-dialog-edit-lovelace" ||
+          tag === "hui-dialog-select-view") return true;
+    }
+    return false;
+  }
+
   _autoLayout() {
     if (typeof window === "undefined" || !this.isConnected) return LAYOUT.COMPACT;
     const viewH = window.innerHeight || document.documentElement.clientHeight || 800;

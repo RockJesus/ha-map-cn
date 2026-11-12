@@ -1463,6 +1463,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   _resolveLayout() {
     const cfg = this._config;
     if (this._hass?.editMode) return LAYOUT.COMPACT;
+    if (this._inPicker()) return LAYOUT.COMPACT;
     if (cfg.layout === "compact" || cfg.fullscreen === false) return LAYOUT.COMPACT;
     if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel" || cfg.fill === true) return LAYOUT.FULL;
     if (this.layout === "panel" || this.isPanel === true) return LAYOUT.FULL;
@@ -1490,6 +1491,14 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   /* 自动判定：往上看几层，找真正给我分配高度的那个祖先。
      HA 的嵌套关系不固定（panel 视图 shadowRoot > hui-card > 卡片；
      sections 视图 hui-grid-section shadowRoot > grid > 格子 > hui-card > 卡片），所以逐层试。 */
+  /* 是否在"添加到仪表板"卡片选择器/弹窗预览中 */
+  _inPicker() {
+    for (const el of this._ancestors(8)) {
+      const tag = (el.localName || "").toLowerCase();
+      if (tag === "hui-dialog-add-card" || tag === "hui-card-picker" || tag === "ha-dialog" || tag === "hui-dialog-edit-lovelace" || tag === "hui-dialog-select-view") return true;
+    }
+    return false;
+  }
   _autoLayout() {
     if (typeof window === "undefined" || !this.isConnected) return LAYOUT.COMPACT;
     const viewH = window.innerHeight || document.documentElement.clientHeight || 800;
@@ -4106,4 +4115,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.7.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.7.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
