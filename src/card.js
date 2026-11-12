@@ -268,22 +268,23 @@ class HaCnMapCard extends HTMLElement {
     if (typeof window === "undefined" || !this.isConnected) return LAYOUT.COMPACT;
     const viewH = window.innerHeight || document.documentElement.clientHeight || 800;
     const selfH = this.getBoundingClientRect().height;
+    // 第一遍：优先识别已知视图标签（从内向外走）
     for (const el of this._ancestors(10)) {
       const tag = el.localName || "";
-      const r = el.getBoundingClientRect();
-      // sections 视图：卡片被困在固定高度的 grid 格子里，铺满没意义 → compact（想全屏请开 fill / 点全屏按钮）
       if (/^(hui-grid-section|hui-sections-view)$/.test(tag)) return LAYOUT.COMPACT;
-      // panel 视图：卡片撑满整个面板 → FULL
-      // masonry 视图：卡片网格，每张卡独立高度，永远 COMPACT（不自动撑满）
-      // grid 视图（桌面非 sections）：卡片随网格行拉伸，按高度判断
-      if (tag === "hui-panel-view") {
-        return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
-      }
       if (tag === "hui-masonry-view") return LAYOUT.COMPACT;
-      if (tag === "hui-grid-view") {
+      if (tag === "hui-panel-view") {
+        const r = el.getBoundingClientRect();
         return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
       }
-      // 过渡容器（hass-tabs-subpage / hui-view 等）：高度接近视口且明显高于我 → 可铺满
+      if (tag === "hui-grid-view") {
+        const r = el.getBoundingClientRect();
+        return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
+      }
+    }
+    // 第二遍：没认出已知视图标签时，再用高度启发式判断是否铺满
+    for (const el of this._ancestors(10)) {
+      const r = el.getBoundingClientRect();
       if (r.height > viewH * 0.8 && r.height > selfH * 1.5) return LAYOUT.FULL;
     }
     return LAYOUT.COMPACT;

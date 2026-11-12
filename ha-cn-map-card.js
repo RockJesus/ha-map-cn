@@ -1496,15 +1496,19 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const selfH = this.getBoundingClientRect().height;
     for (const el of this._ancestors(10)) {
       const tag = el.localName || "";
-      const r = el.getBoundingClientRect();
       if (/^(hui-grid-section|hui-sections-view)$/.test(tag)) return LAYOUT.COMPACT;
-      if (tag === "hui-panel-view") {
-        return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
-      }
       if (tag === "hui-masonry-view") return LAYOUT.COMPACT;
-      if (tag === "hui-grid-view") {
+      if (tag === "hui-panel-view") {
+        const r = el.getBoundingClientRect();
         return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
       }
+      if (tag === "hui-grid-view") {
+        const r = el.getBoundingClientRect();
+        return r.height > viewH * 0.7 ? LAYOUT.FULL : LAYOUT.COMPACT;
+      }
+    }
+    for (const el of this._ancestors(10)) {
+      const r = el.getBoundingClientRect();
       if (r.height > viewH * 0.8 && r.height > selfH * 1.5) return LAYOUT.FULL;
     }
     return LAYOUT.COMPACT;
@@ -4091,4 +4095,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.7.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.7.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
