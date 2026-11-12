@@ -321,7 +321,7 @@ class HaCnMapCard extends HTMLElement {
       this.classList.add("cmc-bleed");
     } else if (!on && has) {
       this.classList.remove("cmc-bleed");
-      this.style.height = this._layout === LAYOUT.FULL ? "100%" : (this._config?.height ? `${this._config.height}px` : "300px");
+      this.style.height = this._layout === LAYOUT.FULL ? "100%" : (this._config?.height ? `${this._config.height}px` : "100%");
     }
     const btn = this.shadowRoot?.querySelector("[data-fs]");
     if (btn) {
@@ -397,8 +397,9 @@ class HaCnMapCard extends HTMLElement {
     // - isFull(panel 铺满)：height:100%
     // - cfg.height 显式配置：固定 px
     // - aspect_ratio：auto（按比例撑高）
-    // - 其他（masonry/网格卡片）：默认 300px 兜底，避免在 hui-card 包裹下塌缩为 0
-    const h = isFull ? "100%" : ar ? "auto" : (cfg.height ? `${cfg.height}px` : "300px");
+    // - sections/grid 视图：height:100% 填满网格格子（下方不留空白）
+    // - masonry 视图：height:100% 无法解析（列布局无显式父高），靠 min-height:300px 兜底
+    const h = isFull ? "100%" : ar ? "auto" : (cfg.height ? `${cfg.height}px` : "100%");
     // 内联压过外部对宿主的 height：仅在有明确值时设置，空串 = 让父级/网格决定
     if (typeof this.style !== "undefined") this.style.height = h || "";
     this._isFull = isFull;
@@ -1744,17 +1745,30 @@ class HaCnMapCard extends HTMLElement {
       };
       document.addEventListener("keydown", this._onDocKey);
     }
-    // panel 视图撑满容器后尺寸会变，重新算布局 + 重绘瓦片
+    // panel 视图撑满容器后尺寸会变，重新算布局 + 重绘瓦片。
+    // 加 rAF 防抖 + 布局冷却：sections/masonry 视图下卡片高度固定，
+    // 不应因每次像素变化就重走祖先判定（弹窗/滚动时祖先链瞬变会导致 COMPACT↔FULL 抖动闪烁）。
     if (typeof ResizeObserver === "function" && !this._ro) {
       this._ro = new ResizeObserver(() => {
-        const layoutNow = this._resolveLayout();
-        if (layoutNow !== this._layout) {
-          this._syncLayout();
-        } else {
-          // 尺寸变了：先看要不要自愈成全屏，再重铺瓦片
-          this._syncBleed();
-          this._engine?.render();
-        }
+        if (this._roScheduled) return;
+        this._roScheduled = true;
+        requestAnimationFrame(() => {
+          this._roScheduled = false;
+          // 布局判定冷却：上一次布局切换后 800ms 内不再重判，防止弹窗/动画期间祖先链瞬变导致抖动
+          const now = performance.now();
+          if (this._lastLayoutSwitch && now - this._lastLayoutSwitch < 800) {
+            this._engine?.render();
+            return;
+          }
+          const layoutNow = this._resolveLayout();
+          if (layoutNow !== this._layout) {
+            this._lastLayoutSwitch = now;
+            this._syncLayout();
+          } else {
+            this._syncBleed();
+            this._engine?.render();
+          }
+        });
       });
       this._ro.observe(this);
     }

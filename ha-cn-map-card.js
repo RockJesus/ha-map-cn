@@ -1538,7 +1538,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this.classList.add("cmc-bleed");
     } else if (!on && has) {
       this.classList.remove("cmc-bleed");
-      this.style.height = this._layout === LAYOUT.FULL ? "100%" : this._config?.height ? `${this._config.height}px` : "300px";
+      this.style.height = this._layout === LAYOUT.FULL ? "100%" : this._config?.height ? `${this._config.height}px` : "100%";
     }
     const btn = this.shadowRoot?.querySelector("[data-fs]");
     if (btn) {
@@ -1601,7 +1601,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const zoomSide = "right";
     const fill = cfg.fill === true;
     const ar = this._parseAspect(cfg.aspect_ratio);
-    const h = isFull ? "100%" : ar ? "auto" : cfg.height ? `${cfg.height}px` : "300px";
+    const h = isFull ? "100%" : ar ? "auto" : cfg.height ? `${cfg.height}px` : "100%";
     if (typeof this.style !== "undefined") this.style.height = h || "";
     this._isFull = isFull;
     this._zoomSide = zoomSide;
@@ -2923,13 +2923,24 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
     if (typeof ResizeObserver === "function" && !this._ro) {
       this._ro = new ResizeObserver(() => {
-        const layoutNow = this._resolveLayout();
-        if (layoutNow !== this._layout) {
-          this._syncLayout();
-        } else {
-          this._syncBleed();
-          this._engine?.render();
-        }
+        if (this._roScheduled) return;
+        this._roScheduled = true;
+        requestAnimationFrame(() => {
+          this._roScheduled = false;
+          const now = performance.now();
+          if (this._lastLayoutSwitch && now - this._lastLayoutSwitch < 800) {
+            this._engine?.render();
+            return;
+          }
+          const layoutNow = this._resolveLayout();
+          if (layoutNow !== this._layout) {
+            this._lastLayoutSwitch = now;
+            this._syncLayout();
+          } else {
+            this._syncBleed();
+            this._engine?.render();
+          }
+        });
       });
       this._ro.observe(this);
     }
@@ -4095,4 +4106,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.7.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.7.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
