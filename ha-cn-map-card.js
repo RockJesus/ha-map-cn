@@ -1426,7 +1426,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const r = this._isFull ? null : this._parseAspect(this._config?.aspect_ratio);
     card.classList.toggle("is-aspect", !!r);
     card.style.aspectRatio = r ? `${r.w} / ${r.h}` : "";
-    this.style.height = this._isFull ? "100%" : r ? "auto" : this._config?.height ? `${this._config.height}px` : "";
+    this.style.height = this._isFull ? "100%" : r ? "auto" : this._config?.height ? `${this._config.height}px` : "300px";
   }
   /* 暗色判定：显式 theme_mode 优先，auto 跟随 HA 主题，再兜底系统偏好 */
   _resolveDark() {
@@ -1534,7 +1534,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this.classList.add("cmc-bleed");
     } else if (!on && has) {
       this.classList.remove("cmc-bleed");
-      this.style.height = this._layout === LAYOUT.FULL ? "100%" : this._config?.height ? `${this._config.height}px` : "";
+      this.style.height = this._layout === LAYOUT.FULL ? "100%" : this._config?.height ? `${this._config.height}px` : "300px";
     }
     const btn = this.shadowRoot?.querySelector("[data-fs]");
     if (btn) {
@@ -1597,7 +1597,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const zoomSide = "right";
     const fill = cfg.fill === true;
     const ar = this._parseAspect(cfg.aspect_ratio);
-    const h = isFull ? "100%" : ar ? "auto" : cfg.height ? `${cfg.height}px` : "";
+    const h = isFull ? "100%" : ar ? "auto" : cfg.height ? `${cfg.height}px` : "300px";
     if (typeof this.style !== "undefined") this.style.height = h || "";
     this._isFull = isFull;
     this._zoomSide = zoomSide;
@@ -4091,4 +4091,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.7.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.7.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

@@ -187,7 +187,7 @@ class HaCnMapCard extends HTMLElement {
     const r = this._isFull ? null : this._parseAspect(this._config?.aspect_ratio);
     card.classList.toggle("is-aspect", !!r);
     card.style.aspectRatio = r ? `${r.w} / ${r.h}` : "";
-    this.style.height = this._isFull ? "100%" : r ? "auto" : (this._config?.height ? `${this._config.height}px` : "");
+    this.style.height = this._isFull ? "100%" : r ? "auto" : (this._config?.height ? `${this._config.height}px` : "300px");
   }
 
   /* 暗色判定：显式 theme_mode 优先，auto 跟随 HA 主题，再兜底系统偏好 */
@@ -320,7 +320,7 @@ class HaCnMapCard extends HTMLElement {
       this.classList.add("cmc-bleed");
     } else if (!on && has) {
       this.classList.remove("cmc-bleed");
-      this.style.height = this._layout === LAYOUT.FULL ? "100%" : (this._config?.height ? `${this._config.height}px` : "");
+      this.style.height = this._layout === LAYOUT.FULL ? "100%" : (this._config?.height ? `${this._config.height}px` : "300px");
     }
     const btn = this.shadowRoot?.querySelector("[data-fs]");
     if (btn) {
@@ -396,9 +396,8 @@ class HaCnMapCard extends HTMLElement {
     // - isFull(panel 铺满)：height:100%
     // - cfg.height 显式配置：固定 px
     // - aspect_ratio：auto（按比例撑高）
-    // - 其他（sections/masonry/网格）：不设高度，让 HA 网格自然给 host 高度；
-    //   .cmc-card 用 position:absolute;inset:0 撑满 host，避免 height:100% 链断时塌缩
-    const h = isFull ? "100%" : ar ? "auto" : (cfg.height ? `${cfg.height}px` : "");
+    // - 其他（masonry/网格卡片）：默认 300px 兜底，避免在 hui-card 包裹下塌缩为 0
+    const h = isFull ? "100%" : ar ? "auto" : (cfg.height ? `${cfg.height}px` : "300px");
     // 内联压过外部对宿主的 height：仅在有明确值时设置，空串 = 让父级/网格决定
     if (typeof this.style !== "undefined") this.style.height = h || "";
     this._isFull = isFull;
