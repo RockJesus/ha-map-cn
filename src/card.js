@@ -984,6 +984,12 @@ class HaCnMapCard extends HTMLElement {
     this._applyBleed(this._wantBleed(), true);
 
     const mapEl = this.shadowRoot.querySelector(".cmc-map");
+    // 预览模式（卡片选择器/编辑器）：跳过 WebGL 引擎初始化，避免选择器卡顿。
+    // 只显示静态渐变占位，等用户真正添加到仪表盘后再建引擎。
+    if (this._inEditContext()) {
+      this._engine = null;
+      mapEl.style.background = "linear-gradient(135deg, #1a237e 0%, #283593 50%, #1565c0 100%)";
+    } else {
     this._engine = new CnTileEngine(mapEl);
     this._homeLocked = true; // 默认锁定，防止误触拖动
     this._engine._homeLocked = true;
@@ -1027,6 +1033,7 @@ class HaCnMapCard extends HTMLElement {
         this._renderList();
       }
     });
+    } // end preview skip
     // 卡片里的按钮默认是 type=submit 语义，放在宿主表单/链接里会触发跳转
     this.shadowRoot.querySelectorAll("button").forEach((btn) => btn.setAttribute("type", "button"));
 
@@ -1823,6 +1830,8 @@ class HaCnMapCard extends HTMLElement {
           this.classList.toggle("cmc-preview", now);
           const layoutNow = this._resolveLayout();
           if (layoutNow !== this._layout) this._syncLayout();
+          // 退出预览模式时需要重建卡片以初始化 WebGL 引擎（预览时跳过了引擎）
+          if (!now && !this._engine) this._render();
         }
       });
       this._editObserver.observe(document.body, { childList: true, subtree: true });

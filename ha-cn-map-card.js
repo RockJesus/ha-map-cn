@@ -2179,46 +2179,51 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     `;
     this._applyBleed(this._wantBleed(), true);
     const mapEl = this.shadowRoot.querySelector(".cmc-map");
-    this._engine = new CnTileEngine(mapEl);
-    this._homeLocked = true;
-    this._engine._homeLocked = true;
-    this._engine.onTrackHover = (info) => this._showTrackTip(info);
-    this._engine.removeTileSets();
-    base.layers.forEach((l, i) => {
-      this._engine.addTileSet({
-        url: (x, y, z) => l.template(x, y, z, cfg.tianditu_key),
-        maxZoom: base.maxZoom,
-        opacity: l.opacity ?? 1,
-        zIndex: i + 1,
-        nofilter: !!base.noFilter
+    if (this._inEditContext()) {
+      this._engine = null;
+      mapEl.style.background = "linear-gradient(135deg, #1a237e 0%, #283593 50%, #1565c0 100%)";
+    } else {
+      this._engine = new CnTileEngine(mapEl);
+      this._homeLocked = true;
+      this._engine._homeLocked = true;
+      this._engine.onTrackHover = (info) => this._showTrackTip(info);
+      this._engine.removeTileSets();
+      base.layers.forEach((l, i) => {
+        this._engine.addTileSet({
+          url: (x, y, z) => l.template(x, y, z, cfg.tianditu_key),
+          maxZoom: base.maxZoom,
+          opacity: l.opacity ?? 1,
+          zIndex: i + 1,
+          nofilter: !!base.noFilter
+        });
       });
-    });
-    this._engine.attribution.textContent = base.attribution;
-    this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
-    this._engine.addEventListener("marker-click", (e) => {
-      const id = e.detail.entityId;
-      const ent = this._hass?.states?.[id];
-      if (!ent || !this._hass) return;
-      if (this._focusOnMarkerClick) {
-        const wasSelected = this._engine._selectedEntity === id;
-        if (wasSelected) {
-          this._openMoreInfo(id);
+      this._engine.attribution.textContent = base.attribution;
+      this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
+      this._engine.addEventListener("marker-click", (e) => {
+        const id = e.detail.entityId;
+        const ent = this._hass?.states?.[id];
+        if (!ent || !this._hass) return;
+        if (this._focusOnMarkerClick) {
+          const wasSelected = this._engine._selectedEntity === id;
+          if (wasSelected) {
+            this._openMoreInfo(id);
+          } else {
+            this.focusEntity(id);
+          }
         } else {
-          this.focusEntity(id);
+          this._openMoreInfo(id);
         }
-      } else {
-        this._openMoreInfo(id);
-      }
-    });
-    this._engine.addEventListener("marker-drag", (e) => this._onHomeDrag(e.detail));
-    this._engine.addEventListener("circle-radius", (e) => this._onHomeRadius(e.detail));
-    this._engine.addEventListener("selection-cleared", () => {
-      this._writeSelection(null);
-      if (this._panelView === "detail") {
-        this._setPanelView?.("list");
-        this._renderList();
-      }
-    });
+      });
+      this._engine.addEventListener("marker-drag", (e) => this._onHomeDrag(e.detail));
+      this._engine.addEventListener("circle-radius", (e) => this._onHomeRadius(e.detail));
+      this._engine.addEventListener("selection-cleared", () => {
+        this._writeSelection(null);
+        if (this._panelView === "detail") {
+          this._setPanelView?.("list");
+          this._renderList();
+        }
+      });
+    }
     this.shadowRoot.querySelectorAll("button").forEach((btn) => btn.setAttribute("type", "button"));
     const panel = this.shadowRoot.querySelector("[data-panel]");
     const listView = panel.querySelector('[data-view="list"]');
@@ -2988,6 +2993,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           this.classList.toggle("cmc-preview", now);
           const layoutNow = this._resolveLayout();
           if (layoutNow !== this._layout) this._syncLayout();
+          if (!now && !this._engine) this._render();
         }
       });
       this._editObserver.observe(document.body, { childList: true, subtree: true });
@@ -4155,4 +4161,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.7.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.8.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
