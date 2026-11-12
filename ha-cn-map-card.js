@@ -1384,11 +1384,19 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._render();
   }
   set hass(hass) {
+    const prevEditCtx = this._inEditContext();
     this._hass = hass;
     const dark = this._resolveDark();
     if (dark !== this._dark) {
       this._dark = dark;
       this.shadowRoot?.querySelector(".cmc-card")?.classList.toggle("is-dark", dark);
+    }
+    const nowEditCtx = this._inEditContext();
+    if (nowEditCtx !== prevEditCtx) {
+      this._bleedUser = nowEditCtx ? false : void 0;
+      if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
+      const layoutNow = this._resolveLayout();
+      if (layoutNow !== this._layout) this._syncLayout();
     }
     if (this._engine) this._update();
     this._ensureEntityRegistry();
@@ -1462,8 +1470,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   /* 解析布局：官方 panel 视图 / sections 紧凑 / 自定义全屏 */
   _resolveLayout() {
     const cfg = this._config;
-    if (this._hass?.editMode) return LAYOUT.COMPACT;
-    if (this._inPicker()) return LAYOUT.COMPACT;
+    if (this._inEditContext()) return LAYOUT.COMPACT;
     if (cfg.layout === "compact" || cfg.fullscreen === false) return LAYOUT.COMPACT;
     if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel" || cfg.fill === true) return LAYOUT.FULL;
     if (this.layout === "panel" || this.isPanel === true) return LAYOUT.FULL;
@@ -1491,11 +1498,16 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   /* 自动判定：往上看几层，找真正给我分配高度的那个祖先。
      HA 的嵌套关系不固定（panel 视图 shadowRoot > hui-card > 卡片；
      sections 视图 hui-grid-section shadowRoot > grid > 格子 > hui-card > 卡片），所以逐层试。 */
-  /* 是否在"添加到仪表板"卡片选择器/弹窗预览中 */
-  _inPicker() {
-    for (const el of this._ancestors(8)) {
+  /* 是否在 HA 编辑器/选择器上下文中（仪表盘编辑、卡片选择器、卡片编辑器弹窗等）。
+     在这些上下文里卡片必须 compact + 不 bleed，否则 position:fixed 会盖住"完成"按钮和二级编辑面板。 */
+  _inEditContext() {
+    for (const el of this._ancestors(10)) {
       const tag = (el.localName || "").toLowerCase();
-      if (tag === "hui-dialog-add-card" || tag === "hui-card-picker" || tag === "ha-dialog" || tag === "hui-dialog-edit-lovelace" || tag === "hui-dialog-select-view") return true;
+      if (tag === "hui-dialog-add-card" || tag === "hui-card-picker" || tag === "ha-dialog" || tag === "hui-dialog-edit-lovelace" || tag === "hui-dialog-select-view" || tag === "hui-edit-view" || tag === "hui-editor" || tag === "ha-editor" || tag === "hui-card-editor" || tag === "hui-edit-dashboard-view") return true;
+    }
+    try {
+      if (document.querySelector("hui-edit-view, hui-editor, hui-card-editor")) return true;
+    } catch (_) {
     }
     return false;
   }
@@ -1534,6 +1546,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     return r.height < vh * 0.85;
   }
   _wantBleed() {
+    if (this._inEditContext()) return false;
     if (this._bleedUser === true) return true;
     if (this._layout !== LAYOUT.FULL) return false;
     if (this._bleedUser === false) return false;
@@ -4115,4 +4128,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.7.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.7.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

@@ -136,6 +136,7 @@ class HaCnMapCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const prevEditCtx = this._inEditContext();
     this._hass = hass;
     // 写回内置 zone.home：HA 2024.10+ 没有 zone.edit 服务，改用 WS config/core/update
     // （实测 2026.11 可写 latitude/longitude/radius 并直接驱动 zone.home 实体）
@@ -144,6 +145,14 @@ class HaCnMapCard extends HTMLElement {
     if (dark !== this._dark) {
       this._dark = dark;
       this.shadowRoot?.querySelector(".cmc-card")?.classList.toggle("is-dark", dark);
+    }
+    // 编辑模式切换时立即重算布局 + 退出 bleed（position:fixed 元素不会因 HA 顶栏出现而触发 ResizeObserver）
+    const nowEditCtx = this._inEditContext();
+    if (nowEditCtx !== prevEditCtx) {
+      this._bleedUser = nowEditCtx ? false : undefined;
+      if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
+      const layoutNow = this._resolveLayout();
+      if (layoutNow !== this._layout) this._syncLayout();
     }
     if (this._engine) this._update();
     // 用户在 HA 设置里隐藏的实体不该出现在地图上（官方 hui-map-card 同样查注册表）。
@@ -229,10 +238,8 @@ class HaCnMapCard extends HTMLElement {
   /* 解析布局：官方 panel 视图 / sections 紧凑 / 自定义全屏 */
   _resolveLayout() {
     const cfg = this._config;
-    // 编辑仪表盘模式下：强制 compact，否则全屏卡片会盖住 HA 顶部的"完成/取消"按钮，用户没法退出编辑
-    if (this._hass?.editMode) return LAYOUT.COMPACT;
-    // "添加到仪表板"卡片选择器弹窗里预览时：强制 compact，否则 position:fixed 会盖住整个弹窗
-    if (this._inPicker()) return LAYOUT.COMPACT;
+    // HA 编辑/选择器上下文里：强制 compact，否则 position:fixed bleed 会盖住"完成"按钮和二级编辑器
+    if (this._inEditContext()) return LAYOUT.COMPACT;
     // 用户显式指定 compact 时永远尊重（哪怕在 panel 视图里）
     if (cfg.layout === "compact" || cfg.fullscreen === false) return LAYOUT.COMPACT;
     if (cfg.fullscreen === true || cfg.layout === "full" || cfg.layout === "panel" || cfg.fill === true) return LAYOUT.FULL;
@@ -266,14 +273,22 @@ class HaCnMapCard extends HTMLElement {
   /* 自动判定：往上看几层，找真正给我分配高度的那个祖先。
      HA 的嵌套关系不固定（panel 视图 shadowRoot > hui-card > 卡片；
      sections 视图 hui-grid-section shadowRoot > grid > 格子 > hui-card > 卡片），所以逐层试。 */
-  /* 是否在"添加到仪表板"卡片选择器/弹窗预览中 */
-  _inPicker() {
-    for (const el of this._ancestors(8)) {
+  /* 是否在 HA 编辑器/选择器上下文中（仪表盘编辑、卡片选择器、卡片编辑器弹窗等）。
+     在这些上下文里卡片必须 compact + 不 bleed，否则 position:fixed 会盖住"完成"按钮和二级编辑面板。 */
+  _inEditContext() {
+    for (const el of this._ancestors(10)) {
       const tag = (el.localName || "").toLowerCase();
       if (tag === "hui-dialog-add-card" || tag === "hui-card-picker" ||
           tag === "ha-dialog" || tag === "hui-dialog-edit-lovelace" ||
-          tag === "hui-dialog-select-view") return true;
+          tag === "hui-dialog-select-view" ||
+          tag === "hui-edit-view" || tag === "hui-editor" ||
+          tag === "ha-editor" || tag === "hui-card-editor" ||
+          tag === "hui-edit-dashboard-view") return true;
     }
+    // 兜底：document.body 下直接存在 hui-edit-view（编辑模式下 HA 会把整个 dashboard 包进 hui-edit-view）
+    try {
+      if (document.querySelector("hui-edit-view, hui-editor, hui-card-editor")) return true;
+    } catch (_) { /* noop */ }
     return false;
   }
 
@@ -317,6 +332,8 @@ class HaCnMapCard extends HTMLElement {
   }
 
   _wantBleed() {
+    // 编辑器/选择器上下文里永远不 bleed，否则盖住 HA 的"完成"按钮和二级编辑面板
+    if (this._inEditContext()) return false;
     // 用户手动点过全屏按钮：以手动选择为准（哪怕当前布局判定为紧凑）
     if (this._bleedUser === true) return true;
     if (this._layout !== LAYOUT.FULL) return false;
