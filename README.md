@@ -8,9 +8,9 @@
 [![Lint](https://github.com/RockJesus/ha-map-cn/actions/workflows/lint.yml/badge.svg)](https://github.com/RockJesus/ha-map-cn/actions/workflows/lint.yml)
 [![license](https://img.shields.io/github/license/RockJesus/ha-map-cn)](LICENSE)
 
-**一键安装**（HACS → 探索并下载 → 搜「China Map Card」）：
+**一键安装**（市场 → 浏览并搜索「China Map Card」）：
 
-[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=RockJesus&repo=ha-map-cn&category=dashboard)
+[![Open in 市场](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=RockJesus&repo=ha-map-cn&category=dashboard)
 
 ---
 
@@ -19,7 +19,7 @@
 - 🇨🇳 **国内直连底图**：高德街道 / 高德卫星 / 天地图 / 天地图卫星 / OSM，高德自动 GCJ-02 纠偏
 - 📱 **移动端打磨**：底部抽屉（对齐官方 `ha-snap-bottom-sheet`）、双指平滑捏合、长按才允许拖家位置/半径
 - 🧭 **交互对齐官方**：点标记 = 聚焦飞行，再点 = 详情；人 / 设备 / 区域三 Tab 概览、最近活动时间线、GPS 精度圈
-- 📍 **家的位置直接编辑**：地图上长按拖动家图标/半径手柄，松手自动 `zone.edit` 同步回 HA「我的家」
+- 📍 **家的位置直接编辑**：地图上长按拖动家图标/半径手柄，松手自动写回 HA「我的家」的位置与半径
 - 🛰️ **轨迹线**：自动订阅 `history/stream`，悬停显示时间；可选高德实时路况叠加
 - 🎨 **暗色主题**：跟随 HA，自动对瓦片做反相滤镜；卫星影像自动豁免
 - 🪶 **零依赖**：手写轻量瓦片引擎，单文件 ~170 KB，无 Leaflet / MapLibre
@@ -30,17 +30,21 @@
 
 ## 🚀 安装
 
-**HACS 默认仓库（推荐）**
+**市场默认收录（推荐）**
 
-1. HACS → **探索并下载存储库** → 搜「**中国地图 / China Map Card**」
-2. 点 **下载**，HACS 自动注册 Lovelace 资源
+1. 打开**市场** → 浏览 → 搜「**中国地图 / China Map Card**」
+2. 点 **下载**，市场自动注册 Lovelace 资源
 3. 刷新浏览器，在卡片选择器里就能看到「中国地图卡片」
 
-**兜底（自定义存储库）**：HACS → 右上角 ⋮ → 自定义存储库 → 填 `https://github.com/RockJesus/ha-map-cn`，类别 **Lovelace / Dashboard**。
+**兜底（添加自定义仓库）**：市场 → 右上角 ⋮ → 添加自定义仓库 → 填 `https://github.com/RockJesus/ha-map-cn`，类别 **Lovelace / Dashboard**。
 
 **手动安装**：把 Release 里的 `ha-cn-map-card.js` 放到 `/config/www/`，设置 → 仪表盘 → 资源里加 `/local/ha-cn-map-card.js`，类型 **JavaScript Module**。
 
-> HACS ≥ 2.0 会自动用 `?hacstag=<版本>` 给资源 URL 加缓存戳，升级后不需要手动强刷。
+**国内安装失败排障**：若在市场里点下载报错 `missing the hacs.json file` 或 `Installation failed`，一般是 HA 服务器连不上 `raw.githubusercontent.com`——市场读取卡片元数据走该地址，并非仓库缺文件。两种解法：
+1. 在市场设置里把下载数据源/中继切换到中国社区（hasscn）后重试；
+2. 直接走上面的手动安装，用 Release 里的 js，不经过市场。
+
+> 市场 ≥ 2.0 会自动用 `?hacstag=<版本>` 给资源 URL 加缓存戳，升级后不需要手动强刷。
 
 ## 🧭 为什么需要它
 
@@ -54,7 +58,7 @@ HA 2026.9 起，官方地图改用 OSMF 矢量瓦片，且**瓦片请求由 HA �
 | 请求发起方 | HA 服务器 | 你的浏览器 |
 | 国内可用 | 否（除非服务器能翻墙） | **是** |
 | 需要改 HA 源码 | — | 否 |
-| 安装方式 | 内置 | HACS / 手动放一个 js |
+| 安装方式 | 内置 | 市场 / 手动放一个 js |
 | 标记偏移 | 无 | 高德自动 GCJ-02 纠偏 |
 
 ---
@@ -416,13 +420,13 @@ Key 无效或未开通「浏览器端」类型。到控制台检查应用类型�
 | 卡片类型 | `custom:ha-cn-map-card`（`window.customCards` 注册，带 `preview` 与文档链接） |
 | 资源类型 | **JavaScript Module**（单文件 ESM，无运行时依赖） |
 | 发布产物 | 每个 GitHub Release 附带 `ha-cn-map-card.js` 单文件 asset（UTF-8 无 BOM） |
-| HACS 元数据 | `hacs.json`：`name` / `filename` / `render_readme` / `hide_default_branch` / `homeassistant` |
+| 市场元数据 | `hacs.json`：`name` / `filename` / `render_readme` / `hide_default_branch` / `homeassistant` |
 | 最低 HA | 2024.1（`getGridOptions` 与旧 sections 接口都兼容） |
 | 仓库元数据 | 描述 + topics（`hacs` / `home-assistant` / `lovelace` / `custom-card`），CI 跑 HACS Action 与 ESLint |
 | 编辑器 | `getConfigElement()` 返回 `ha-cn-map-card-editor`；`getStubConfig()` 提供默认配置 |
 
 > 手工安装只需一个文件：把 release 里的 `ha-cn-map-card.js` 放到 `/config/www/`，资源里加
-> `/local/ha-cn-map-card.js`（类型 JavaScript Module）。HACS 会自动读取 release asset 并注册资源。
+> `/local/ha-cn-map-card.js`（类型 JavaScript Module）。市场会自动读取 release asset 并注册资源。
 
 ## 开发
 
@@ -441,8 +445,8 @@ src/shared.js           # 共享常量与工具（底图源 / GCJ-02 纠偏 / �
 src/engine.js           # 轻量 XYZ 瓦片引擎（投影 / 平移 / 缩放 / 标记 / 聚合 / 轨迹）
 src/card.js             # Lovelace 卡片主类
 src/editor.js           # 可视化编辑器
-hacs.json               # HACS 元数据（filename 指向根目录的 js）
-.hacsignore             # HACS 下载时排除的文件
+hacs.json               # 市场元数据（filename 指向根目录的 js）
+.hacsignore             # 市场下载时排除的文件
 eslint.config.mjs       # ESLint 平面配置
 images/                 # README 截图
 .github/workflows/      # HACS 校验 + ESLint

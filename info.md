@@ -7,4 +7,4 @@ Home Assistant 地图卡片的国内底图版本：高德 / 天地图瓦片由**
 - 地图上可直接拖「家」的图标改位置、拖半径圈右侧白点改半径，松手即存到卡片配置。
 - 标记聚合、状态行、精度圈、轨迹线、实时路况、全屏布局。
 
-安装：HACS 添加自定义存储库（类别 Lovelace / Dashboard），或手动把 release 里的 `ha-cn-map-card.js` 放进 `/config/www/` 并添加 JavaScript Module 资源。
+安装：在市场里浏览搜索，或添加自定义仓库（类别 Lovelace / Dashboard）；也可手动把 release 里的 `ha-cn-map-card.js` 放进 `/config/www/` 并添加 JavaScript Module 资源。

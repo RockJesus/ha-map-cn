@@ -166,7 +166,7 @@ class HaCnMapCard extends HTMLElement {
      用户显式写进 entities: 的实体永远照画——点名了就不替他做决定。
      HA 2023.4+ 才有 hidden_by；拿不到（权限/版本）就置空集合并永不重试 */
   _ensureEntityRegistry() {
-    if (this._registryTried || this._preview) return;
+    if (this._registryTried || this._isPreviewCard()) return;
     const conn = this._hass?.connection;
     if (!conn?.sendMessagePromise) return;
     this._registryTried = true;
@@ -291,6 +291,20 @@ class HaCnMapCard extends HTMLElement {
     try {
       if (document.querySelector("hui-edit-view, hui-editor, hui-card-editor, hui-dialog-edit-card, hui-dialog-add-card, hui-card-picker")) return true;
     } catch (_) { /* noop */ }
+    return false;
+  }
+
+  /* 卡片选择器 / 添加弹窗 / 卡片配置弹窗里的预览缩略卡。
+     区别于仪表盘编辑视图（hui-edit-view 等）：那里是真实卡片，要正常渲染地图；
+     预览卡只画静态底图，不收集实体、不订阅历史轨迹、不拉注册表、禁用地图手势。 */
+  _isPreviewCard() {
+    if (this._preview) return true;
+    for (const el of this._ancestors(10)) {
+      const tag = (el.localName || "").toLowerCase();
+      if (tag === "hui-card-picker" || tag === "hui-dialog-add-card" ||
+          tag === "hui-dialog-edit-card" || tag === "hui-card-editor" ||
+          tag === "ha-editor") return true;
+    }
     return false;
   }
 
@@ -985,16 +999,10 @@ class HaCnMapCard extends HTMLElement {
     this._applyBleed(this._wantBleed(), true);
 
     const mapEl = this.shadowRoot.querySelector(".cmc-map");
-    // 预览模式（卡片选择器/编辑器）：跳过 WebGL 引擎初始化，避免选择器卡顿。
-    // 只显示静态渐变占位，等用户真正添加到仪表盘后再建引擎。
-    if (this._inEditContext()) {
-      this._engine = null;
-      mapEl.style.background = "linear-gradient(135deg, #1a237e 0%, #283593 50%, #1565c0 100%)";
-    } else {
+    const previewCard = this._isPreviewCard();
+    // 引擎是纯 DOM 瓦片（无 WebGL、无 WS），预览缩略卡也建引擎画真实底图；
+    // 预览态只读、不挂实体/轨迹/手势交互，不拉注册表、不订阅历史，避免选择器卡顿。
     this._engine = new CnTileEngine(mapEl);
-    this._homeLocked = true; // 默认锁定，防止误触拖动
-    this._engine._homeLocked = true;
-    this._engine.onTrackHover = (info) => this._showTrackTip(info);
     this._engine.removeTileSets();
     base.layers.forEach((l, i) => {
       this._engine.addTileSet({
@@ -1007,6 +1015,13 @@ class HaCnMapCard extends HTMLElement {
     });
     this._engine.attribution.textContent = base.attribution;
     this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
+    if (previewCard) {
+      this._engine.setReadOnly(true);
+      this._engine.setView(39.9042, 116.4074, Number(cfg.default_zoom) || 12);
+    } else {
+    this._homeLocked = true; // 默认锁定，防止误触拖动
+    this._engine._homeLocked = true;
+    this._engine.onTrackHover = (info) => this._showTrackTip(info);
     this._engine.addEventListener("marker-click", (e) => {
       const id = e.detail.entityId;
       const ent = this._hass?.states?.[id];
@@ -1034,7 +1049,7 @@ class HaCnMapCard extends HTMLElement {
         this._renderList();
       }
     });
-    } // end preview skip
+    }
     // 卡片里的按钮默认是 type=submit 语义，放在宿主表单/链接里会触发跳转
     this.shadowRoot.querySelectorAll("button").forEach((btn) => btn.setAttribute("type", "button"));
 
@@ -1385,7 +1400,7 @@ class HaCnMapCard extends HTMLElement {
 
   /* ---- 轨迹：订阅 history/stream，按实体画折线 ---- */
   _syncTracks(states) {
-    if (this._preview) return; // 预览态不订阅轨迹，省一次 WS 请求
+    if (this._isPreviewCard()) return; // 预览缩略卡不订阅轨迹，省一次 WS 请求
     const cfg = this._config;
     const hours = Number(cfg.hours_to_show) || 0;
     if (hours <= 0) {
@@ -1831,7 +1846,7 @@ class HaCnMapCard extends HTMLElement {
           this.classList.toggle("cmc-preview", now);
           const layoutNow = this._resolveLayout();
           if (layoutNow !== this._layout) this._syncLayout();
-          // 退出预览模式时需要重建卡片以初始化 WebGL 引擎（预览时跳过了引擎）
+          // 兜底：引擎被异常清理后，退出编辑上下文时重建一次正常卡片
           if (!now && !this._engine) this._render();
         }
       });
@@ -2157,7 +2172,7 @@ class HaCnMapCard extends HTMLElement {
       const pic = en.picture || ent?.attributes?.entity_picture;
       const av = pic
         ? `<img src="${escapeAttr(pic)}" referrerpolicy="no-referrer" alt="">`
-        : this._initial(nm);
+        : escapeHtml(this._initial(nm));
       return `<div class="cmc-act-row">
         <span class="cmc-act-av" data-i="${escapeAttr(this._initial(nm))}">${av}</span>
         <span class="cmc-act-tx">
@@ -2235,6 +2250,14 @@ class HaCnMapCard extends HTMLElement {
 
   _update() {
     if (this._applyConditions()) return;   // conditions 不满足：整卡隐藏，布局不留空白
+    if (this._isPreviewCard()) {
+      // 预览缩略卡：只画静态底图，清空标记/圈层/轨迹，不收集实体、不自动适配、不渲染列表
+      this._engine?.setMarkers([], { cluster: false });
+      this._engine?.setAccuracyCircles([]);
+      this._engine?.clearPaths();
+      this._engine?.render();
+      return;
+    }
     const hass = this._hass, cfg = this._config;
     // 比例尺开关（官方字段 scale_ruler；默认保留常显）
     const scaleEl = this.shadowRoot.querySelector(".cmc-scale");

@@ -48,6 +48,7 @@ class CnTileEngine extends EventTarget {
     this.center = { lat: 39.9042, lng: 116.4074 }; // 默认北京
     this.tileSets = []; // {els: Map(key->img), url(fn), zIndex, opacity, maxZoom}
     this._tileSeq = 0;
+    this._readonly = false; // 预览态：静态底图，不接管拖拽/缩放/选中
     this._attachGestures();
   }
 
@@ -84,6 +85,12 @@ class CnTileEngine extends EventTarget {
     this.center = { lat, lng };
     if (zoom != null) this.zoom = zoom;
     this.render();
+  }
+
+  /* 预览只读：选择器/编辑器弹窗里的静态缩略图，不响应任何地图手势 */
+  setReadOnly(on) {
+    this._readonly = !!on;
+    if (this.container) this.container.style.touchAction = on ? "auto" : "none";
   }
 
   /* 平滑飞行：官方点击标记 / 点击列表项时地图以动画平移+缩放到目标。
@@ -879,6 +886,7 @@ class CnTileEngine extends EventTarget {
     this._suspendedPointers = this._suspendedPointers || new Set();
     // 点空白处（没点在标记/聚合上）取消选中：官方语义
     el.addEventListener("click", (e) => {
+      if (this._readonly) return;
       if (e.target === el || e.target.classList?.contains("cmc-viewport") || e.target.tagName === "IMG") {
         if (this._selectedEntity) {
           this.setSelected(null);
@@ -903,6 +911,7 @@ class CnTileEngine extends EventTarget {
       return { x: clientX - r.left, y: clientY - r.top };
     };
     el.addEventListener("pointerdown", (e) => {
+      if (this._readonly) return;
       // 用户手势立即接管，取消进行中的飞行动画（官方"抢方向盘"行为）
       this._fly?.cancel?.(); this._fly = null;
       if (this._suspendedPointers.has(e.pointerId)) return;
@@ -921,6 +930,7 @@ class CnTileEngine extends EventTarget {
       if (pts.size < 2) pinchD0 = 0;
     };
     el.addEventListener("pointermove", (e) => {
+      if (this._readonly) return;
       if (this._suspendedPointers.has(e.pointerId)) return;
       const p = pts.get(e.pointerId);
       if (!p) return;
@@ -942,6 +952,7 @@ class CnTileEngine extends EventTarget {
       p.px = e.clientX; p.py = e.clientY;
     });
     const endPointer = (e) => {
+      if (this._readonly) return;
       if (pinchMoved) this._suppressClickUntil = Date.now() + 400; // 捏合后别误触选中
       // 双击放大（移动端 dblclick 不可靠，手动判定）：300ms 内连续两次点同一点，且没拖动
       const p = pts.get(e.pointerId);
@@ -967,16 +978,18 @@ class CnTileEngine extends EventTarget {
     el.addEventListener("pointerup", endPointer);
     el.addEventListener("pointercancel", endPointer);
     el.addEventListener("wheel", (e) => {
+      if (this._readonly) return;
       e.preventDefault();
       // 以光标为锚：光标下的地物缩放前后不动（官方 ha-map / Leaflet 一致）
       this.setZoom(this.zoom + (e.deltaY < 0 ? 1 : -1), { anchor: anchorAt(e.clientX, e.clientY) });
     }, { passive: false });
-    el.addEventListener("dblclick", (e) => this.setZoom(this.zoom + 1, { anchor: anchorAt(e.clientX, e.clientY) }));
+    el.addEventListener("dblclick", (e) => { if (!this._readonly) this.setZoom(this.zoom + 1, { anchor: anchorAt(e.clientX, e.clientY) }); });
 
     // 键盘快捷键（对齐官方 ha-map）：+/- 缩放、方向键平移、Esc 清除选中
     el.tabIndex = 0;
     el.style.outline = "none";
     el.addEventListener("keydown", (e) => {
+      if (this._readonly) return;
       const step = e.shiftKey ? 10 : 4; // Shift+方向键 = 大步平移
       // 方向键语义 = 视野朝该方向移动（按 → 看东边，内容往左滑），与拖拽/官方一致
       let dx = 0, dy = 0;
