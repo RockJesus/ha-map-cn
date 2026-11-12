@@ -1395,6 +1395,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (nowEditCtx !== prevEditCtx) {
       this._bleedUser = nowEditCtx ? false : void 0;
       if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
+      this.classList.toggle("cmc-preview", nowEditCtx);
       const layoutNow = this._resolveLayout();
       if (layoutNow !== this._layout) this._syncLayout();
     }
@@ -1661,6 +1662,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       rtl = false;
     }
     this._rtl = rtl;
+    this.classList.toggle("cmc-preview", this._inEditContext());
     this.shadowRoot.innerHTML = `
       <style>
         :host {
@@ -1763,6 +1765,12 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           box-shadow:0 0 0 1px rgba(0,0,0,.12);
         }
         .cmc-scale .bar { height:5px; margin-top:3px; border:1px solid #111; border-top:none; }
+        /* 选择器/编辑器预览模式：隐藏底部面板、浮钮、缩放控件、比例尺——只留地图本体 */
+        :host(.cmc-preview) .cmc-panel,
+        :host(.cmc-preview) .cmc-panel-btn,
+        :host(.cmc-preview) .cmc-ctrl-group,
+        :host(.cmc-preview) .cmc-scale,
+        :host(.cmc-preview) [data-fs] { display:none !important; }
         /* 桌面左侧面板展开时把比例尺顶上去，别被压住；手机端见顶部居中规则，不受此影响 */
         .cmc-card:has(.cmc-panel.open.dock-bottom) .cmc-scale { bottom:45%; transition:bottom .28s ease; }
         /* ---- 标记：官方 48px 圆角方块 + 白边 ---- */
@@ -4128,4 +4136,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.7.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.7.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
