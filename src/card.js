@@ -124,7 +124,7 @@ class HaCnMapCard extends HTMLElement {
     if (!config || typeof config !== "object") throw new Error("ha-cn-map-card: 配置无效");
     this._rawConfig = config;
     this._config = {
-      basemap: "auto",           // auto（按位置选）| amap | amap-satellite | tianditu | tianditu-satellite | osm | esri
+      basemap: "amap",           // amap（默认高德）| amap-satellite | tianditu | tianditu-satellite | osm | esri；auto 为兼容旧配置的别名，等同高德
       tianditu_key: "",
       default_zoom: 12,
       hours_to_show: 0,          // >0 时绘制轨迹线
@@ -512,13 +512,11 @@ class HaCnMapCard extends HTMLElement {
     return this._homeWgs84() || this._trackingPoint() || this._geoPoint || null;
   }
 
-  /* auto 模式：境内用高德（GCJ 纠偏），境外用 OSM（全球、无偏移）；拿不到坐标保守用高德 */
+  /* 默认高德；auto 为兼容旧配置的别名，等同高德。OSM / Esri 仅在用户手动指定时作为全球图源使用 */
   _resolvedBasemap() {
     const cfg = this._config || {};
-    const bm = cfg.basemap || "auto";
+    const bm = cfg.basemap || "amap";
     if (bm !== "auto") return BASEMAPS[bm] ? bm : "amap";
-    const p = this._anyWgs84Point();
-    if (p && GCJ.outOfChina(p.lat, p.lng)) return "osm";
     return "amap";
   }
 
@@ -1071,8 +1069,8 @@ class HaCnMapCard extends HTMLElement {
             <div class="cmc-set-b">
               <label>底图
                 <select data-d="basemap">
-                  <option value="auto">自动（按所在位置选择）</option>
-                  <option value="amap">高德地图（国内）</option>
+                  <option value="auto">自动（兼容旧配置，等同高德）</option>
+                  <option value="amap">高德地图（默认，国内）</option>
                   <option value="amap-satellite">高德卫星（国内）</option>
                   <option value="tianditu">天地图（国内，需 Key）</option>
                   <option value="tianditu-satellite">天地图卫星（国内，需 Key）</option>
@@ -1676,7 +1674,7 @@ class HaCnMapCard extends HTMLElement {
       else if (k === "label_mode") el.value = c[k] || "name";
       else el.value = c[k] === undefined ? "" : c[k];
     });
-    const bm = c.basemap || "auto";
+    const bm = c.basemap || "amap";
     d.querySelectorAll("[data-d-row]").forEach((el) => {
       el.style.display = el.dataset.dRow.split(" ").includes(bm) ? "" : "none";
     });

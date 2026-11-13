@@ -7,8 +7,8 @@
  * ================================================================== */
 import { escapeHtml, escapeAttr } from "./shared.js";
 const BASEMAP_OPTIONS = [
-  { value: "auto", label: "自动（按所在位置选择）" },
-  { value: "amap", label: "高德地图（国内，免 Key）" },
+  { value: "auto", label: "自动（兼容旧配置，等同高德）" },
+  { value: "amap", label: "高德地图（默认，国内，免 Key）" },
   { value: "amap-satellite", label: "高德卫星影像（国内）" },
   { value: "tianditu", label: "天地图（国内，需 Key）" },
   { value: "tianditu-satellite", label: "天地图卫星（国内，需 Key）" },
@@ -126,7 +126,7 @@ class HaCnMapCardEditor extends HTMLElement {
           <select data-k="basemap">
             ${BASEMAP_OPTIONS.map((o) => `<option value="${o.value}">${o.label}</option>`).join("")}
           </select>
-          <div class="hint">自动模式按所在位置选图：境内用高德（自动 GCJ-02 纠偏），境外用全球 OSM；天地图需在 console.tianditu.gov.cn 申请免费 Key。</div>
+          <div class="hint">默认高德（自动 GCJ-02 纠偏）；需要全球图可手动选 OSM 或 Esri；天地图需在 console.tianditu.gov.cn 申请免费 Key。</div>
         </div>
 
         <div class="row">
@@ -385,7 +385,7 @@ class HaCnMapCardEditor extends HTMLElement {
 
   _applyVisibility() {
     const sr = this.shadowRoot;
-    const bm = this._config.basemap || "auto";
+    const bm = this._config.basemap || "amap";
     sr.querySelectorAll("[data-only]").forEach((el) => {
       const allow = el.dataset.only.split(" ");
       el.style.display = allow.includes(bm) ? "" : "none";
@@ -418,7 +418,7 @@ class HaCnMapCardEditor extends HTMLElement {
     const z = sr.querySelector('[data-k="default_zoom"]');
     if (z && !z.value) z.value = 12;
     const bm = sr.querySelector('[data-k="basemap"]');
-    if (bm) bm.value = c.basemap || "auto";
+    if (bm) bm.value = c.basemap || "amap";
     this._applyVisibility();
     this._refreshEntityPicker();
     this._renderEntities();

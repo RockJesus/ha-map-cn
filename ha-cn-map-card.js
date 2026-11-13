@@ -1395,8 +1395,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (!config || typeof config !== "object") throw new Error("ha-cn-map-card: 配置无效");
     this._rawConfig = config;
     this._config = {
-      basemap: "auto",
-      // auto（按位置选）| amap | amap-satellite | tianditu | tianditu-satellite | osm | esri
+      basemap: "amap",
+      // amap（默认高德）| amap-satellite | tianditu | tianditu-satellite | osm | esri；auto 为兼容旧配置的别名，等同高德
       tianditu_key: "",
       default_zoom: 12,
       hours_to_show: 0,
@@ -1756,13 +1756,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   _anyWgs84Point() {
     return this._homeWgs84() || this._trackingPoint() || this._geoPoint || null;
   }
-  /* auto 模式：境内用高德（GCJ 纠偏），境外用 OSM（全球、无偏移）；拿不到坐标保守用高德 */
+  /* 默认高德；auto 为兼容旧配置的别名，等同高德。OSM / Esri 仅在用户手动指定时作为全球图源使用 */
   _resolvedBasemap() {
     const cfg = this._config || {};
-    const bm = cfg.basemap || "auto";
+    const bm = cfg.basemap || "amap";
     if (bm !== "auto") return BASEMAPS[bm] ? bm : "amap";
-    const p = this._anyWgs84Point();
-    if (p && GCJ.outOfChina(p.lat, p.lng)) return "osm";
     return "amap";
   }
   /* 重置焦点：跳回 home 区域中心 + default_zoom，并暂停自动适配，避免下一帧又被 fit 走 */
@@ -2314,8 +2312,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
             <div class="cmc-set-b">
               <label>底图
                 <select data-d="basemap">
-                  <option value="auto">自动（按所在位置选择）</option>
-                  <option value="amap">高德地图（国内）</option>
+                  <option value="auto">自动（兼容旧配置，等同高德）</option>
+                  <option value="amap">高德地图（默认，国内）</option>
                   <option value="amap-satellite">高德卫星（国内）</option>
                   <option value="tianditu">天地图（国内，需 Key）</option>
                   <option value="tianditu-satellite">天地图卫星（国内，需 Key）</option>
@@ -2869,7 +2867,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       else if (k === "label_mode") el.value = c[k] || "name";
       else el.value = c[k] === void 0 ? "" : c[k];
     });
-    const bm = c.basemap || "auto";
+    const bm = c.basemap || "amap";
     d.querySelectorAll("[data-d-row]").forEach((el) => {
       el.style.display = el.dataset.dRow.split(" ").includes(bm) ? "" : "none";
     });
@@ -4034,8 +4032,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
 
 // src/editor.js
 var BASEMAP_OPTIONS = [
-  { value: "auto", label: "自动（按所在位置选择）" },
-  { value: "amap", label: "高德地图（国内，免 Key）" },
+  { value: "auto", label: "自动（兼容旧配置，等同高德）" },
+  { value: "amap", label: "高德地图（默认，国内，免 Key）" },
   { value: "amap-satellite", label: "高德卫星影像（国内）" },
   { value: "tianditu", label: "天地图（国内，需 Key）" },
   { value: "tianditu-satellite", label: "天地图卫星（国内，需 Key）" },
@@ -4148,7 +4146,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
           <select data-k="basemap">
             ${BASEMAP_OPTIONS.map((o) => `<option value="${o.value}">${o.label}</option>`).join("")}
           </select>
-          <div class="hint">自动模式按所在位置选图：境内用高德（自动 GCJ-02 纠偏），境外用全球 OSM；天地图需在 console.tianditu.gov.cn 申请免费 Key。</div>
+          <div class="hint">默认高德（自动 GCJ-02 纠偏）；需要全球图可手动选 OSM 或 Esri；天地图需在 console.tianditu.gov.cn 申请免费 Key。</div>
         </div>
 
         <div class="row">
@@ -4389,7 +4387,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
   }
   _applyVisibility() {
     const sr = this.shadowRoot;
-    const bm = this._config.basemap || "auto";
+    const bm = this._config.basemap || "amap";
     sr.querySelectorAll("[data-only]").forEach((el) => {
       const allow = el.dataset.only.split(" ");
       el.style.display = allow.includes(bm) ? "" : "none";
@@ -4417,7 +4415,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
     const z = sr.querySelector('[data-k="default_zoom"]');
     if (z && !z.value) z.value = 12;
     const bm = sr.querySelector('[data-k="basemap"]');
-    if (bm) bm.value = c.basemap || "auto";
+    if (bm) bm.value = c.basemap || "amap";
     this._applyVisibility();
     this._refreshEntityPicker();
     this._renderEntities();
@@ -4444,4 +4442,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.8.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.8.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
