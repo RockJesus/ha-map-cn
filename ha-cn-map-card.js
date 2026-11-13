@@ -1740,16 +1740,30 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
     return null;
   }
-  /* 接入的追踪实体（人 / 设备 / 地理定位）里任意一个有效 WGS84 坐标 */
-  _trackingPoint() {
+  /* 接入的追踪实体（人 / 设备 / 地理定位）里任意一个有效坐标，连同实体 id 返回 */
+  _trackingPointRef() {
     const hass = this._hass;
     if (!hass) return null;
     for (const st of Object.values(hass.states)) {
       const id = st.entity_id || "";
       if (!(id.startsWith("person.") || id.startsWith("device_tracker.") || id.startsWith("geo_location."))) continue;
       const la = Number(st.attributes?.latitude), lo = Number(st.attributes?.longitude);
-      if (Number.isFinite(la) && Number.isFinite(lo)) return { lat: la, lng: lo };
+      if (Number.isFinite(la) && Number.isFinite(lo)) return { lat: la, lng: lo, entityId: id };
     }
+    return null;
+  }
+  _trackingPoint() {
+    const r = this._trackingPointRef();
+    return r ? { lat: r.lat, lng: r.lng } : null;
+  }
+  /* 主位置点：App 追踪实体 > 浏览器定位 > 静态家。家房子标记跟随该点；
+     仅静态家来源时房子才可拖拽、可写回 zone.home，跟随态只作本会话内存位置、不写 HA。 */
+  _primaryWgs84() {
+    const tp = this._trackingPointRef();
+    if (tp) return { point: { lat: tp.lat, lng: tp.lng }, source: "tracking", entityId: tp.entityId };
+    if (this._geoPoint) return { point: this._geoPoint, source: "geo", entityId: null };
+    const home = this._homeWgs84();
+    if (home) return { point: home, source: "home", entityId: "zone.home" };
     return null;
   }
   /* 任意一个有效定位点（家 → 追踪实体 → 浏览器定位结果），供底图/纠偏判定取点；
@@ -1767,9 +1781,9 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   /* 重置焦点：跳回 home 区域中心 + default_zoom，并暂停自动适配，避免下一帧又被 fit 走 */
   _resetFocus() {
     const cfg = this._config || {};
-    const home = this._homeWgs84();
-    if (!home) return;
-    let lat = home.lat, lng = home.lng;
+    const primary = this._primaryWgs84();
+    if (!primary) return;
+    let lat = primary.point.lat, lng = primary.point.lng;
     if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
     this._didFit = true;
     this._engine._userMoved = false;
@@ -1811,7 +1825,10 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           this._render();
           return;
         }
-        if (!this._engine._userMoved) this._flyToGeoPoint();
+        Promise.resolve().then(() => {
+          this._update();
+          if (!this._engine._userMoved) this._flyToGeoPoint();
+        });
       },
       () => {
         this._geoDenied = true;
@@ -3626,11 +3643,13 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     if (scaleEl) scaleEl.style.display = cfg.show_scale === false ? "none" : "";
     const states = this._collectEntities();
+    const primary = this._primaryWgs84();
     const markers = [];
     const pts = [];
     states.forEach((s) => {
       const { latitude, longitude, friendly_name } = s.attributes;
       if (latitude == null) return;
+      if (primary.source === "tracking" && s.entity_id === primary.entityId) return;
       let lat = latitude, lng = longitude;
       if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
       const pic = s.attributes.entity_picture;
@@ -3661,6 +3680,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         const { latitude, longitude, friendly_name, passive, radius } = z.attributes;
         if (latitude == null || passive) return;
         if ((cfg.hidden_entities || []).includes(z.entity_id)) return;
+        if (z.entity_id === "zone.home" && primary && primary.source !== "home") return;
         let lat = latitude, lng = longitude, radiusAttr = radius;
         if (z.entity_id === "zone.home") {
           if (cfg.home_lat != null && cfg.home_lat !== "" && cfg.home_lng != null && cfg.home_lng !== "") {
@@ -3710,6 +3730,25 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           }
         }
       });
+    }
+    if (primary && primary.source !== "home") {
+      let hlat = primary.point.lat, hlng = primary.point.lng;
+      if (this._basemapShift) [hlat, hlng] = GCJ.wgs2gcj(hlat, hlng);
+      const srcState = primary.entityId ? this._hass?.states?.[primary.entityId] : null;
+      const homeName = srcState?.attributes?.friendly_name || primary.entityId || "我的家";
+      markers.push({
+        lat: hlat,
+        lng: hlng,
+        entityId: primary.entityId || null,
+        short: homeName,
+        label: cfg.show_labels === false ? "" : homeName,
+        clusterable: false,
+        home: true,
+        draggable: false,
+        icon: srcState?.attributes?.icon || "mdi:home",
+        color: srcState?.attributes?.color || "#03a9f4"
+      });
+      pts.push({ lat: hlat, lng: hlng });
     }
     this._lastMarkers = markers;
     this._engine.setMarkers(markers, { cluster: cfg.show_cluster !== false });
@@ -4443,4 +4482,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.9.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
