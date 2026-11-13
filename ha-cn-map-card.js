@@ -172,7 +172,17 @@ var BASEMAPS = {
     attribution: "© OpenStreetMap",
     maxZoom: 19,
     needsShift: false,
+    global: true,
     layers: [{ template: (x, y, z) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png` }]
+  },
+  esri: {
+    name: "Esri 全球影像",
+    attribution: "© Esri World Imagery",
+    maxZoom: 19,
+    needsShift: false,
+    global: true,
+    noFilter: true,
+    layers: [{ template: (x, y, z) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}` }]
   }
 };
 var escapeHtml = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -303,8 +313,8 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     } };
     raf = requestAnimationFrame(step);
   }
-  addTileSet({ url, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
-    const ts = { url, maxZoom, zIndex, opacity, els: /* @__PURE__ */ new Map(), id: ++this._tileSeq };
+  addTileSet({ url, fallbackUrl = null, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
+    const ts = { url, fallbackUrl, maxZoom, zIndex, opacity, els: /* @__PURE__ */ new Map(), id: ++this._tileSeq };
     const layer = document.createElement("div");
     layer.className = nofilter ? "cmc-layer cmc-nofilter" : "cmc-layer";
     layer.style.cssText = `position:absolute;inset:0;z-index:${zIndex};opacity:${opacity}`;
@@ -380,7 +390,12 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
             img.src = ts.url(wx, ty, z);
             img.referrerPolicy = "no-referrer";
             img.onerror = () => {
-              img.style.visibility = "hidden";
+              if (ts.fallbackUrl && !img.__fb) {
+                img.__fb = true;
+                img.src = ts.fallbackUrl(wx, ty, z);
+              } else {
+                img.style.visibility = "hidden";
+              }
             };
             const d = Math.hypot(tx - midX, ty - midY) / diag;
             if (d < 0.4) {
@@ -1326,7 +1341,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       if (c.theme_mode === void 0 && (ms === "auto" || ms === "light" || ms === "dark")) c.theme_mode = ms;
       if (c.basemap === void 0) {
         if (ms === "satellite") c.basemap = "amap-satellite";
-        else if (ms === "streets" || ms === "auto" || ms === "light" || ms === "dark") c.basemap = "amap";
+        else if (ms === "streets") c.basemap = "amap";
       }
     }
     if (c.dark_mode !== void 0 && c.theme_mode === void 0) c.theme_mode = c.dark_mode ? "dark" : "light";
@@ -1336,8 +1351,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (!config || typeof config !== "object") throw new Error("ha-cn-map-card: 配置无效");
     this._rawConfig = config;
     this._config = {
-      basemap: "amap",
-      // amap | amap-satellite | tianditu | tianditu-satellite | osm
+      basemap: "auto",
+      // auto（按位置选）| amap | amap-satellite | tianditu | tianditu-satellite | osm | esri
       tianditu_key: "",
       default_zoom: 12,
       hours_to_show: 0,
@@ -1413,7 +1428,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       const layoutNow = this._resolveLayout();
       if (layoutNow !== this._layout) this._syncLayout();
     }
-    if (this._engine) this._update();
+    if (this._engine) {
+      const resolved = this._resolvedBasemap();
+      if (resolved !== this._renderedBasemap) this._render();
+      else this._update();
+    }
     this._ensureEntityRegistry();
   }
   /* 拉一次实体注册表，缓存 hidden_by 非空的实体集合。
@@ -1614,21 +1633,63 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._bleedUser = on;
     this._applyBleed(on);
   }
+  /* HA 全新安装、用户没改位置时，zone.home 仍是出厂的阿姆斯特丹默认坐标，视为“未设置” */
+  static get _DEFAULT_HOME() {
+    return { lat: 52.3731339, lng: 4.8907717 };
+  }
+  _isDefaultHome(lat, lng) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    const d = this.constructor._DEFAULT_HOME;
+    return Math.abs(lat - d.lat) < 0.05 && Math.abs(lng - d.lng) < 0.05;
+  }
+  /* 取家的 WGS84 坐标（回退链：卡片覆盖 → zone.home → HA 全局 config → 卡片 center）。
+     zone.home 是出厂默认坐标时跳过，继续往下找，避免把镜头钉在阿姆斯特丹。 */
+  _homeWgs84() {
+    const cfg = this._config || {};
+    const num = (v) => v === void 0 || v === null || v === "" ? null : Number(v);
+    let lat = num(cfg.home_lat), lng = num(cfg.home_lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    const home = this._hass?.states?.["zone.home"]?.attributes;
+    lat = Number(home?.latitude);
+    lng = Number(home?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !this._isDefaultHome(lat, lng)) return { lat, lng };
+    const conf = this._hass?.config;
+    lat = Number(conf?.latitude);
+    lng = Number(conf?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !this._isDefaultHome(lat, lng)) return { lat, lng };
+    lat = num(cfg.center?.latitude);
+    lng = num(cfg.center?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    return null;
+  }
+  /* 任意一个有效定位点（家优先，其次实体），供 auto 模式判断境内外 */
+  _anyWgs84Point() {
+    const h = this._homeWgs84();
+    if (h) return h;
+    const hass = this._hass;
+    if (hass) {
+      for (const st of Object.values(hass.states)) {
+        const la = Number(st.attributes?.latitude), lo = Number(st.attributes?.longitude);
+        if (Number.isFinite(la) && Number.isFinite(lo)) return { lat: la, lng: lo };
+      }
+    }
+    return null;
+  }
+  /* auto 模式：境内用高德（GCJ 纠偏），境外用 OSM（全球、无偏移）；拿不到坐标保守用高德 */
+  _resolvedBasemap() {
+    const cfg = this._config || {};
+    const bm = cfg.basemap || "auto";
+    if (bm !== "auto") return BASEMAPS[bm] ? bm : "amap";
+    const p = this._anyWgs84Point();
+    if (p && GCJ.outOfChina(p.lat, p.lng)) return "osm";
+    return "amap";
+  }
   /* 重置焦点：跳回 home 区域中心 + default_zoom，并暂停自动适配，避免下一帧又被 fit 走 */
   _resetFocus() {
-    const home = this._hass?.states?.["zone.home"];
     const cfg = this._config || {};
-    let lat = cfg.home_lat;
-    let lng = cfg.home_lng;
-    if (lat == null || lat === "" || lng == null || lng === "") {
-      lat = home?.attributes?.latitude;
-      lng = home?.attributes?.longitude;
-    }
-    if (lat == null || lng == null) {
-      lat = cfg.center?.latitude;
-      lng = cfg.center?.longitude;
-    }
-    if (lat == null || lng == null) return;
+    const home = this._homeWgs84();
+    if (!home) return;
+    let lat = home.lat, lng = home.lng;
     if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
     this._didFit = true;
     this._engine._userMoved = false;
@@ -1643,7 +1704,9 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       // 重建后要恢复选中光环，否则详情页"选中却无光环"
     } : null;
     const cfg = this._config;
-    const base = BASEMAPS[cfg.basemap] || BASEMAPS.amap;
+    const resolvedKey = this._resolvedBasemap();
+    this._renderedBasemap = resolvedKey;
+    const base = BASEMAPS[resolvedKey] || BASEMAPS.amap;
     const layout = this._layout = this._resolveLayout();
     const isFull = layout === LAYOUT.FULL;
     const zoomSide = "right";
@@ -2126,11 +2189,13 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
             <div class="cmc-set-b">
               <label>底图
                 <select data-d="basemap">
-                  <option value="amap">高德地图</option>
-                  <option value="amap-satellite">高德卫星</option>
-                  <option value="tianditu">天地图</option>
-                  <option value="tianditu-satellite">天地图卫星</option>
-                  <option value="osm">OpenStreetMap</option>
+                  <option value="auto">自动（按所在位置选择）</option>
+                  <option value="amap">高德地图（国内）</option>
+                  <option value="amap-satellite">高德卫星（国内）</option>
+                  <option value="tianditu">天地图（国内，需 Key）</option>
+                  <option value="tianditu-satellite">天地图卫星（国内，需 Key）</option>
+                  <option value="osm">OpenStreetMap（全球）</option>
+                  <option value="esri">Esri 全球影像</option>
                 </select>
               </label>
               <label>主题
@@ -2181,6 +2246,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
                 <label>半径（米） <input type="number" min="0" step="10" data-d="home_radius" placeholder="留空则用 HA 区域自身半径"></label>
                 <div class="cmc-set-actions">
                   <button data-geocode>解析地址并填入坐标</button>
+                  <button data-locate>定位到我的位置</button>
                   <span class="cmc-set-hint" data-geo-hint></span>
                 </div>
                 <span class="cmc-set-hint">地图上可直接拖家里的图标改位置，拖半径圈右侧白点改半径</span>
@@ -2208,8 +2274,10 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._engine = new CnTileEngine(mapEl);
     this._engine.removeTileSets();
     base.layers.forEach((l, i) => {
+      const fbTpl = base.global ? null : BASEMAPS.osm.layers[0].template;
       this._engine.addTileSet({
         url: (x, y, z) => l.template(x, y, z, cfg.tianditu_key),
+        fallbackUrl: fbTpl ? (x, y, z) => fbTpl(x, y, z) : null,
         maxZoom: base.maxZoom,
         opacity: l.opacity ?? 1,
         zIndex: i + 1,
@@ -2389,6 +2457,10 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     panel.querySelector("[data-geocode]")?.addEventListener("click", (e) => {
       e.stopPropagation();
       this._geocodeHome();
+    });
+    panel.querySelector("[data-locate]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._locateHome();
     });
     panel.querySelector("[data-ent-list]")?.addEventListener("change", (e) => {
       const id = e.target?.dataset?.ent;
@@ -2672,18 +2744,19 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       else if (k === "label_mode") el.value = c[k] || "name";
       else el.value = c[k] === void 0 ? "" : c[k];
     });
-    const bm = c.basemap || "amap";
+    const bm = c.basemap || "auto";
     d.querySelectorAll("[data-d-row]").forEach((el) => {
       el.style.display = el.dataset.dRow.split(" ").includes(bm) ? "" : "none";
     });
-    const home = this._hass?.states?.["zone.home"]?.attributes || {};
+    const homePt = this._homeWgs84();
+    const homeZone = this._hass?.states?.["zone.home"]?.attributes || {};
     const ph = (k, v) => {
       const el = d.querySelector(`[data-d="${k}"]`);
       if (el && c[k] == null) el.placeholder = v == null ? "" : String(v);
     };
-    ph("home_lat", typeof home.latitude === "number" ? home.latitude.toFixed(6) : "");
-    ph("home_lng", typeof home.longitude === "number" ? home.longitude.toFixed(6) : "");
-    ph("home_radius", typeof home.radius === "number" ? home.radius : "");
+    ph("home_lat", homePt ? homePt.lat.toFixed(6) : "");
+    ph("home_lng", homePt ? homePt.lng.toFixed(6) : "");
+    ph("home_radius", typeof homeZone.radius === "number" ? homeZone.radius : "");
     this._renderEntityPicker();
   }
   /* 设置里的实体清单：人 / 设备 / 区域，逐个勾选是否上图 */
@@ -2803,6 +2876,37 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
     setHint(`已定位：${cfg.home_lat}, ${cfg.home_lng}`);
     Promise.resolve().then(() => this._update());
+  }
+  /* 浏览器定位：取当前设备 WGS84 坐标，填到家并同步到 zone.home。
+     需用户在浏览器弹窗里授权；拒绝/不可用时给出提示，不静默回退到 IP 定位。 */
+  _locateHome() {
+    const hint = this.shadowRoot?.querySelector("[data-geo-hint]");
+    const setHint = (t) => {
+      if (hint) hint.textContent = t;
+    };
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setHint("当前环境不支持浏览器定位，请手动填经纬度");
+      return;
+    }
+    setHint("正在获取位置…");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos?.coords?.latitude, lng = pos?.coords?.longitude;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          setHint("定位结果无效，请手动填经纬度");
+          return;
+        }
+        const rLat = Number(lat.toFixed(6)), rLng = Number(lng.toFixed(6));
+        this._config = { ...this._config, home_lat: rLat, home_lng: rLng };
+        this._syncHomeFields();
+        this._syncHomeToZone({ latitude: rLat, longitude: rLng }, `已定位到：${rLat}, ${rLng}`);
+      },
+      (err) => {
+        const msg = err?.code === 1 ? "定位被拒绝，请在浏览器允许位置权限后重试" : err?.code === 2 ? "暂时取不到位置，请检查定位开关后重试" : err?.code === 3 ? "定位超时，请重试或手动填经纬度" : "定位失败，请手动填经纬度";
+        setHint(msg);
+      },
+      { enableHighAccuracy: false, timeout: 8e3, maximumAge: 6e4 }
+    );
   }
   _syncHomeFields() {
     const d = this.shadowRoot?.querySelector('[data-view="settings"]');
@@ -3786,11 +3890,13 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
 
 // src/editor.js
 var BASEMAP_OPTIONS = [
-  { value: "amap", label: "高德地图（默认，免 Key）" },
-  { value: "amap-satellite", label: "高德卫星影像" },
-  { value: "tianditu", label: "天地图（需 Key）" },
-  { value: "tianditu-satellite", label: "天地图卫星（需 Key）" },
-  { value: "osm", label: "OpenStreetMap（海外）" }
+  { value: "auto", label: "自动（按所在位置选择）" },
+  { value: "amap", label: "高德地图（国内，免 Key）" },
+  { value: "amap-satellite", label: "高德卫星影像（国内）" },
+  { value: "tianditu", label: "天地图（国内，需 Key）" },
+  { value: "tianditu-satellite", label: "天地图卫星（国内，需 Key）" },
+  { value: "osm", label: "OpenStreetMap（全球）" },
+  { value: "esri", label: "Esri 全球影像" }
 ];
 var ENTITY_FILTER = [
   { key: "person.", label: "人员 person" },
@@ -3898,7 +4004,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
           <select data-k="basemap">
             ${BASEMAP_OPTIONS.map((o) => `<option value="${o.value}">${o.label}</option>`).join("")}
           </select>
-          <div class="hint">高德免 Key，自动做 GCJ-02 纠偏；天地图需在 console.tianditu.gov.cn 申请免费 Key。</div>
+          <div class="hint">自动模式按所在位置选图：境内用高德（自动 GCJ-02 纠偏），境外用全球 OSM；天地图需在 console.tianditu.gov.cn 申请免费 Key。</div>
         </div>
 
         <div class="row">
@@ -4139,7 +4245,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
   }
   _applyVisibility() {
     const sr = this.shadowRoot;
-    const bm = this._config.basemap || "amap";
+    const bm = this._config.basemap || "auto";
     sr.querySelectorAll("[data-only]").forEach((el) => {
       const allow = el.dataset.only.split(" ");
       el.style.display = allow.includes(bm) ? "" : "none";
@@ -4167,7 +4273,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
     const z = sr.querySelector('[data-k="default_zoom"]');
     if (z && !z.value) z.value = 12;
     const bm = sr.querySelector('[data-k="basemap"]');
-    if (bm) bm.value = c.basemap || "amap";
+    if (bm) bm.value = c.basemap || "auto";
     this._applyVisibility();
     this._refreshEntityPicker();
     this._renderEntities();
@@ -4194,4 +4300,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.8.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.8.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

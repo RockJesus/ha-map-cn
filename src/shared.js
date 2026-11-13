@@ -189,7 +189,17 @@ const BASEMAPS = {
     attribution: "© OpenStreetMap",
     maxZoom: 19,
     needsShift: false,
+    global: true,
     layers: [{ template: (x, y, z) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png` }],
+  },
+  esri: {
+    name: "Esri 全球影像",
+    attribution: "© Esri World Imagery",
+    maxZoom: 19,
+    needsShift: false,
+    global: true,
+    noFilter: true,
+    layers: [{ template: (x, y, z) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}` }],
   },
 };
 

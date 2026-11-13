@@ -137,8 +137,8 @@ class CnTileEngine extends EventTarget {
     raf = requestAnimationFrame(step);
   }
 
-  addTileSet({ url, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
-    const ts = { url, maxZoom, zIndex, opacity, els: new Map(), id: ++this._tileSeq };
+  addTileSet({ url, fallbackUrl = null, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
+    const ts = { url, fallbackUrl, maxZoom, zIndex, opacity, els: new Map(), id: ++this._tileSeq };
     const layer = document.createElement("div");
     // nofilter：卫星影像 / 路况叠加不参与暗色反色，否则颜色会失真
     layer.className = nofilter ? "cmc-layer cmc-nofilter" : "cmc-layer";
@@ -222,7 +222,15 @@ class CnTileEngine extends EventTarget {
               "position:absolute;width:256px;height:256px;user-select:none;-webkit-user-drag:none;image-rendering:auto";
             img.src = ts.url(wx, ty, z);
             img.referrerPolicy = "no-referrer";
-            img.onerror = () => { img.style.visibility = "hidden"; };
+            img.onerror = () => {
+              // 主图源瓦片取不到（如国内图源在境外）：换一次全球兜底瓦片；仍失败再隐藏
+              if (ts.fallbackUrl && !img.__fb) {
+                img.__fb = true;
+                img.src = ts.fallbackUrl(wx, ty, z);
+              } else {
+                img.style.visibility = "hidden";
+              }
+            };
             // 中心瓦片高优先级，边缘瓦片低优先级（浏览器会自动调度）
             const d = Math.hypot(tx - midX, ty - midY) / diag;
             if (d < 0.4) { try { img.fetchPriority = "high"; } catch (_e) {} }
