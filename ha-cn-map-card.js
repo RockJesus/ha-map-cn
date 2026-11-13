@@ -1293,6 +1293,20 @@ var EDIT_CONTEXT_SELECTOR = [
   "hui-card-picker",
   "hui-card-options"
 ].join(",");
+var PREVIEW_TAGS = /* @__PURE__ */ new Set([
+  "hui-card-picker",
+  "hui-dialog-add-card",
+  "hui-dialog-create-card",
+  "hui-dialog-edit-card",
+  "hui-card-editor",
+  "ha-editor"
+]);
+var EDIT_VIEW_TAGS = /* @__PURE__ */ new Set([
+  "hui-card-edit-mode",
+  "hui-section-edit-mode",
+  "hui-edit-view",
+  "hui-edit-dashboard-view"
+]);
 var PREVIEW_CENTER = { lat: 39.9042, lng: 116.4074 };
 var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   static getStubConfig() {
@@ -1343,15 +1357,15 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const on = !!v;
     if (on === this._preview) return;
     this._preview = on;
-    if (on) {
-      if (this._trackUnsub) {
-        this._trackUnsub();
-        this._trackUnsub = null;
-      }
-      this._trackSig = "";
-      this._trackPoints = {};
-      this._applyPreviewState();
+    if (!on) return;
+    if (!this._isPreviewCard()) return;
+    if (this._trackUnsub) {
+      this._trackUnsub();
+      this._trackUnsub = null;
     }
+    this._trackSig = "";
+    this._trackPoints = {};
+    this._applyPreviewState();
   }
   /* 官方 hui-map-card 的字段名与我们的内部字段对齐（2026.11 MapCardConfig）。
      同名概念优先用户写的内部字段；只做单向别名，不改写用户原始 YAML。 */
@@ -1460,7 +1474,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
      用户显式写进 entities: 的实体永远照画——点名了就不替他做决定。
      HA 2023.4+ 才有 hidden_by；拿不到（权限/版本）就置空集合并永不重试 */
   _ensureEntityRegistry() {
-    if (this._registryTried || this._preview || this._isPreviewCard()) return;
+    if (this._registryTried || this._isPreviewCard()) return;
     const conn = this._hass?.connection;
     if (!conn?.sendMessagePromise) return;
     this._registryTried = true;
@@ -1588,10 +1602,10 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
      区别于仪表盘编辑视图（hui-edit-view 等）：那里是真实卡片，要正常渲染地图；
      预览卡只画静态底图，不收集实体、不订阅历史轨迹、不拉注册表、禁用地图手势。 */
   _isPreviewCard() {
-    if (this._preview) return true;
     for (const el of this._ancestors(10)) {
       const tag = (el.localName || "").toLowerCase();
-      if (tag === "hui-card-picker" || tag === "hui-dialog-add-card" || tag === "hui-dialog-create-card" || tag === "hui-dialog-edit-card" || tag === "hui-card-editor" || tag === "ha-editor") return true;
+      if (EDIT_VIEW_TAGS.has(tag)) return false;
+      if (PREVIEW_TAGS.has(tag)) return true;
     }
     return false;
   }
@@ -4376,4 +4390,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.8.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.8.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

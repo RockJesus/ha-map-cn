@@ -18,6 +18,16 @@ const EDIT_CONTEXT_SELECTOR = [
   "hui-edit-view", "hui-editor", "hui-card-editor", "hui-dialog-edit-card",
   "hui-dialog-add-card", "hui-dialog-create-card", "hui-card-picker", "hui-card-options",
 ].join(",");
+// 预览缩略卡（选择器 / 弹窗内静态示意）：祖先链命中才算预览，豁免实体收集 / 轨迹订阅 / 注册表拉取
+const PREVIEW_TAGS = new Set([
+  "hui-card-picker", "hui-dialog-add-card", "hui-dialog-create-card",
+  "hui-dialog-edit-card", "hui-card-editor", "ha-editor",
+]);
+// 仪表盘编辑视图里的真实卡片：即使官方回写 preview=true，也照常画地图，只做紧凑 / 退 bleed
+const EDIT_VIEW_TAGS = new Set([
+  "hui-card-edit-mode", "hui-section-edit-mode", "hui-edit-view",
+  "hui-edit-dashboard-view",
+]);
 // 预览示意中心：北京（固定公开坐标，不读用户/开发者家位置）
 const PREVIEW_CENTER = { lat: 39.9042, lng: 116.4074 };
 
@@ -67,14 +77,15 @@ class HaCnMapCard extends HTMLElement {
     const on = !!v;
     if (on === this._preview) return;
     this._preview = on;
-    if (on) {
-      if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
-      this._trackSig = "";
-      this._trackPoints = {};
-      // 官方回写 preview 往往晚于首帧 _render()：此刻引擎可能已按真实分支 fit 到用户家附近，
-      // 必须再收敛一次到静态示意底图（北京中心、清空标记/圈层/轨迹、只读）。
-      this._applyPreviewState();
-    }
+    if (!on) return;
+    // 仅选择器 / 弹窗缩略卡收敛；仪表盘编辑视图虽也回写 preview=true，仍是真实卡片，不动轨迹与视野
+    if (!this._isPreviewCard()) return;
+    if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
+    this._trackSig = "";
+    this._trackPoints = {};
+    // 官方回写 preview 往往晚于首帧 _render()：此刻引擎可能已按真实分支 fit 到用户家附近，
+    // 必须再收敛一次到静态示意底图（北京中心、清空标记/圈层/轨迹、只读）。
+    this._applyPreviewState();
   }
 
   /* 官方 hui-map-card 的字段名与我们的内部字段对齐（2026.11 MapCardConfig）。
@@ -183,7 +194,7 @@ class HaCnMapCard extends HTMLElement {
      用户显式写进 entities: 的实体永远照画——点名了就不替他做决定。
      HA 2023.4+ 才有 hidden_by；拿不到（权限/版本）就置空集合并永不重试 */
   _ensureEntityRegistry() {
-    if (this._registryTried || this._preview || this._isPreviewCard()) return;
+    if (this._registryTried || this._isPreviewCard()) return;
     const conn = this._hass?.connection;
     if (!conn?.sendMessagePromise) return;
     this._registryTried = true;
@@ -330,13 +341,14 @@ class HaCnMapCard extends HTMLElement {
      区别于仪表盘编辑视图（hui-edit-view 等）：那里是真实卡片，要正常渲染地图；
      预览卡只画静态底图，不收集实体、不订阅历史轨迹、不拉注册表、禁用地图手势。 */
   _isPreviewCard() {
-    if (this._preview) return true;
     for (const el of this._ancestors(10)) {
       const tag = (el.localName || "").toLowerCase();
-      if (tag === "hui-card-picker" || tag === "hui-dialog-add-card" ||
-          tag === "hui-dialog-create-card" || tag === "hui-dialog-edit-card" ||
-          tag === "hui-card-editor" || tag === "ha-editor") return true;
+      // 编辑视图优先：这里仍是真实卡片，不能被收敛成静态示意
+      if (EDIT_VIEW_TAGS.has(tag)) return false;
+      if (PREVIEW_TAGS.has(tag)) return true;
     }
+    // 注意：不能拿 this._preview 当充分条件——HA 2026.11 在仪表盘编辑视图的真实卡片上
+    // 也会回写 preview=true；只认祖先链上的选择器 / 弹窗包裹层。
     return false;
   }
 
