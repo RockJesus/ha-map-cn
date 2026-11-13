@@ -9,15 +9,17 @@ import { CnTileEngine } from "./engine.js";
 // 编辑器/选择器/卡片编辑包裹层标签：命中即处于编辑上下文，必须收敛为紧凑布局、退出 bleed。
 // `hui-card-options` 为 HA 2026.11 卡片编辑覆层包裹（panel 视图进编辑态时插入卡片父链）。
 const EDIT_CONTEXT_TAGS = new Set([
-  "hui-dialog-add-card", "hui-card-picker", "ha-dialog",
+  "hui-dialog-add-card", "hui-dialog-create-card", "hui-card-picker", "ha-dialog",
   "hui-dialog-edit-lovelace", "hui-dialog-select-view",
   "hui-edit-view", "hui-editor", "ha-editor", "hui-card-editor",
   "hui-edit-dashboard-view", "hui-dialog-edit-card", "hui-card-options",
 ]);
 const EDIT_CONTEXT_SELECTOR = [
   "hui-edit-view", "hui-editor", "hui-card-editor", "hui-dialog-edit-card",
-  "hui-dialog-add-card", "hui-card-picker", "hui-card-options",
+  "hui-dialog-add-card", "hui-dialog-create-card", "hui-card-picker", "hui-card-options",
 ].join(",");
+// 预览示意中心：北京（固定公开坐标，不读用户/开发者家位置）
+const PREVIEW_CENTER = { lat: 39.9042, lng: 116.4074 };
 
 class HaCnMapCard extends HTMLElement {
   static getStubConfig() {
@@ -65,10 +67,13 @@ class HaCnMapCard extends HTMLElement {
     const on = !!v;
     if (on === this._preview) return;
     this._preview = on;
-    if (on && this._engine) {
+    if (on) {
       if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
       this._trackSig = "";
       this._trackPoints = {};
+      // 官方回写 preview 往往晚于首帧 _render()：此刻引擎可能已按真实分支 fit 到用户家附近，
+      // 必须再收敛一次到静态示意底图（北京中心、清空标记/圈层/轨迹、只读）。
+      this._applyPreviewState();
     }
   }
 
@@ -178,7 +183,7 @@ class HaCnMapCard extends HTMLElement {
      用户显式写进 entities: 的实体永远照画——点名了就不替他做决定。
      HA 2023.4+ 才有 hidden_by；拿不到（权限/版本）就置空集合并永不重试 */
   _ensureEntityRegistry() {
-    if (this._registryTried || this._isPreviewCard()) return;
+    if (this._registryTried || this._preview || this._isPreviewCard()) return;
     const conn = this._hass?.connection;
     if (!conn?.sendMessagePromise) return;
     this._registryTried = true;
@@ -329,10 +334,30 @@ class HaCnMapCard extends HTMLElement {
     for (const el of this._ancestors(10)) {
       const tag = (el.localName || "").toLowerCase();
       if (tag === "hui-card-picker" || tag === "hui-dialog-add-card" ||
-          tag === "hui-dialog-edit-card" || tag === "hui-card-editor" ||
-          tag === "ha-editor") return true;
+          tag === "hui-dialog-create-card" || tag === "hui-dialog-edit-card" ||
+          tag === "hui-card-editor" || tag === "ha-editor") return true;
     }
     return false;
+  }
+
+  /* 收敛到预览静态态：只读、北京示意中心、清空标记/精度圈/轨迹、退订历史、隐藏面板与控件。
+     首帧 _render() 时卡片往往还没挂进 DOM、preview 也未置位，会先按真实分支 fit 到用户家附近；
+     后置进入预览（官方回写 preview 属性 / 挂载后祖先链才就位）时必须再跑一次本方法兜底。 */
+  _applyPreviewState() {
+    if (!this._isPreviewCard()) return;
+    const eng = this._engine;
+    if (eng) {
+      eng.setReadOnly(true);
+      eng.setView(PREVIEW_CENTER.lat, PREVIEW_CENTER.lng, Number(this._config?.default_zoom) || 12);
+      eng.setMarkers([], { cluster: false });
+      eng.setAccuracyCircles([]);
+      eng.clearPaths();
+      eng.render();
+    }
+    if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
+    this._trackSig = "";
+    this._trackPoints = {};
+    this.classList.add("cmc-preview");
   }
 
   _autoLayout() {
@@ -1094,7 +1119,7 @@ class HaCnMapCard extends HTMLElement {
     this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     if (previewCard) {
       this._engine.setReadOnly(true);
-      this._engine.setView(39.9042, 116.4074, Number(cfg.default_zoom) || 12);
+      this._engine.setView(PREVIEW_CENTER.lat, PREVIEW_CENTER.lng, Number(cfg.default_zoom) || 12);
     } else {
     this._homeLocked = true; // 默认锁定，防止误触拖动
     this._engine._homeLocked = true;
@@ -1979,6 +2004,8 @@ class HaCnMapCard extends HTMLElement {
     }
     // 首帧后再判一次：刚挂上时祖先尺寸可能还没稳定
     Promise.resolve().then(() => this._syncBleed());
+    // 挂载后祖先链才就位：若处于选择器/编辑器预览，收敛到静态示意底图（首帧可能按真实分支 fit 过）
+    if (this._isPreviewCard()) this._applyPreviewState();
   }
 
   /* 布局变了（panel 视图赋值 / 尺寸变化）时重建，并保住当前视野 */
@@ -2365,11 +2392,8 @@ class HaCnMapCard extends HTMLElement {
   _update() {
     if (this._applyConditions()) return;   // conditions 不满足：整卡隐藏，布局不留空白
     if (this._isPreviewCard()) {
-      // 预览缩略卡：只画静态底图，清空标记/圈层/轨迹，不收集实体、不自动适配、不渲染列表
-      this._engine?.setMarkers([], { cluster: false });
-      this._engine?.setAccuracyCircles([]);
-      this._engine?.clearPaths();
-      this._engine?.render();
+      // 预览缩略卡：收敛到静态示意底图，清空标记/圈层/轨迹，不收集实体、不自动适配、不渲染列表
+      this._applyPreviewState();
       return;
     }
     const hass = this._hass, cfg = this._config;
@@ -2699,6 +2723,12 @@ class HaCnMapCard extends HTMLElement {
     const listEl = this.shadowRoot.querySelector("[data-list]");
     const tabsEl = this.shadowRoot.querySelector(".cmc-tabs");
     if (!listEl) return;
+    // 预览缩略卡：不收集实体、不渲染列表，面板本就被 CSS 隐藏，避免把当前实例实体带进预览 DOM
+    if (this._isPreviewCard()) {
+      listEl.innerHTML = "";
+      if (tabsEl) tabsEl.querySelectorAll("[data-tab]").forEach((b) => { b.hidden = true; b.disabled = true; });
+      return;
+    }
     const g = this._listEntries();
     const zones = g.zones;
     const counts = { people: g.people.length, devices: g.devices.length, zones: zones.length };

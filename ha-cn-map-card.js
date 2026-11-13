@@ -1270,6 +1270,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
 // src/card.js
 var EDIT_CONTEXT_TAGS = /* @__PURE__ */ new Set([
   "hui-dialog-add-card",
+  "hui-dialog-create-card",
   "hui-card-picker",
   "ha-dialog",
   "hui-dialog-edit-lovelace",
@@ -1288,9 +1289,11 @@ var EDIT_CONTEXT_SELECTOR = [
   "hui-card-editor",
   "hui-dialog-edit-card",
   "hui-dialog-add-card",
+  "hui-dialog-create-card",
   "hui-card-picker",
   "hui-card-options"
 ].join(",");
+var PREVIEW_CENTER = { lat: 39.9042, lng: 116.4074 };
 var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   static getStubConfig() {
     return { show_all: true };
@@ -1340,13 +1343,14 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const on = !!v;
     if (on === this._preview) return;
     this._preview = on;
-    if (on && this._engine) {
+    if (on) {
       if (this._trackUnsub) {
         this._trackUnsub();
         this._trackUnsub = null;
       }
       this._trackSig = "";
       this._trackPoints = {};
+      this._applyPreviewState();
     }
   }
   /* 官方 hui-map-card 的字段名与我们的内部字段对齐（2026.11 MapCardConfig）。
@@ -1456,7 +1460,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
      用户显式写进 entities: 的实体永远照画——点名了就不替他做决定。
      HA 2023.4+ 才有 hidden_by；拿不到（权限/版本）就置空集合并永不重试 */
   _ensureEntityRegistry() {
-    if (this._registryTried || this._isPreviewCard()) return;
+    if (this._registryTried || this._preview || this._isPreviewCard()) return;
     const conn = this._hass?.connection;
     if (!conn?.sendMessagePromise) return;
     this._registryTried = true;
@@ -1587,9 +1591,31 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (this._preview) return true;
     for (const el of this._ancestors(10)) {
       const tag = (el.localName || "").toLowerCase();
-      if (tag === "hui-card-picker" || tag === "hui-dialog-add-card" || tag === "hui-dialog-edit-card" || tag === "hui-card-editor" || tag === "ha-editor") return true;
+      if (tag === "hui-card-picker" || tag === "hui-dialog-add-card" || tag === "hui-dialog-create-card" || tag === "hui-dialog-edit-card" || tag === "hui-card-editor" || tag === "ha-editor") return true;
     }
     return false;
+  }
+  /* 收敛到预览静态态：只读、北京示意中心、清空标记/精度圈/轨迹、退订历史、隐藏面板与控件。
+     首帧 _render() 时卡片往往还没挂进 DOM、preview 也未置位，会先按真实分支 fit 到用户家附近；
+     后置进入预览（官方回写 preview 属性 / 挂载后祖先链才就位）时必须再跑一次本方法兜底。 */
+  _applyPreviewState() {
+    if (!this._isPreviewCard()) return;
+    const eng = this._engine;
+    if (eng) {
+      eng.setReadOnly(true);
+      eng.setView(PREVIEW_CENTER.lat, PREVIEW_CENTER.lng, Number(this._config?.default_zoom) || 12);
+      eng.setMarkers([], { cluster: false });
+      eng.setAccuracyCircles([]);
+      eng.clearPaths();
+      eng.render();
+    }
+    if (this._trackUnsub) {
+      this._trackUnsub();
+      this._trackUnsub = null;
+    }
+    this._trackSig = "";
+    this._trackPoints = {};
+    this.classList.add("cmc-preview");
   }
   _autoLayout() {
     if (typeof window === "undefined" || !this.isConnected) return LAYOUT.COMPACT;
@@ -2323,7 +2349,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     if (previewCard) {
       this._engine.setReadOnly(true);
-      this._engine.setView(39.9042, 116.4074, Number(cfg.default_zoom) || 12);
+      this._engine.setView(PREVIEW_CENTER.lat, PREVIEW_CENTER.lng, Number(cfg.default_zoom) || 12);
     } else {
       this._homeLocked = true;
       this._engine._homeLocked = true;
@@ -3178,6 +3204,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._mq.addEventListener?.("change", this._onMq);
     }
     Promise.resolve().then(() => this._syncBleed());
+    if (this._isPreviewCard()) this._applyPreviewState();
   }
   /* 布局变了（panel 视图赋值 / 尺寸变化）时重建，并保住当前视野 */
   _syncLayout() {
@@ -3529,10 +3556,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   _update() {
     if (this._applyConditions()) return;
     if (this._isPreviewCard()) {
-      this._engine?.setMarkers([], { cluster: false });
-      this._engine?.setAccuracyCircles([]);
-      this._engine?.clearPaths();
-      this._engine?.render();
+      this._applyPreviewState();
       return;
     }
     const hass = this._hass, cfg = this._config;
@@ -3832,6 +3856,14 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const listEl = this.shadowRoot.querySelector("[data-list]");
     const tabsEl = this.shadowRoot.querySelector(".cmc-tabs");
     if (!listEl) return;
+    if (this._isPreviewCard()) {
+      listEl.innerHTML = "";
+      if (tabsEl) tabsEl.querySelectorAll("[data-tab]").forEach((b) => {
+        b.hidden = true;
+        b.disabled = true;
+      });
+      return;
+    }
     const g = this._listEntries();
     const zones = g.zones;
     const counts = { people: g.people.length, devices: g.devices.length, zones: zones.length };
@@ -4344,4 +4376,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.8.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.8.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
