@@ -1324,6 +1324,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._geoPoint = null;
     this._geoRequested = false;
     this._geoDenied = false;
+    this._onboardDismissed = false;
     this._focusOnMarkerClick = true;
     this._bleedUser = void 0;
     this._isBleed = false;
@@ -1836,6 +1837,28 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       { enableHighAccuracy: false, timeout: 1e4, maximumAge: 6e4 }
     );
   }
+  /* 是否需要展示新用户引导：无 App 追踪、无浏览器定位结果、也没有有效静态家，
+     且预览/编辑态、本轮已手动关闭时不展示。 */
+  _needsOnboard() {
+    if (this._onboardDismissed) return false;
+    if (this._isPreviewCard() || this._inEditContext()) return false;
+    if (this._trackingPointRef()) return false;
+    if (this._geoPoint) return false;
+    if (this._homeWgs84()) return false;
+    return true;
+  }
+  _syncOnboard() {
+    const bar = this.shadowRoot?.querySelector("[data-onboard]");
+    if (!bar) return;
+    bar.hidden = !this._needsOnboard();
+  }
+  /* 定位反馈文案：同时写到设置抽屉提示与引导条副文案（抽屉可能未打开） */
+  _setLocationHint(t) {
+    const hint = this.shadowRoot?.querySelector("[data-geo-hint]");
+    if (hint) hint.textContent = t;
+    const onboardMsg = this.shadowRoot?.querySelector("[data-onboard-msg]");
+    if (onboardMsg) onboardMsg.textContent = t;
+  }
   _render() {
     const prevView = this._engine ? {
       c: { ...this._engine.center },
@@ -1994,11 +2017,35 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           box-shadow:0 0 0 1px rgba(0,0,0,.12);
         }
         .cmc-scale .bar { height:5px; margin-top:3px; border:1px solid #111; border-top:none; }
+        /* 新用户引导条：未设家且无追踪/定位结果时，引导点按钮定位到当前位置 */
+        .cmc-onboard {
+          position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:20;
+          display:flex; align-items:center; gap:10px; max-width:calc(100% - 24px);
+          padding:10px 12px; border-radius:12px;
+          background:var(--card-background-color,#fff); color:var(--primary-text-color,#212121);
+          border:1px solid var(--cmc-divider, rgba(0,0,0,.08));
+          box-shadow:0 2px 10px rgba(0,0,0,.28);
+        }
+        .cmc-onboard[hidden] { display:none; }
+        .cmc-onboard-tx { display:flex; flex-direction:column; gap:2px; min-width:0; }
+        .cmc-onboard-title { font-size:13px; font-weight:600; }
+        .cmc-onboard-msg { font-size:11.5px; color:var(--cmc-sub,#666); }
+        .cmc-onboard-btn {
+          flex:none; border:none; background:var(--primary-color,#03a9f4); color:#fff;
+          border-radius:8px; padding:7px 12px; font-size:12.5px; font-family:inherit;
+          cursor:pointer; white-space:nowrap;
+        }
+        .cmc-onboard-close {
+          flex:none; border:none; background:none; color:var(--cmc-sub,#666);
+          font-size:16px; line-height:1; cursor:pointer; padding:4px;
+        }
+        @media (max-width:600px) { .cmc-onboard { flex-wrap:wrap; top:8px; } }
         /* 选择器/编辑器预览模式：隐藏底部面板、浮钮、缩放控件、比例尺——只留地图本体 */
         :host(.cmc-preview) .cmc-panel,
         :host(.cmc-preview) .cmc-panel-btn,
         :host(.cmc-preview) .cmc-ctrl,
         :host(.cmc-preview) .cmc-scale,
+        :host(.cmc-preview) .cmc-onboard,
         :host(.cmc-preview) [data-fs] { display:none !important; }
         /* 桌面左侧面板展开时把比例尺顶上去，别被压住；手机端见顶部居中规则，不受此影响 */
         .cmc-card:has(.cmc-panel.open.dock-bottom) .cmc-scale { bottom:45%; transition:bottom .28s ease; }
@@ -2258,6 +2305,15 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         <div class="cmc-tip" hidden></div>
         ${titleHtml}
         <div class="cmc-map"></div>
+
+        <div class="cmc-onboard" data-onboard hidden>
+          <div class="cmc-onboard-tx">
+            <div class="cmc-onboard-title">还没有定位到当前位置</div>
+            <div class="cmc-onboard-msg" data-onboard-msg>点按钮用浏览器定位，把家标到这里</div>
+          </div>
+          <button class="cmc-onboard-btn" data-onboard-locate>定位到我的位置</button>
+          <button class="cmc-onboard-close" data-onboard-close aria-label="关闭引导">×</button>
+        </div>
 
         <div class="cmc-ctrl">
           <div class="cmc-ctrl-group">
@@ -2602,6 +2658,15 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     panel.querySelector("[data-locate]")?.addEventListener("click", (e) => {
       e.stopPropagation();
       this._locateHome();
+    });
+    this.shadowRoot.querySelector("[data-onboard-locate]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._locateHome();
+    });
+    this.shadowRoot.querySelector("[data-onboard-close]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._onboardDismissed = true;
+      this._syncOnboard();
     });
     panel.querySelector("[data-ent-list]")?.addEventListener("change", (e) => {
       const id = e.target?.dataset?.ent;
@@ -3021,20 +3086,16 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   /* 浏览器定位：取当前设备 WGS84 坐标，填到家并同步到 zone.home。
      需用户在浏览器弹窗里授权；拒绝/不可用时给出提示，不静默回退到 IP 定位。 */
   _locateHome() {
-    const hint = this.shadowRoot?.querySelector("[data-geo-hint]");
-    const setHint = (t) => {
-      if (hint) hint.textContent = t;
-    };
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setHint("当前环境不支持浏览器定位，请手动填经纬度");
+      this._setLocationHint("当前环境不支持浏览器定位，请手动填经纬度");
       return;
     }
-    setHint("正在获取位置…");
+    this._setLocationHint("正在获取位置…");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos?.coords?.latitude, lng = pos?.coords?.longitude;
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-          setHint("定位结果无效，请手动填经纬度");
+          this._setLocationHint("定位结果无效，请手动填经纬度");
           return;
         }
         const rLat = Number(lat.toFixed(6)), rLng = Number(lng.toFixed(6));
@@ -3044,7 +3105,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       },
       (err) => {
         const msg = err?.code === 1 ? "定位被拒绝，请在浏览器允许位置权限后重试" : err?.code === 2 ? "暂时取不到位置，请检查定位开关后重试" : err?.code === 3 ? "定位超时，请重试或手动填经纬度" : "定位失败，请手动填经纬度";
-        setHint(msg);
+        this._setLocationHint(msg);
       },
       { enableHighAccuracy: false, timeout: 8e3, maximumAge: 6e4 }
     );
@@ -3790,6 +3851,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (this._panelView === "detail") this._renderDetailHeader();
     else if (this._panelView !== "settings") this._renderList();
     this._maybeAutoLocate();
+    this._syncOnboard();
   }
   /* 自动适配时的内边距：全屏 + 面板展开时避开面板覆盖区
      （padding 会从可用宽高里扣两次，所以必须 clamp，否则会算出负数把缩放压到 3 级） */
@@ -4482,4 +4544,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.9.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
