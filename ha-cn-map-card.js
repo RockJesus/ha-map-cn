@@ -1752,7 +1752,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
     return null;
   }
-  /* 任意一个有效定位点（家 → 追踪实体 → 浏览器定位结果），供 auto 模式判断境内外 */
+  /* 任意一个有效定位点（家 → 追踪实体 → 浏览器定位结果），供底图/纠偏判定取点；
+     首屏飞行优先级见 _maybeAutoLocate（app 追踪 > 浏览器定位 > 静态家）。 */
   _anyWgs84Point() {
     return this._homeWgs84() || this._trackingPoint() || this._geoPoint || null;
   }
@@ -1783,9 +1784,9 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._didFit = true;
     this._engine.flyTo(lat, lng, Number(this._config?.default_zoom) || 12);
   }
-  /* 新用户未设家、也没有追踪实体时：首次打开自动用浏览器定位飞到当前位置。
-     只取本机坐标、不写 HA 家配置、不外发；拒绝/超时/不支持则静默回退默认中心。
-     预览缩略卡 / 编辑视图不发起，避免读到操作者位置或弹出权限请求。 */
+  /* 首屏优先飞到当前位置：app 追踪实体（人 / 设备 / 地理定位）已上报坐标则跟随它；
+     否则尝试浏览器定位飞到当前位置；定位被拒/超时/不支持时回退静态家/默认中心。
+     只取本机坐标、不写 HA 家配置、不外发；预览缩略卡 / 编辑视图不发起，避免读到操作者位置或弹出权限请求。 */
   _maybeAutoLocate() {
     if (this._geoRequested || this._geoDenied) return;
     if (this._isPreviewCard() || this._inEditContext()) return;
@@ -1794,7 +1795,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._geoDenied = true;
       return;
     }
-    if (this._homeWgs84() || this._trackingPoint()) return;
+    if (this._trackingPoint()) return;
     if (this._engine._userMoved) return;
     this._geoRequested = true;
     navigator.geolocation.getCurrentPosition(
@@ -4442,4 +4443,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.8.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

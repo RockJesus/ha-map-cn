@@ -44,10 +44,10 @@ class HaCnMapCard extends HTMLElement {
     this._trackSig = "";      // 订阅参数签名，避免重复订阅
     this._hiddenIds = null;   // 实体注册表里 hidden_by 非空的实体集合；null = 尚未拉取
     this._registryTried = false; // 注册表只拉一次，失败（权限/旧版本 HA）不重试
-    // 浏览器自动定位：新用户未设家、无追踪实体时飞到当前位置（仅本机，不写 HA 配置）
+    // 浏览器自动定位：无 app 追踪实体时优先飞到当前位置（仅本机，不写 HA 配置）
     this._geoPoint = null;      // 定位结果 {lat,lng}，内存态，刷新后重新请求
     this._geoRequested = false;  // 本会话是否已发起过自动定位
-    this._geoDenied = false;    // 定位被拒/超时/不支持：不再重试，回退默认中心
+    this._geoDenied = false;    // 定位被拒/超时/不支持：不再重试，回退静态家/默认中心
     // 官方交互：首次点标记 = 聚焦飞行 + 选中；设 false 恢复"直接弹 more-info"
     this._focusOnMarkerClick = true;
     this._bleedUser = undefined; // 用户点全屏按钮的选择：true 铺满 / false 不铺满 / undefined 自动
@@ -507,7 +507,8 @@ class HaCnMapCard extends HTMLElement {
     return null;
   }
 
-  /* 任意一个有效定位点（家 → 追踪实体 → 浏览器定位结果），供 auto 模式判断境内外 */
+  /* 任意一个有效定位点（家 → 追踪实体 → 浏览器定位结果），供底图/纠偏判定取点；
+     首屏飞行优先级见 _maybeAutoLocate（app 追踪 > 浏览器定位 > 静态家）。 */
   _anyWgs84Point() {
     return this._homeWgs84() || this._trackingPoint() || this._geoPoint || null;
   }
@@ -542,16 +543,17 @@ class HaCnMapCard extends HTMLElement {
     this._engine.flyTo(lat, lng, Number(this._config?.default_zoom) || 12);
   }
 
-  /* 新用户未设家、也没有追踪实体时：首次打开自动用浏览器定位飞到当前位置。
-     只取本机坐标、不写 HA 家配置、不外发；拒绝/超时/不支持则静默回退默认中心。
-     预览缩略卡 / 编辑视图不发起，避免读到操作者位置或弹出权限请求。 */
+  /* 首屏优先飞到当前位置：app 追踪实体（人 / 设备 / 地理定位）已上报坐标则跟随它；
+     否则尝试浏览器定位飞到当前位置；定位被拒/超时/不支持时回退静态家/默认中心。
+     只取本机坐标、不写 HA 家配置、不外发；预览缩略卡 / 编辑视图不发起，避免读到操作者位置或弹出权限请求。 */
   _maybeAutoLocate() {
     if (this._geoRequested || this._geoDenied) return;
     if (this._isPreviewCard() || this._inEditContext()) return;
     if (!this.isConnected || !this._engine) return;
     if (typeof navigator === "undefined" || !navigator.geolocation) { this._geoDenied = true; return; }
-    // HA 内已有可信位置（家 / 追踪实体）：跟随它，不抢视角
-    if (this._homeWgs84() || this._trackingPoint()) return;
+    // app 已上报当前位置：跟随它，浏览器定位让位、不抢视角
+    if (this._trackingPoint()) return;
+    // 静态家不再阻断：无 app 位置时优先尝试浏览器当前定位，定位失败再回退到家
     if (this._engine._userMoved) return;
     this._geoRequested = true;
     navigator.geolocation.getCurrentPosition(
@@ -2577,7 +2579,7 @@ class HaCnMapCard extends HTMLElement {
     } else if (!this._didFit) {
       this._engine.render();
     }
-    // 浏览器自动定位结果：HA 内无源时飞到当前位置（换底图重建后也由此补飞）
+    // 浏览器自动定位结果：无 app 追踪实体时飞到当前位置（换底图重建后也由此补飞）
     if (this._geoPoint && !this._didFit && !this._engine._userMoved) {
       this._flyToGeoPoint();
     }
@@ -2599,7 +2601,7 @@ class HaCnMapCard extends HTMLElement {
     // 列表里的状态文字（"离家 · 4 分钟前"）需要跟着 hass 刷新
     if (this._panelView === "detail") this._renderDetailHeader();
     else if (this._panelView !== "settings") this._renderList();
-    // 未设家、无追踪实体时尝试浏览器自动定位（只发起一次，预览/编辑态豁免）
+    // 无 app 追踪实体时尝试浏览器自动定位（只发起一次，预览/编辑态豁免）
     this._maybeAutoLocate();
   }
 
