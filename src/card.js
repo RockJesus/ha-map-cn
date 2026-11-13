@@ -44,6 +44,10 @@ class HaCnMapCard extends HTMLElement {
     this._trackSig = "";      // 订阅参数签名，避免重复订阅
     this._hiddenIds = null;   // 实体注册表里 hidden_by 非空的实体集合；null = 尚未拉取
     this._registryTried = false; // 注册表只拉一次，失败（权限/旧版本 HA）不重试
+    // 浏览器自动定位：新用户未设家、无追踪实体时飞到当前位置（仅本机，不写 HA 配置）
+    this._geoPoint = null;      // 定位结果 {lat,lng}，内存态，刷新后重新请求
+    this._geoRequested = false;  // 本会话是否已发起过自动定位
+    this._geoDenied = false;    // 定位被拒/超时/不支持：不再重试，回退默认中心
     // 官方交互：首次点标记 = 聚焦飞行 + 选中；设 false 恢复"直接弹 more-info"
     this._focusOnMarkerClick = true;
     this._bleedUser = undefined; // 用户点全屏按钮的选择：true 铺满 / false 不铺满 / undefined 自动
@@ -490,18 +494,22 @@ class HaCnMapCard extends HTMLElement {
     return null;
   }
 
-  /* 任意一个有效定位点（家优先，其次实体），供 auto 模式判断境内外 */
-  _anyWgs84Point() {
-    const h = this._homeWgs84();
-    if (h) return h;
+  /* 接入的追踪实体（人 / 设备 / 地理定位）里任意一个有效 WGS84 坐标 */
+  _trackingPoint() {
     const hass = this._hass;
-    if (hass) {
-      for (const st of Object.values(hass.states)) {
-        const la = Number(st.attributes?.latitude), lo = Number(st.attributes?.longitude);
-        if (Number.isFinite(la) && Number.isFinite(lo)) return { lat: la, lng: lo };
-      }
+    if (!hass) return null;
+    for (const st of Object.values(hass.states)) {
+      const id = st.entity_id || "";
+      if (!(id.startsWith("person.") || id.startsWith("device_tracker.") || id.startsWith("geo_location."))) continue;
+      const la = Number(st.attributes?.latitude), lo = Number(st.attributes?.longitude);
+      if (Number.isFinite(la) && Number.isFinite(lo)) return { lat: la, lng: lo };
     }
     return null;
+  }
+
+  /* 任意一个有效定位点（家 → 追踪实体 → 浏览器定位结果），供 auto 模式判断境内外 */
+  _anyWgs84Point() {
+    return this._homeWgs84() || this._trackingPoint() || this._geoPoint || null;
   }
 
   /* auto 模式：境内用高德（GCJ 纠偏），境外用 OSM（全球、无偏移）；拿不到坐标保守用高德 */
@@ -524,6 +532,43 @@ class HaCnMapCard extends HTMLElement {
     this._didFit = true;
     this._engine._userMoved = false;
     this._engine.flyTo(lat, lng, Number(cfg.default_zoom) || 12);
+  }
+
+  /* 飞到浏览器自动定位点：按当前底图坐标系做 WGS84→GCJ 纠偏 */
+  _flyToGeoPoint() {
+    const p = this._geoPoint;
+    if (!p || !this._engine) return;
+    let lat = p.lat, lng = p.lng;
+    if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
+    this._didFit = true;
+    this._engine.flyTo(lat, lng, Number(this._config?.default_zoom) || 12);
+  }
+
+  /* 新用户未设家、也没有追踪实体时：首次打开自动用浏览器定位飞到当前位置。
+     只取本机坐标、不写 HA 家配置、不外发；拒绝/超时/不支持则静默回退默认中心。
+     预览缩略卡 / 编辑视图不发起，避免读到操作者位置或弹出权限请求。 */
+  _maybeAutoLocate() {
+    if (this._geoRequested || this._geoDenied) return;
+    if (this._isPreviewCard() || this._inEditContext()) return;
+    if (!this.isConnected || !this._engine) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) { this._geoDenied = true; return; }
+    // HA 内已有可信位置（家 / 追踪实体）：跟随它，不抢视角
+    if (this._homeWgs84() || this._trackingPoint()) return;
+    if (this._engine._userMoved) return;
+    this._geoRequested = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos?.coords?.latitude, lng = pos?.coords?.longitude;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) { this._geoDenied = true; return; }
+        this._geoPoint = { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+        // 定位坐标可能改变境内外判定：需要换底图图层时重建一次，重建后的 _update 会补飞
+        const resolved = this._resolvedBasemap();
+        if (this._renderedBasemap && resolved !== this._renderedBasemap) { this._render(); return; }
+        if (!this._engine._userMoved) this._flyToGeoPoint();
+      },
+      () => { this._geoDenied = true; },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
   }
 
   _render() {
@@ -2534,6 +2579,10 @@ class HaCnMapCard extends HTMLElement {
     } else if (!this._didFit) {
       this._engine.render();
     }
+    // 浏览器自动定位结果：HA 内无源时飞到当前位置（换底图重建后也由此补飞）
+    if (this._geoPoint && !this._didFit && !this._engine._userMoved) {
+      this._flyToGeoPoint();
+    }
     // URL 深链：链接里带 ?entity_id=… 时首次渲染后直接定位到该实体
     this._applyUrlSelection();
     // entities 对象里的 focus: true：首次渲染后把视野聚焦到该实体（URL 深链优先，v1.1.5）
@@ -2552,6 +2601,8 @@ class HaCnMapCard extends HTMLElement {
     // 列表里的状态文字（"离家 · 4 分钟前"）需要跟着 hass 刷新
     if (this._panelView === "detail") this._renderDetailHeader();
     else if (this._panelView !== "settings") this._renderList();
+    // 未设家、无追踪实体时尝试浏览器自动定位（只发起一次，预览/编辑态豁免）
+    this._maybeAutoLocate();
   }
 
   /* 自动适配时的内边距：全屏 + 面板展开时避开面板覆盖区

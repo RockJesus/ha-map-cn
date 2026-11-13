@@ -1321,6 +1321,9 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._trackSig = "";
     this._hiddenIds = null;
     this._registryTried = false;
+    this._geoPoint = null;
+    this._geoRequested = false;
+    this._geoDenied = false;
     this._focusOnMarkerClick = true;
     this._bleedUser = void 0;
     this._isBleed = false;
@@ -1737,18 +1740,21 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
     return null;
   }
-  /* 任意一个有效定位点（家优先，其次实体），供 auto 模式判断境内外 */
-  _anyWgs84Point() {
-    const h = this._homeWgs84();
-    if (h) return h;
+  /* 接入的追踪实体（人 / 设备 / 地理定位）里任意一个有效 WGS84 坐标 */
+  _trackingPoint() {
     const hass = this._hass;
-    if (hass) {
-      for (const st of Object.values(hass.states)) {
-        const la = Number(st.attributes?.latitude), lo = Number(st.attributes?.longitude);
-        if (Number.isFinite(la) && Number.isFinite(lo)) return { lat: la, lng: lo };
-      }
+    if (!hass) return null;
+    for (const st of Object.values(hass.states)) {
+      const id = st.entity_id || "";
+      if (!(id.startsWith("person.") || id.startsWith("device_tracker.") || id.startsWith("geo_location."))) continue;
+      const la = Number(st.attributes?.latitude), lo = Number(st.attributes?.longitude);
+      if (Number.isFinite(la) && Number.isFinite(lo)) return { lat: la, lng: lo };
     }
     return null;
+  }
+  /* 任意一个有效定位点（家 → 追踪实体 → 浏览器定位结果），供 auto 模式判断境内外 */
+  _anyWgs84Point() {
+    return this._homeWgs84() || this._trackingPoint() || this._geoPoint || null;
   }
   /* auto 模式：境内用高德（GCJ 纠偏），境外用 OSM（全球、无偏移）；拿不到坐标保守用高德 */
   _resolvedBasemap() {
@@ -1769,6 +1775,50 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._didFit = true;
     this._engine._userMoved = false;
     this._engine.flyTo(lat, lng, Number(cfg.default_zoom) || 12);
+  }
+  /* 飞到浏览器自动定位点：按当前底图坐标系做 WGS84→GCJ 纠偏 */
+  _flyToGeoPoint() {
+    const p = this._geoPoint;
+    if (!p || !this._engine) return;
+    let lat = p.lat, lng = p.lng;
+    if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
+    this._didFit = true;
+    this._engine.flyTo(lat, lng, Number(this._config?.default_zoom) || 12);
+  }
+  /* 新用户未设家、也没有追踪实体时：首次打开自动用浏览器定位飞到当前位置。
+     只取本机坐标、不写 HA 家配置、不外发；拒绝/超时/不支持则静默回退默认中心。
+     预览缩略卡 / 编辑视图不发起，避免读到操作者位置或弹出权限请求。 */
+  _maybeAutoLocate() {
+    if (this._geoRequested || this._geoDenied) return;
+    if (this._isPreviewCard() || this._inEditContext()) return;
+    if (!this.isConnected || !this._engine) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      this._geoDenied = true;
+      return;
+    }
+    if (this._homeWgs84() || this._trackingPoint()) return;
+    if (this._engine._userMoved) return;
+    this._geoRequested = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos?.coords?.latitude, lng = pos?.coords?.longitude;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          this._geoDenied = true;
+          return;
+        }
+        this._geoPoint = { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+        const resolved = this._resolvedBasemap();
+        if (this._renderedBasemap && resolved !== this._renderedBasemap) {
+          this._render();
+          return;
+        }
+        if (!this._engine._userMoved) this._flyToGeoPoint();
+      },
+      () => {
+        this._geoDenied = true;
+      },
+      { enableHighAccuracy: false, timeout: 1e4, maximumAge: 6e4 }
+    );
   }
   _render() {
     const prevView = this._engine ? {
@@ -3685,6 +3735,9 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     } else if (!this._didFit) {
       this._engine.render();
     }
+    if (this._geoPoint && !this._didFit && !this._engine._userMoved) {
+      this._flyToGeoPoint();
+    }
     this._applyUrlSelection();
     if (!this._urlApplied && !this._focusApplied) {
       const fe = (cfg.entities || []).find((e) => typeof e === "object" && e.focus && e.entity);
@@ -3698,6 +3751,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
     if (this._panelView === "detail") this._renderDetailHeader();
     else if (this._panelView !== "settings") this._renderList();
+    this._maybeAutoLocate();
   }
   /* 自动适配时的内边距：全屏 + 面板展开时避开面板覆盖区
      （padding 会从可用宽高里扣两次，所以必须 clamp，否则会算出负数把缩放压到 3 级） */
@@ -4390,4 +4444,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.8.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.8.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
