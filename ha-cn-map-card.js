@@ -1268,6 +1268,29 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
 };
 
 // src/card.js
+var EDIT_CONTEXT_TAGS = /* @__PURE__ */ new Set([
+  "hui-dialog-add-card",
+  "hui-card-picker",
+  "ha-dialog",
+  "hui-dialog-edit-lovelace",
+  "hui-dialog-select-view",
+  "hui-edit-view",
+  "hui-editor",
+  "ha-editor",
+  "hui-card-editor",
+  "hui-edit-dashboard-view",
+  "hui-dialog-edit-card",
+  "hui-card-options"
+]);
+var EDIT_CONTEXT_SELECTOR = [
+  "hui-edit-view",
+  "hui-editor",
+  "hui-card-editor",
+  "hui-dialog-edit-card",
+  "hui-dialog-add-card",
+  "hui-card-picker",
+  "hui-card-options"
+].join(",");
 var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   static getStubConfig() {
     return { show_all: true };
@@ -1420,14 +1443,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._dark = dark;
       this.shadowRoot?.querySelector(".cmc-card")?.classList.toggle("is-dark", dark);
     }
-    const nowEditCtx = this._inEditContext();
-    if (nowEditCtx !== prevEditCtx) {
-      this._bleedUser = nowEditCtx ? false : void 0;
-      if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
-      this.classList.toggle("cmc-preview", nowEditCtx);
-      const layoutNow = this._resolveLayout();
-      if (layoutNow !== this._layout) this._syncLayout();
-    }
+    this._syncEditContext(prevEditCtx);
     if (this._engine) {
       const resolved = this._resolvedBasemap();
       if (resolved !== this._renderedBasemap) this._render();
@@ -1537,13 +1553,32 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   _inEditContext() {
     for (const el of this._ancestors(10)) {
       const tag = (el.localName || "").toLowerCase();
-      if (tag === "hui-dialog-add-card" || tag === "hui-card-picker" || tag === "ha-dialog" || tag === "hui-dialog-edit-lovelace" || tag === "hui-dialog-select-view" || tag === "hui-edit-view" || tag === "hui-editor" || tag === "ha-editor" || tag === "hui-card-editor" || tag === "hui-edit-dashboard-view" || tag === "hui-dialog-edit-card") return true;
+      if (EDIT_CONTEXT_TAGS.has(tag)) return true;
     }
     try {
-      if (document.querySelector("hui-edit-view, hui-editor, hui-card-editor, hui-dialog-edit-card, hui-dialog-add-card, hui-card-picker")) return true;
+      if (document.querySelector(EDIT_CONTEXT_SELECTOR)) return true;
+    } catch (_) {
+    }
+    try {
+      const edit = new URLSearchParams(window.location.search).get("edit");
+      if (edit === "1" || edit === "true") return true;
     } catch (_) {
     }
     return false;
+  }
+  /* 编辑/选择器上下文发生变化时：退出 bleed、隐藏多余面板控件、重算紧凑布局。
+     set hass、MutationObserver、location-changed 三路复用同一套收敛逻辑。 */
+  _syncEditContext(prev) {
+    const now = this._inEditContext();
+    const prevCtx = prev ?? this._inEditState;
+    if (now === prevCtx) return;
+    this._inEditState = now;
+    this._bleedUser = now ? false : void 0;
+    if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
+    this.classList.toggle("cmc-preview", now);
+    const layoutNow = this._resolveLayout();
+    if (layoutNow !== this._layout) this._syncLayout();
+    if (!now && !this._engine) this._render();
   }
   /* 卡片选择器 / 添加弹窗 / 卡片配置弹窗里的预览缩略卡。
      区别于仪表盘编辑视图（hui-edit-view 等）：那里是真实卡片，要正常渲染地图；
@@ -3066,12 +3101,16 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
   }
   connectedCallback() {
+    const onUrl = () => {
+      this._syncEditContext();
+      this._syncUrlSelection();
+    };
     if (!this._onPop) {
-      this._onPop = () => this._syncUrlSelection();
+      this._onPop = onUrl;
       window.addEventListener("popstate", this._onPop);
     }
     if (!this._onLoc) {
-      this._onLoc = () => this._syncUrlSelection();
+      this._onLoc = onUrl;
       window.addEventListener("location-changed", this._onLoc);
     }
     if (!this._onDocKey) {
@@ -3114,19 +3153,19 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._ro.observe(this);
     }
     if (typeof MutationObserver === "function" && !this._editObserver) {
-      this._editObserver = new MutationObserver(() => {
-        const now = this._inEditContext();
-        if (now !== this._inEditState) {
-          this._inEditState = now;
-          this._bleedUser = now ? false : void 0;
-          if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
-          this.classList.toggle("cmc-preview", now);
-          const layoutNow = this._resolveLayout();
-          if (layoutNow !== this._layout) this._syncLayout();
-          if (!now && !this._engine) this._render();
-        }
-      });
+      this._editObserver = new MutationObserver(() => this._syncEditContext());
+      const seen = /* @__PURE__ */ new Set([document.body]);
       this._editObserver.observe(document.body, { childList: true, subtree: true });
+      for (const el of this._ancestors(12)) {
+        const r = el.getRootNode?.();
+        if (r && r.host && !seen.has(r)) {
+          seen.add(r);
+          try {
+            this._editObserver.observe(r, { childList: true, subtree: true });
+          } catch (_) {
+          }
+        }
+      }
       this._inEditState = this._inEditContext();
     }
     if (typeof window.matchMedia === "function" && !this._mq) {
@@ -3858,6 +3897,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     });
   }
   getCardSize() {
+    if (this._inEditContext()) {
+      const r0 = this._parseAspect(this._config?.aspect_ratio);
+      if (r0) return 1 + Math.floor(100 * r0.h / r0.w / 25) || 3;
+      return Math.ceil((this._config?.height || 360) / 50) + 1;
+    }
     if (this._layout === LAYOUT.FULL || this.classList.contains("cmc-bleed")) return 10;
     const r = this._parseAspect(this._config?.aspect_ratio);
     if (r) return 1 + Math.floor(100 * r.h / r.w / 25) || 3;
@@ -3866,7 +3910,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   /* 官方卡片 API：sections 视图的栅格尺寸。
      栅格 12 列、行高 56px；不给这个方法时卡片会占满整段且高度不可调 */
   getGridOptions() {
-    if (this._layout === "panel" || this.classList.contains("cmc-bleed")) {
+    if (!this._inEditContext() && (this._layout === "panel" || this.classList.contains("cmc-bleed"))) {
       return { columns: "full", rows: 8, min_columns: 6, min_rows: 2, max_rows: 20 };
     }
     const px = Number(this._config?.height) || 360;
@@ -4300,4 +4344,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.8.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.8.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

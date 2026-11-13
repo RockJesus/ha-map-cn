@@ -6,6 +6,19 @@ import {
 } from "./shared.js";
 import { CnTileEngine } from "./engine.js";
 
+// 编辑器/选择器/卡片编辑包裹层标签：命中即处于编辑上下文，必须收敛为紧凑布局、退出 bleed。
+// `hui-card-options` 为 HA 2026.11 卡片编辑覆层包裹（panel 视图进编辑态时插入卡片父链）。
+const EDIT_CONTEXT_TAGS = new Set([
+  "hui-dialog-add-card", "hui-card-picker", "ha-dialog",
+  "hui-dialog-edit-lovelace", "hui-dialog-select-view",
+  "hui-edit-view", "hui-editor", "ha-editor", "hui-card-editor",
+  "hui-edit-dashboard-view", "hui-dialog-edit-card", "hui-card-options",
+]);
+const EDIT_CONTEXT_SELECTOR = [
+  "hui-edit-view", "hui-editor", "hui-card-editor", "hui-dialog-edit-card",
+  "hui-dialog-add-card", "hui-card-picker", "hui-card-options",
+].join(",");
+
 class HaCnMapCard extends HTMLElement {
   static getStubConfig() {
     return { show_all: true };
@@ -148,14 +161,7 @@ class HaCnMapCard extends HTMLElement {
       this.shadowRoot?.querySelector(".cmc-card")?.classList.toggle("is-dark", dark);
     }
     // 编辑模式切换时立即重算布局 + 退出 bleed（position:fixed 元素不会因 HA 顶栏出现而触发 ResizeObserver）
-    const nowEditCtx = this._inEditContext();
-    if (nowEditCtx !== prevEditCtx) {
-      this._bleedUser = nowEditCtx ? false : undefined;
-      if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
-      this.classList.toggle("cmc-preview", nowEditCtx);
-      const layoutNow = this._resolveLayout();
-      if (layoutNow !== this._layout) this._syncLayout();
-    }
+    this._syncEditContext(prevEditCtx);
     if (this._engine) {
       // auto 模式：hass 坐标到达后境内外判定可能变化，底图/纠偏要跟着重建
       const resolved = this._resolvedBasemap();
@@ -285,19 +291,34 @@ class HaCnMapCard extends HTMLElement {
   _inEditContext() {
     for (const el of this._ancestors(10)) {
       const tag = (el.localName || "").toLowerCase();
-      if (tag === "hui-dialog-add-card" || tag === "hui-card-picker" ||
-          tag === "ha-dialog" || tag === "hui-dialog-edit-lovelace" ||
-          tag === "hui-dialog-select-view" ||
-          tag === "hui-edit-view" || tag === "hui-editor" ||
-          tag === "ha-editor" || tag === "hui-card-editor" ||
-          tag === "hui-edit-dashboard-view" ||
-          tag === "hui-dialog-edit-card") return true;
+      if (EDIT_CONTEXT_TAGS.has(tag)) return true;
     }
     // 兜底：body 下存在编辑器/选择器/卡片配置弹窗（这些 overlay 不挂在卡片祖先链上）
     try {
-      if (document.querySelector("hui-edit-view, hui-editor, hui-card-editor, hui-dialog-edit-card, hui-dialog-add-card, hui-card-picker")) return true;
+      if (document.querySelector(EDIT_CONTEXT_SELECTOR)) return true;
+    } catch (_) { /* noop */ }
+    // URL 兜底：视图内编辑模式给地址加 ?edit=1（不换 DOM 标签，祖先链/body 都读不到）
+    try {
+      const edit = new URLSearchParams(window.location.search).get("edit");
+      if (edit === "1" || edit === "true") return true;
     } catch (_) { /* noop */ }
     return false;
+  }
+
+  /* 编辑/选择器上下文发生变化时：退出 bleed、隐藏多余面板控件、重算紧凑布局。
+     set hass、MutationObserver、location-changed 三路复用同一套收敛逻辑。 */
+  _syncEditContext(prev) {
+    const now = this._inEditContext();
+    const prevCtx = prev ?? this._inEditState;
+    if (now === prevCtx) return;
+    this._inEditState = now;
+    this._bleedUser = now ? false : undefined;
+    if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
+    this.classList.toggle("cmc-preview", now);
+    const layoutNow = this._resolveLayout();
+    if (layoutNow !== this._layout) this._syncLayout();
+    // 兜底：引擎被异常清理后，退出编辑上下文时重建一次正常卡片
+    if (!now && !this._engine) this._render();
   }
 
   /* 卡片选择器 / 添加弹窗 / 卡片配置弹窗里的预览缩略卡。
@@ -1873,12 +1894,17 @@ class HaCnMapCard extends HTMLElement {
 
   connectedCallback() {
     // 地址栏变化时回填选中（官方 _syncSelection 同款监听）
+    const onUrl = () => {
+      // 视图内编辑模式进出只改地址 ?edit=1，不换标签；先据此重算布局收敛，再回填选中
+      this._syncEditContext();
+      this._syncUrlSelection();
+    };
     if (!this._onPop) {
-      this._onPop = () => this._syncUrlSelection();
+      this._onPop = onUrl;
       window.addEventListener("popstate", this._onPop);
     }
     if (!this._onLoc) {
-      this._onLoc = () => this._syncUrlSelection();
+      this._onLoc = onUrl;
       window.addEventListener("location-changed", this._onLoc);
     }
     // 全局 Esc：详情页退回列表（点标记后焦点不在引擎容器上，引擎那层键盘处理接不到）
@@ -1928,20 +1954,17 @@ class HaCnMapCard extends HTMLElement {
     // 监听编辑模式切换：进入/退出编辑模式时 set hass 不一定触发（lovelace 状态变化），
     // 必须靠 MutationObserver 捕获 hui-edit-view / hui-card-editor / 弹窗的挂载与卸载
     if (typeof MutationObserver === "function" && !this._editObserver) {
-      this._editObserver = new MutationObserver(() => {
-        const now = this._inEditContext();
-        if (now !== this._inEditState) {
-          this._inEditState = now;
-          this._bleedUser = now ? false : undefined;
-          if (this.classList.contains("cmc-bleed")) this._applyBleed(false);
-          this.classList.toggle("cmc-preview", now);
-          const layoutNow = this._resolveLayout();
-          if (layoutNow !== this._layout) this._syncLayout();
-          // 兜底：引擎被异常清理后，退出编辑上下文时重建一次正常卡片
-          if (!now && !this._engine) this._render();
-        }
-      });
+      this._editObserver = new MutationObserver(() => this._syncEditContext());
+      // body light DOM 捕获弹窗/选择器；祖先 shadowRoot 捕获 panel 视图内 hui-card-options 的挂载/卸载
+      const seen = new Set([document.body]);
       this._editObserver.observe(document.body, { childList: true, subtree: true });
+      for (const el of this._ancestors(12)) {
+        const r = el.getRootNode?.();
+        if (r && r.host && !seen.has(r)) {
+          seen.add(r);
+          try { this._editObserver.observe(r, { childList: true, subtree: true }); } catch (_) { /* noop */ }
+        }
+      }
       this._inEditState = this._inEditContext();
     }
     // 手机/宽屏切换：抽屉形态要换（ha-snap-bottom-sheet ↔ 左侧浮层），整卡重建一次
@@ -2760,6 +2783,12 @@ class HaCnMapCard extends HTMLElement {
   }
 
   getCardSize() {
+    // 编辑/选择器上下文：按紧凑卡片排格子，不给全屏大值，避免卡片把编辑器网格撑满
+    if (this._inEditContext()) {
+      const r0 = this._parseAspect(this._config?.aspect_ratio);
+      if (r0) return 1 + Math.floor(((100 * r0.h) / r0.w) / 25) || 3;
+      return Math.ceil((this._config?.height || 360) / 50) + 1;
+    }
     // 全屏模式下高度由视口决定，给个大值免得 HA 按 360px 排格子
     if (this._layout === LAYOUT.FULL || this.classList.contains("cmc-bleed")) return 10;
     // 官方 hui-map-card 的算法：有宽高比时按比例折算成 50px 一格
@@ -2771,7 +2800,7 @@ class HaCnMapCard extends HTMLElement {
   /* 官方卡片 API：sections 视图的栅格尺寸。
      栅格 12 列、行高 56px；不给这个方法时卡片会占满整段且高度不可调 */
   getGridOptions() {
-    if (this._layout === "panel" || this.classList.contains("cmc-bleed")) {
+    if (!this._inEditContext() && (this._layout === "panel" || this.classList.contains("cmc-bleed"))) {
       return { columns: "full", rows: 8, min_columns: 6, min_rows: 2, max_rows: 20 };
     }
     const px = Number(this._config?.height) || 360;
