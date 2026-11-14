@@ -294,7 +294,8 @@ entities:
 | 视图类型 | 卡片表现 |
 |---|---|
 | **panel（面板）** | 地图铺满整屏，右侧悬浮控件，左上角（手机为底部）概览面板 |
-| sections / masonry / grid | 按 `height` 给固定高度，底部抽屉默认收起 |
+| sections / grid | 未配 `height` 时自动填满网格格子；配了 `height` 才固定 px |
+| masonry（列布局） | 按 `height`（默认 360px）给固定高度，底部抽屉默认收起 |
 | sections + `fill: true` | 地图脱离文档流铺满视口——**在 sections 视图里也能全屏**，不必改成面板视图 |
 | 任意（`layout: full`） | 强制按全屏布局渲染 |
 | 任意（点左下/左上 ⛶ 按钮） | 立刻全屏，再点或按 `Esc` 退出——**不改 YAML 也能全屏** |
@@ -311,6 +312,10 @@ entities:
 2. 没有这个信号时，再**穿透 shadow root** 往上找 `hui-panel-view` / `hui-grid-section`；
 3. 判定为全屏但**实测没占满视口**时（panel 视图不给高度、sections 格子只有 410px），
    自动升级为 `position:fixed` 真正铺满——不用你再手动补 `fill`。
+
+高度取值优先级（v1.9.3）：全屏/panel → `100%`；`aspect_ratio` → 按比例；
+YAML 显式 `height` → 固定 px；都没配时，sections/grid/panel 填 `100%` 跟随容器，
+masonry 列布局兜底 360px（列布局父容器没有确定高度，不能填百分比）。
 
 想强制指定用 `layout`：
 

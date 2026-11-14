@@ -1328,6 +1328,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._focusOnMarkerClick = true;
     this._bleedUser = void 0;
     this._isBleed = false;
+    this._layout = LAYOUT.COMPACT;
     this.addEventListener("keydown", this._onKeyBleed = (e) => {
       if (e.key === "Escape" && this.classList.contains("cmc-bleed")) {
         this._bleedUser = false;
@@ -1395,6 +1396,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("ha-cn-map-card: 配置无效");
     this._rawConfig = config;
+    this._heightExplicit = config.height !== void 0 && config.height !== null && config.height !== "";
     this._config = {
       basemap: "amap",
       // amap（默认高德）| amap-satellite | tianditu | tianditu-satellite | osm | esri；auto 为兼容旧配置的别名，等同高德
@@ -1499,6 +1501,33 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const w = Number(m[1]), h = Number(m[2]);
     return w > 0 && h > 0 ? { w, h } : null;
   }
+  /* 当前所属视图容器类型：sections/grid/panel 父容器会给确定高度或参与 flex 拉伸，
+     masonry/未知为列布局、父无显式高度，需要 px 兜底，不能填 100%。 */
+  _viewKind() {
+    if (typeof window === "undefined" || !this.isConnected) return "unknown";
+    for (const el of this._ancestors(10)) {
+      const tag = (el.localName || "").toLowerCase();
+      if (/^(hui-grid-section|hui-sections-view)$/.test(tag)) return "sections";
+      if (tag === "hui-grid-view") return "grid";
+      if (tag === "hui-masonry-view") return "masonry";
+      if (tag === "hui-panel-view") return "panel";
+    }
+    return "unknown";
+  }
+  /* host 高度策略（render 与 _applyAspect 共用，避免两处分叉）：
+     - 全屏/panel：100%，由 flex 拉伸或 bleed 接管
+     - aspect_ratio：auto，按比例撑高
+     - 用户显式 height：固定 px
+     - 未显式：可拉伸容器填 100%；列布局/未知兜底 360px */
+  _hostHeight() {
+    const cfg = this._config || {};
+    if (this._layout === LAYOUT.FULL) return "100%";
+    if (this._parseAspect(cfg.aspect_ratio)) return "auto";
+    if (this._heightExplicit && Number.isFinite(Number(cfg.height))) return `${cfg.height}px`;
+    const kind = this._viewKind();
+    if (kind === "sections" || kind === "grid" || kind === "panel") return "100%";
+    return "360px";
+  }
   /* 宽高比：卡片按比例撑高，全屏态忽略（铺满是第一优先级） */
   _applyAspect() {
     const card = this.shadowRoot?.querySelector(".cmc-card");
@@ -1506,7 +1535,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const r = this._isFull ? null : this._parseAspect(this._config?.aspect_ratio);
     card.classList.toggle("is-aspect", !!r);
     card.style.aspectRatio = r ? `${r.w} / ${r.h}` : "";
-    this.style.height = this._isFull ? "100%" : r ? "auto" : this._config?.height ? `${this._config.height}px` : "300px";
+    this.style.height = this._hostHeight();
   }
   /* 暗色判定：显式 theme_mode 优先，auto 跟随 HA 主题，再兜底系统偏好 */
   _resolveDark() {
@@ -1684,7 +1713,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this.classList.add("cmc-bleed");
     } else if (!on && has) {
       this.classList.remove("cmc-bleed");
-      this.style.height = this._layout === LAYOUT.FULL ? "100%" : this._config?.height ? `${this._config.height}px` : "100%";
+      this.style.height = this._hostHeight();
     }
     const btn = this.shadowRoot?.querySelector("[data-fs]");
     if (btn) {
@@ -1875,8 +1904,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const isFull = layout === LAYOUT.FULL;
     const zoomSide = "right";
     const fill = cfg.fill === true;
-    const ar = this._parseAspect(cfg.aspect_ratio);
-    const h = isFull ? "100%" : ar ? "auto" : cfg.height ? `${cfg.height}px` : "100%";
+    const h = this._hostHeight();
     if (typeof this.style !== "undefined") this.style.height = h || "";
     this._isFull = isFull;
     this._zoomSide = zoomSide;
@@ -1922,7 +1950,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
           position:relative;
           height:${h};
           min-height:${isFull ? "0" : cfg.height ? "0" : "300px"};
-          ${isFull || fill ? "min-height:0;" : ""}
+          ${isFull || fill ? "flex:1 1 0%; align-self:stretch; width:100%; min-height:0;" : ""}
           --cmc-radius: var(--ha-card-border-radius, 12px);
           --cmc-surface: var(--card-background-color, #fff);
           --cmc-text: var(--primary-text-color, #111);
@@ -3313,6 +3341,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
             this._syncLayout();
           } else {
             this._syncBleed();
+            this.style.height = this._hostHeight();
             this._engine?.render();
           }
         });
@@ -4110,7 +4139,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   /* 官方卡片 API：sections 视图的栅格尺寸。
      栅格 12 列、行高 56px；不给这个方法时卡片会占满整段且高度不可调 */
   getGridOptions() {
-    if (!this._inEditContext() && (this._layout === "panel" || this.classList.contains("cmc-bleed"))) {
+    if (!this._inEditContext() && (this._layout === LAYOUT.FULL || this.classList.contains("cmc-bleed"))) {
       return { columns: "full", rows: 8, min_columns: 6, min_rows: 2, max_rows: 20 };
     }
     const px = Number(this._config?.height) || 360;
@@ -4544,4 +4573,4 @@ window.customCards.push({
   preview: true,
   documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
 });
-console.info("%c ha-cn-map-card v1.9.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
