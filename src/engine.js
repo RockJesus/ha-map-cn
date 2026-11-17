@@ -3,6 +3,12 @@
 import { CLUSTER_RADIUS_PX, CLUSTER_MAX_AVATAR } from "./shared.js";
 
 class CnTileEngine extends EventTarget {
+  static MIN_ZOOM = 2;
+  static MAX_ZOOM = 19;
+  static clampZoom(z) {
+    return Math.max(CnTileEngine.MIN_ZOOM, Math.min(CnTileEngine.MAX_ZOOM, z));
+  }
+
   constructor(container) {
     super();
     this.container = container;
@@ -83,7 +89,7 @@ class CnTileEngine extends EventTarget {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     if (zoom != null && !Number.isFinite(zoom)) zoom = null;
     this.center = { lat, lng };
-    if (zoom != null) this.zoom = zoom;
+    if (zoom != null) this.zoom = CnTileEngine.clampZoom(zoom);
     this.render();
   }
 
@@ -108,7 +114,7 @@ class CnTileEngine extends EventTarget {
       this.setView(lat, lng, zoom ?? 12);
       return;
     }
-    const toZ = Math.max(3, Math.min(18, zoom ?? this.zoom));
+    const toZ = CnTileEngine.clampZoom(zoom ?? this.zoom);
     // 视野里已经能看到目标时不缩放，只平移（官方 #54774 的"聚焦飞行语义"）
     // 但 opts.forceZoom=true（用户主动点选实体）时，一律缩放到 toZ，让用户看清目标
     const w = this.container.clientWidth || 400;
@@ -291,12 +297,15 @@ class CnTileEngine extends EventTarget {
     const rawM = mPerPx * targetPx;
     const pow = 10 ** Math.floor(Math.log10(rawM));
     const norm = rawM / pow;
-    const nice = norm >= 5 ? 5 : norm >= 2 ? 2 : 1;
+    // 标准比例尺档位 1 / 2 / 2.5 / 5 × 10^n
+    const nice = norm >= 5 ? 5 : norm >= 2.5 ? 2.5 : norm >= 2 ? 2 : 1;
     const meters = nice * pow;
     const px = meters / mPerPx;
     this.scaleEl.style.width = `${Math.round(px)}px`;
-    this.scaleEl.textContent =
-      meters >= 1000 ? `${meters / 1000} km` : `${meters} m`;
+    const km = meters >= 1000;
+    const val = km ? meters / 1000 : meters;
+    const label = Number.isInteger(val) ? String(val) : val.toFixed(1).replace(/0$/, "").replace(/\.$/, "");
+    this.scaleEl.textContent = `${label} ${km ? "km" : "m"}`;
   }
 
   /* ---- 标记 ---- */
@@ -881,7 +890,7 @@ class CnTileEngine extends EventTarget {
         })
       );
       this._userMoved = true;
-      this.setZoom(Math.min(this.zoom + 2, 17), { anchor: { x: g.x, y: g.y } });
+      this.setZoom(Math.min(this.zoom + 2, CnTileEngine.MAX_ZOOM), { anchor: { x: g.x, y: g.y } });
     });
     return el;
   }
@@ -1025,7 +1034,7 @@ class CnTileEngine extends EventTarget {
 
   setZoom(z, opts) {
     this._userMoved = true;
-    const next = Math.max(3, Math.min(18, z));
+    const next = CnTileEngine.clampZoom(z);
     const anchor = opts?.anchor;
     if (anchor) {
       // 以锚点（屏幕像素）为中心缩放：保持锚点下的地理坐标不动。
@@ -1070,15 +1079,15 @@ class CnTileEngine extends EventTarget {
     });
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
-    let best = 3;
-    for (let z = 18; z >= 3; z--) {
+    let best = CnTileEngine.MIN_ZOOM;
+    for (let z = CnTileEngine.MAX_ZOOM; z >= CnTileEngine.MIN_ZOOM; z--) {
       const n = 2 ** z;
       if ((maxX - minX) * n * 256 < w - base.left - base.right &&
           (maxY - minY) * n * 256 < h - base.top - base.bottom) { best = z; break; }
     }
     // 多枚标记重合时"能装下"会一路解到最大层级，视觉上等于跳到一栋楼；
     // 按卡片宽度给个上限（宽卡片 16 级，手机窄卡片 15 级），簇内差异再靠聚合气泡表现。
-    const fitCap = Math.max(3, Math.min(16, Math.round(w / 140) + 11));
+    const fitCap = Math.max(CnTileEngine.MIN_ZOOM, Math.min(16, Math.round(w / 140) + 11));
     best = Math.min(best, fitCap);
     // 视野中心按不对称 padding 偏移：底部留得多时把地理中心往上抬
     const n = 2 ** best;

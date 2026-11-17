@@ -190,6 +190,11 @@ var escapeAttr = (v) => escapeHtml(v);
 
 // src/engine.js
 var CnTileEngine = class _CnTileEngine extends EventTarget {
+  static MIN_ZOOM = 2;
+  static MAX_ZOOM = 19;
+  static clampZoom(z) {
+    return Math.max(_CnTileEngine.MIN_ZOOM, Math.min(_CnTileEngine.MAX_ZOOM, z));
+  }
   constructor(container) {
     super();
     this.container = container;
@@ -261,7 +266,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     if (zoom != null && !Number.isFinite(zoom)) zoom = null;
     this.center = { lat, lng };
-    if (zoom != null) this.zoom = zoom;
+    if (zoom != null) this.zoom = _CnTileEngine.clampZoom(zoom);
     this.render();
   }
   /* 预览只读：选择器/编辑器弹窗里的静态缩略图，不响应任何地图手势 */
@@ -284,7 +289,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       this.setView(lat, lng, zoom ?? 12);
       return;
     }
-    const toZ = Math.max(3, Math.min(18, zoom ?? this.zoom));
+    const toZ = _CnTileEngine.clampZoom(zoom ?? this.zoom);
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
     const c = _CnTileEngine.tileXY(from.lat, from.lng, from.z);
@@ -462,11 +467,14 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     const rawM = mPerPx * targetPx;
     const pow = 10 ** Math.floor(Math.log10(rawM));
     const norm = rawM / pow;
-    const nice = norm >= 5 ? 5 : norm >= 2 ? 2 : 1;
+    const nice = norm >= 5 ? 5 : norm >= 2.5 ? 2.5 : norm >= 2 ? 2 : 1;
     const meters = nice * pow;
     const px = meters / mPerPx;
     this.scaleEl.style.width = `${Math.round(px)}px`;
-    this.scaleEl.textContent = meters >= 1e3 ? `${meters / 1e3} km` : `${meters} m`;
+    const km = meters >= 1e3;
+    const val = km ? meters / 1e3 : meters;
+    const label = Number.isInteger(val) ? String(val) : val.toFixed(1).replace(/0$/, "").replace(/\.$/, "");
+    this.scaleEl.textContent = `${label} ${km ? "km" : "m"}`;
   }
   /* ---- 标记 ---- */
   setMarkers(markers, opts) {
@@ -1047,7 +1055,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         })
       );
       this._userMoved = true;
-      this.setZoom(Math.min(this.zoom + 2, 17), { anchor: { x: g.x, y: g.y } });
+      this.setZoom(Math.min(this.zoom + 2, _CnTileEngine.MAX_ZOOM), { anchor: { x: g.x, y: g.y } });
     });
     return el;
   }
@@ -1192,7 +1200,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
   }
   setZoom(z, opts) {
     this._userMoved = true;
-    const next = Math.max(3, Math.min(18, z));
+    const next = _CnTileEngine.clampZoom(z);
     const anchor = opts?.anchor;
     if (anchor) {
       const w = this.container.clientWidth || 400;
@@ -1240,15 +1248,15 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     });
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
-    let best = 3;
-    for (let z = 18; z >= 3; z--) {
+    let best = _CnTileEngine.MIN_ZOOM;
+    for (let z = _CnTileEngine.MAX_ZOOM; z >= _CnTileEngine.MIN_ZOOM; z--) {
       const n2 = 2 ** z;
       if ((maxX - minX) * n2 * 256 < w - base.left - base.right && (maxY - minY) * n2 * 256 < h - base.top - base.bottom) {
         best = z;
         break;
       }
     }
-    const fitCap = Math.max(3, Math.min(16, Math.round(w / 140) + 11));
+    const fitCap = Math.max(_CnTileEngine.MIN_ZOOM, Math.min(16, Math.round(w / 140) + 11));
     best = Math.min(best, fitCap);
     const n = 2 ** best;
     const usedW = w - base.left - base.right;
@@ -4345,7 +4353,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
 
         <div class="row" data-hide-when="fit_entities">
           <label class="t">默认缩放级别</label>
-          <input type="number" data-k="default_zoom" min="3" max="18" step="1">
+          <input type="number" data-k="default_zoom" min="2" max="19" step="1">
         </div>
 
         <div class="row">
@@ -4536,4 +4544,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v1.9.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

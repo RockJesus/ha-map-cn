@@ -237,7 +237,7 @@ class HaCnMapCardEditor extends HTMLElement {
 
         <div class="row" data-hide-when="fit_entities">
           <label class="t">默认缩放级别</label>
-          <input type="number" data-k="default_zoom" min="3" max="18" step="1">
+          <input type="number" data-k="default_zoom" min="2" max="19" step="1">
         </div>
 
         <div class="row">
