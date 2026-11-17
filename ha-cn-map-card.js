@@ -198,8 +198,10 @@ var escapeAttr = (v) => escapeHtml(v);
 
 // src/engine.js
 var CnTileEngine = class _CnTileEngine extends EventTarget {
-  static MIN_ZOOM = 2;
+  static MIN_ZOOM = 1;
   static MAX_ZOOM = 19;
+  // 缩放低于该级别（标尺约 ≥1000km 的全球视图）切换为 3D 球体；高于此值回到平面瓦片
+  static GLOBE_ZOOM = 3;
   static clampZoom(z) {
     return Math.max(_CnTileEngine.MIN_ZOOM, Math.min(_CnTileEngine.MAX_ZOOM, z));
   }
@@ -222,8 +224,14 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     this._paths = [];
     this.clusterLayer = document.createElement("div");
     this.clusterLayer.className = "cmc-clusters";
+    this.globeCanvas = document.createElement("canvas");
+    this.globeCanvas.className = "cmc-globe";
+    this.globeCanvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:none";
     this.attribution = document.createElement("div");
     this.attribution.className = "cmc-attribution";
+    this._world = null;
+    this._worldPending = false;
+    this._worldFailed = false;
     this.viewport.style.position = "absolute";
     this.viewport.style.inset = "0";
     this.viewport.style.zIndex = "1";
@@ -232,6 +240,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     this.clusterLayer.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:6";
     this.attribution.style.cssText = "position:absolute;right:4px;bottom:2px;font-size:10px;opacity:.6;pointer-events:none;color:var(--primary-text-color,#eee)";
     this.scaleEl = null;
+    container.appendChild(this.globeCanvas);
     container.appendChild(this.viewport);
     container.appendChild(this.pathLayer);
     container.appendChild(this.labelLayer);
@@ -256,6 +265,185 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     const p = _CnTileEngine.project(lat, lng);
     const n = 2 ** z;
     return { x: p.x * n, y: p.y * n };
+  }
+  /* ---- 3D 球体（低级别全球视图）---- */
+  _isGlobe() {
+    return this.zoom <= _CnTileEngine.GLOBE_ZOOM;
+  }
+  _globeGeom(w, h) {
+    const cx = w / 2, cy = h / 2;
+    const span = _CnTileEngine.GLOBE_ZOOM - _CnTileEngine.MIN_ZOOM;
+    const t = span > 0 ? (_CnTileEngine.GLOBE_ZOOM - this.zoom) / span : 1;
+    const k = 0.38 + 0.08 * Math.max(0, Math.min(1, t));
+    return { cx, cy, Rr: Math.min(w, h) * k };
+  }
+  /* 经纬度 → 单位球向量（正射投影用） */
+  static _globeVec(lat, lng) {
+    const la = lat * Math.PI / 180, lo = lng * Math.PI / 180;
+    return { x: Math.cos(la) * Math.sin(lo), y: Math.sin(la), z: Math.cos(la) * Math.cos(lo) };
+  }
+  static _globeRot(v, lat0, lng0) {
+    const lo = lng0 * Math.PI / 180, la = lat0 * Math.PI / 180;
+    const x1 = v.x * Math.cos(lo) + v.z * Math.sin(lo);
+    const z1 = -v.x * Math.sin(lo) + v.z * Math.cos(lo);
+    const y2 = v.y * Math.cos(la) - z1 * Math.sin(la);
+    const z2 = v.y * Math.sin(la) + z1 * Math.cos(la);
+    return { x: x1, y: y2, z: z2 };
+  }
+  /* 异步拉取全球影像最低级瓦片拼合离屏世界图；失败则退回经纬网兜底球 */
+  _ensureWorldTexture() {
+    if (this._world || this._worldPending || this._worldFailed) return;
+    this._worldPending = true;
+    const z = 1, n = 2;
+    const cv = document.createElement("canvas");
+    cv.width = 256 * n;
+    cv.height = 256 * n;
+    const ctx = cv.getContext("2d");
+    let done = 0, ok = 0;
+    const finish = () => {
+      this._worldPending = false;
+      if (ok > 0) this._world = cv;
+      else this._worldFailed = true;
+      if (this.container.isConnected) this.render();
+    };
+    const tpl = BASEMAPS.esri.layers[0].template;
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          ctx.drawImage(img, x * 256, y * 256);
+          ok++;
+          done++;
+          if (done === n * n) finish();
+        };
+        img.onerror = () => {
+          done++;
+          if (done === n * n) finish();
+        };
+        img.src = tpl(x, y, z);
+      }
+    }
+  }
+  /* 统一屏幕投影：平面走墨卡托；球体走等距圆柱映射到球内，返回是否在球面内 */
+  _projectScreen(lat, lng, w, h) {
+    if (!this._isGlobe()) {
+      const c = _CnTileEngine.project(this.center.lat, this.center.lng);
+      const n = 2 ** this.zoom;
+      const p = _CnTileEngine.project(lat, lng);
+      return {
+        x: (p.x - c.x) * n * 256 + w / 2,
+        y: (p.y - c.y) * n * 256 + h / 2,
+        inside: true
+      };
+    }
+    const g = this._globeGeom(w, h);
+    const u = (lng + 180) / 360;
+    const v = (90 - Math.max(-80, Math.min(80, lat))) / 180;
+    const u0 = (this.center.lng + 180) / 360;
+    const v0 = (90 - Math.max(-80, Math.min(80, this.center.lat))) / 180;
+    let du = u - u0;
+    du = ((du + 0.5) % 1 + 1) % 1 - 0.5;
+    const x = g.cx + du * 2 * g.Rr;
+    const y = g.cy + (v - v0) * 2 * g.Rr;
+    const inside = (x - g.cx) ** 2 + (y - g.cy) ** 2 <= (g.Rr * 0.985) ** 2;
+    return { x, y, inside };
+  }
+  _renderGlobe(w, h) {
+    const canvas = this.globeCanvas;
+    const dpr = Math.min(2, typeof window !== "undefined" && window.devicePixelRatio || 1);
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const g = this._globeGeom(w, h);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, g.Rr, 0, Math.PI * 2);
+    ctx.clip();
+    this._paintOceanBase(ctx, g);
+    if (this._world) this._paintWorld(ctx, g);
+    else this._paintGridSphere(ctx, g);
+    const limb = ctx.createRadialGradient(g.cx, g.cy, g.Rr * 0.5, g.cx, g.cy, g.Rr);
+    limb.addColorStop(0, "rgba(0,0,0,0)");
+    limb.addColorStop(1, "rgba(0,0,0,.55)");
+    ctx.fillStyle = limb;
+    ctx.fillRect(g.cx - g.Rr, g.cy - g.Rr, g.Rr * 2, g.Rr * 2);
+    const hi = ctx.createRadialGradient(g.cx - g.Rr * 0.4, g.cy - g.Rr * 0.45, 0, g.cx - g.Rr * 0.4, g.cy - g.Rr * 0.45, g.Rr * 0.9);
+    hi.addColorStop(0, "rgba(255,255,255,.16)");
+    hi.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = hi;
+    ctx.fillRect(g.cx - g.Rr, g.cy - g.Rr, g.Rr * 2, g.Rr * 2);
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, g.Rr, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(120,180,230,.5)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  _paintWorld(ctx, g) {
+    const world = this._world, iw = world.width, ih = world.height;
+    const dw = 2 * g.Rr, dh = 2 * g.Rr;
+    const u0 = (this.center.lng + 180) / 360;
+    const v0 = (90 - this.center.lat) / 180;
+    const baseX = g.cx - dw / 2 - (u0 - 0.5) * dw;
+    const baseY = g.cy - dh / 2 - (v0 - 0.5) * dh;
+    for (let ox = -dw; ox <= dw; ox += dw) {
+      ctx.drawImage(world, 0, 0, iw, ih, baseX + ox, baseY, dw, dh);
+    }
+  }
+  _paintOceanBase(ctx, g) {
+    const Rr = g.Rr;
+    const grad = ctx.createRadialGradient(g.cx - Rr * 0.35, g.cy - Rr * 0.35, Rr * 0.1, g.cx, g.cy, Rr);
+    grad.addColorStop(0, "#1c5578");
+    grad.addColorStop(1, "#0d2738");
+    ctx.fillStyle = grad;
+    ctx.fillRect(g.cx - Rr, g.cy - Rr, Rr * 2, Rr * 2);
+  }
+  _paintGridSphere(ctx, g) {
+    const Rr = g.Rr;
+    ctx.strokeStyle = "rgba(255,255,255,.18)";
+    ctx.lineWidth = 1;
+    const plot = (la, lo) => {
+      const v = _CnTileEngine._globeRot(_CnTileEngine._globeVec(la, lo), this.center.lat, this.center.lng);
+      if (v.z <= 0.02) return null;
+      return { x: g.cx + Rr * v.x, y: g.cy - Rr * v.y };
+    };
+    for (let lo = -180; lo < 180; lo += 30) {
+      ctx.beginPath();
+      let prev = false;
+      for (let la = -80; la <= 80; la += 4) {
+        const p = plot(la, lo);
+        if (p) {
+          prev ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+        }
+        prev = !!p;
+      }
+      ctx.stroke();
+    }
+    for (let la = -60; la <= 60; la += 30) {
+      ctx.beginPath();
+      let prev = false;
+      for (let lo = -180; lo <= 180; lo += 4) {
+        const p = plot(la, lo);
+        if (p) {
+          prev ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+        }
+        prev = !!p;
+      }
+      ctx.stroke();
+    }
+  }
+  /* 球体模式拖拽：绕球心旋转视野（经度环绕、纬度钳制） */
+  _panGlobe(dx, dy) {
+    const w = this.container.clientWidth || 400, h = this.container.clientHeight || 300;
+    const g = this._globeGeom(w, h);
+    const lng = (this.center.lng - dx * 360 / (2 * g.Rr) + 540) % 360 - 180;
+    const lat = Math.max(-80, Math.min(80, this.center.lat + dy * 180 / (2 * g.Rr)));
+    this.setView(lat, lng);
   }
   /* 屏幕坐标（clientX/clientY）→ 底图坐标系经纬度（拖动家图标用） */
   latLngAt(clientX, clientY) {
@@ -372,85 +560,93 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     if (!this.container.clientWidth || !this.container.clientHeight) this._scheduleRenderRetry();
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
-    const c = _CnTileEngine.tileXY(this.center.lat, this.center.lng, this.zoom);
-    this.tileSets.forEach((ts) => {
-      const z = Math.max(ts.minZoom ?? 3, Math.min(Math.floor(this.zoom), ts.maxZoom));
-      const scale = 2 ** (this.zoom - z);
-      const n = 2 ** z;
-      const cz = 2 ** (this.zoom - z);
-      const cxz = c.x / cz, cyz = c.y / cz;
-      const half = Math.max(w, h) / 256 * (1 / scale) / 2 + 3;
-      const tx0 = Math.floor(cxz - half);
-      const tx1 = Math.ceil(cxz + half);
-      const ty0 = Math.floor(cyz - half);
-      const ty1 = Math.ceil(cyz + half);
-      const keep = /* @__PURE__ */ new Set();
-      const midX = (tx0 + tx1) / 2;
-      const midY = (ty0 + ty1) / 2;
-      const diag = Math.max(1, Math.hypot(tx1 - tx0, ty1 - ty0) / 2);
-      for (let ty = ty0; ty <= ty1; ty++) {
-        for (let tx = tx0; tx <= tx1; tx++) {
-          if (ty < 0 || ty >= n) continue;
-          const wx = (tx % n + n) % n;
-          const key = `${z}/${tx}/${ty}`;
-          keep.add(key);
-          let img = ts.els.get(key);
-          if (!img) {
-            img = document.createElement("img");
-            img.className = "cmc-tile";
-            img.loading = "eager";
-            img.decoding = "async";
-            img.style.cssText = "position:absolute;width:256px;height:256px;user-select:none;-webkit-user-drag:none;image-rendering:auto";
-            img.src = ts.url(wx, ty, z);
-            img.referrerPolicy = "no-referrer";
-            img.onerror = () => {
-              if (ts.fallbackUrl && !img.__fb) {
-                img.__fb = true;
-                img.src = ts.fallbackUrl(wx, ty, z);
-              } else {
-                img.style.visibility = "hidden";
+    const globe = this._isGlobe();
+    this.viewport.style.display = globe ? "none" : "";
+    this.globeCanvas.style.display = globe ? "" : "none";
+    if (globe) {
+      this._ensureWorldTexture();
+      this._renderGlobe(w, h);
+    } else {
+      const c = _CnTileEngine.tileXY(this.center.lat, this.center.lng, this.zoom);
+      this.tileSets.forEach((ts) => {
+        const z = Math.max(ts.minZoom ?? 3, Math.min(Math.floor(this.zoom), ts.maxZoom));
+        const scale = 2 ** (this.zoom - z);
+        const n = 2 ** z;
+        const cz = 2 ** (this.zoom - z);
+        const cxz = c.x / cz, cyz = c.y / cz;
+        const half = Math.max(w, h) / 256 * (1 / scale) / 2 + 3;
+        const tx0 = Math.floor(cxz - half);
+        const tx1 = Math.ceil(cxz + half);
+        const ty0 = Math.floor(cyz - half);
+        const ty1 = Math.ceil(cyz + half);
+        const keep = /* @__PURE__ */ new Set();
+        const midX = (tx0 + tx1) / 2;
+        const midY = (ty0 + ty1) / 2;
+        const diag = Math.max(1, Math.hypot(tx1 - tx0, ty1 - ty0) / 2);
+        for (let ty = ty0; ty <= ty1; ty++) {
+          for (let tx = tx0; tx <= tx1; tx++) {
+            if (ty < 0 || ty >= n) continue;
+            const wx = (tx % n + n) % n;
+            const key = `${z}/${tx}/${ty}`;
+            keep.add(key);
+            let img = ts.els.get(key);
+            if (!img) {
+              img = document.createElement("img");
+              img.className = "cmc-tile";
+              img.loading = "eager";
+              img.decoding = "async";
+              img.style.cssText = "position:absolute;width:256px;height:256px;user-select:none;-webkit-user-drag:none;image-rendering:auto";
+              img.src = ts.url(wx, ty, z);
+              img.referrerPolicy = "no-referrer";
+              img.onerror = () => {
+                if (ts.fallbackUrl && !img.__fb) {
+                  img.__fb = true;
+                  img.src = ts.fallbackUrl(wx, ty, z);
+                } else {
+                  img.style.visibility = "hidden";
+                }
+              };
+              const d = Math.hypot(tx - midX, ty - midY) / diag;
+              if (d < 0.4) {
+                try {
+                  img.fetchPriority = "high";
+                } catch (_e) {
+                }
+              } else if (d > 0.8) {
+                try {
+                  img.fetchPriority = "low";
+                } catch (_e) {
+                }
               }
-            };
-            const d = Math.hypot(tx - midX, ty - midY) / diag;
-            if (d < 0.4) {
-              try {
-                img.fetchPriority = "high";
-              } catch (_e) {
-              }
-            } else if (d > 0.8) {
-              try {
-                img.fetchPriority = "low";
-              } catch (_e) {
-              }
+              ts.els.set(key, img);
+              ts.layer.appendChild(img);
             }
-            ts.els.set(key, img);
-            ts.layer.appendChild(img);
+            img.style.visibility = "visible";
+            const px = (tx - cxz) * 256 * scale + w / 2;
+            const py = (ty - cyz) * 256 * scale + h / 2;
+            img.style.left = `${px}px`;
+            img.style.top = `${py}px`;
+            const size = 256 * scale;
+            img.style.width = `${size}px`;
+            img.style.height = `${size}px`;
           }
-          img.style.visibility = "visible";
-          const px = (tx - cxz) * 256 * scale + w / 2;
-          const py = (ty - cyz) * 256 * scale + h / 2;
-          img.style.left = `${px}px`;
-          img.style.top = `${py}px`;
-          const size = 256 * scale;
-          img.style.width = `${size}px`;
-          img.style.height = `${size}px`;
         }
-      }
-      const now = Date.now();
-      ts.els.forEach((img, key) => {
-        if (keep.has(key)) {
-          img.__lastSeen = now;
-          return;
-        }
-        if (!img.__lastSeen) img.__lastSeen = now - 6e3;
-        if (now - img.__lastSeen > 5e3) {
-          img.remove();
-          ts.els.delete(key);
-        } else {
-          img.style.visibility = "hidden";
-        }
+        const now = Date.now();
+        ts.els.forEach((img, key) => {
+          if (keep.has(key)) {
+            img.__lastSeen = now;
+            return;
+          }
+          if (!img.__lastSeen) img.__lastSeen = now - 6e3;
+          if (now - img.__lastSeen > 5e3) {
+            img.remove();
+            ts.els.delete(key);
+          } else {
+            img.style.visibility = "hidden";
+          }
+        });
       });
-    });
+    }
     this._layoutMarkers(w, h);
     this._layoutPaths(w, h);
     this._layoutCircles();
@@ -620,15 +816,14 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     if (!list || !list.length) return;
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
-    const c = _CnTileEngine.project(this.center.lat, this.center.lng);
-    const n = 2 ** this.zoom;
     const group = this._circleGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     this.pathLayer.appendChild(group);
     for (const ci of list) {
       if (!Number.isFinite(ci.lat) || !Number.isFinite(ci.lng) || !Number.isFinite(ci.radius)) continue;
-      const q = _CnTileEngine.project(ci.lat, ci.lng);
-      const x = (q.x - c.x) * n * 256 + w / 2;
-      const y = (q.y - c.y) * n * 256 + h / 2;
+      if (this._isGlobe()) continue;
+      const s = this._projectScreen(ci.lat, ci.lng, w, h);
+      const x = s.x, y = s.y;
+      const n = 2 ** this.zoom;
       const mPerPx = 156543.03392 * Math.cos(ci.lat * Math.PI / 180) / n;
       const r = ci.radius / mPerPx;
       const drawCircle = Number.isFinite(r) && r >= 2 && r <= Math.max(w, h) * 3;
@@ -681,8 +876,6 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       this._hitGroup = null;
       return;
     }
-    const c = _CnTileEngine.project(this.center.lat, this.center.lng);
-    const n = 2 ** this.zoom;
     const margin = 4e3;
     this._arrowGroup?.remove();
     const arrowGroup = this._arrowGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -698,10 +891,9 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       let drawing = false;
       const screen = [];
       for (const pt of p.points) {
-        const q = _CnTileEngine.project(pt.lat, pt.lng);
-        const x = (q.x - c.x) * n * 256 + w / 2;
-        const y = (q.y - c.y) * n * 256 + h / 2;
-        if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
+        const s = this._projectScreen(pt.lat, pt.lng, w, h);
+        const x = s.x, y = s.y;
+        if (!s.inside || x < -margin || x > w + margin || y < -margin || y > h + margin) {
           drawing = false;
           screen.length = 0;
           continue;
@@ -781,20 +973,16 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     h = h || this.container.clientHeight || 300;
     this._vw = w;
     this._vh = h;
-    const c = _CnTileEngine.project(this.center.lat, this.center.lng);
-    const n = 2 ** this.zoom;
     const screen = [];
     this._markers.forEach((m, i) => {
-      const p = _CnTileEngine.project(m.lat, m.lng);
-      const px = (p.x - c.x) * n * 256 + w / 2;
-      const py = (p.y - c.y) * n * 256 + h / 2;
+      const s = this._projectScreen(m.lat, m.lng, w, h);
       const el = this._markerEls[i];
-      const offscreen = px < -60 || px > w + 60 || py < -80 || py > h + 60;
-      el.style.left = `${px}px`;
-      el.style.top = `${py}px`;
+      const offscreen = !s.inside || s.x < -60 || s.x > w + 60 || s.y < -80 || s.y > h + 60;
+      el.style.left = `${s.x}px`;
+      el.style.top = `${s.y}px`;
       el.style.display = offscreen ? "none" : "";
       el.style.visibility = "";
-      screen.push({ marker: m, el, x: px, y: py, offscreen });
+      screen.push({ marker: m, el, x: s.x, y: s.y, offscreen });
     });
     this._applyClusters(screen);
   }
@@ -1086,6 +1274,10 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     });
     const panBy = (dx, dy) => {
       this._userMoved = true;
+      if (this._isGlobe()) {
+        this._panGlobe(dx, dy);
+        return;
+      }
       const c = _CnTileEngine.tileXY(this.center.lat, this.center.lng, this.zoom);
       const n = 2 ** this.zoom;
       const lng = (c.x * 256 - dx) / 256 / n * 360 - 180;
@@ -1130,7 +1322,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         const d = Math.hypot(a.x - b.x, a.y - b.y);
         if (pinchD0 > 0 && d > 0) {
           if (Math.abs(d - pinchD0) > 6) pinchMoved = true;
-          this.setZoom(Math.max(2, Math.min(19, pinchZ0 + Math.log2(d / pinchD0))), {
+          this.setZoom(pinchZ0 + Math.log2(d / pinchD0), {
             anchor: anchorAt((a.x + b.x) / 2, (a.y + b.y) / 2)
           });
         }
@@ -4363,7 +4555,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
 
         <div class="row" data-hide-when="fit_entities">
           <label class="t">默认缩放级别</label>
-          <input type="number" data-k="default_zoom" min="2" max="19" step="1">
+          <input type="number" data-k="default_zoom" min="1" max="19" step="1">
         </div>
 
         <div class="row">
@@ -4554,4 +4746,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v1.9.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.10.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

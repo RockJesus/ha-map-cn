@@ -1,10 +1,12 @@
 /* ---- CnTileEngine：轻量 XYZ 瓦片地图引擎（投影/平移/缩放/标记/聚合/轨迹） ---- */
 
-import { CLUSTER_RADIUS_PX, CLUSTER_MAX_AVATAR } from "./shared.js";
+import { CLUSTER_RADIUS_PX, CLUSTER_MAX_AVATAR, BASEMAPS } from "./shared.js";
 
 class CnTileEngine extends EventTarget {
-  static MIN_ZOOM = 2;
+  static MIN_ZOOM = 1;
   static MAX_ZOOM = 19;
+  // 缩放低于该级别（标尺约 ≥1000km 的全球视图）切换为 3D 球体；高于此值回到平面瓦片
+  static GLOBE_ZOOM = 3;
   static clampZoom(z) {
     return Math.max(CnTileEngine.MIN_ZOOM, Math.min(CnTileEngine.MAX_ZOOM, z));
   }
@@ -31,8 +33,16 @@ class CnTileEngine extends EventTarget {
     // 聚合层：位于标记之上，承载多成员气泡
     this.clusterLayer = document.createElement("div");
     this.clusterLayer.className = "cmc-clusters";
+    // 低级别全球视图的 3D 球体层（Canvas），位于瓦片层之下
+    this.globeCanvas = document.createElement("canvas");
+    this.globeCanvas.className = "cmc-globe";
+    this.globeCanvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:none";
     this.attribution = document.createElement("div");
     this.attribution.className = "cmc-attribution";
+    // 球体贴图（全球影像低级别瓦片拼合的离屏世界图）与加载状态
+    this._world = null;
+    this._worldPending = false;
+    this._worldFailed = false;
     this.viewport.style.position = "absolute";
     this.viewport.style.inset = "0";
     this.viewport.style.zIndex = "1";
@@ -43,6 +53,7 @@ class CnTileEngine extends EventTarget {
       "position:absolute;right:4px;bottom:2px;font-size:10px;opacity:.6;pointer-events:none;color:var(--primary-text-color,#eee)";
     // 比例尺由卡片渲染在 shadow DOM，引擎通过 setScaleEl 拿到引用
     this.scaleEl = null;
+    container.appendChild(this.globeCanvas);
     container.appendChild(this.viewport);
     container.appendChild(this.pathLayer);
     container.appendChild(this.labelLayer);
@@ -69,6 +80,169 @@ class CnTileEngine extends EventTarget {
     const p = CnTileEngine.project(lat, lng);
     const n = 2 ** z;
     return { x: p.x * n, y: p.y * n };
+  }
+
+  /* ---- 3D 球体（低级别全球视图）---- */
+  _isGlobe() {
+    return this.zoom <= CnTileEngine.GLOBE_ZOOM;
+  }
+
+  _globeGeom(w, h) {
+    const cx = w / 2, cy = h / 2;
+    // 级别越低球越大：阈值处 0.38，最低级 0.46
+    const span = CnTileEngine.GLOBE_ZOOM - CnTileEngine.MIN_ZOOM;
+    const t = span > 0 ? (CnTileEngine.GLOBE_ZOOM - this.zoom) / span : 1;
+    const k = 0.38 + 0.08 * Math.max(0, Math.min(1, t));
+    return { cx, cy, Rr: Math.min(w, h) * k };
+  }
+
+  /* 经纬度 → 单位球向量（正射投影用） */
+  static _globeVec(lat, lng) {
+    const la = (lat * Math.PI) / 180, lo = (lng * Math.PI) / 180;
+    return { x: Math.cos(la) * Math.sin(lo), y: Math.sin(la), z: Math.cos(la) * Math.cos(lo) };
+  }
+  static _globeRot(v, lat0, lng0) {
+    const lo = (lng0 * Math.PI) / 180, la = (lat0 * Math.PI) / 180;
+    const x1 = v.x * Math.cos(lo) + v.z * Math.sin(lo);
+    const z1 = -v.x * Math.sin(lo) + v.z * Math.cos(lo);
+    const y2 = v.y * Math.cos(la) - z1 * Math.sin(la);
+    const z2 = v.y * Math.sin(la) + z1 * Math.cos(la);
+    return { x: x1, y: y2, z: z2 };
+  }
+
+  /* 异步拉取全球影像最低级瓦片拼合离屏世界图；失败则退回经纬网兜底球 */
+  _ensureWorldTexture() {
+    if (this._world || this._worldPending || this._worldFailed) return;
+    this._worldPending = true;
+    const z = 1, n = 2;
+    const cv = document.createElement("canvas");
+    cv.width = 256 * n; cv.height = 256 * n;
+    const ctx = cv.getContext("2d");
+    let done = 0, ok = 0;
+    const finish = () => {
+      this._worldPending = false;
+      if (ok > 0) this._world = cv; else this._worldFailed = true;
+      if (this.container.isConnected) this.render();
+    };
+    const tpl = BASEMAPS.esri.layers[0].template;
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => { ctx.drawImage(img, x * 256, y * 256); ok++; done++; if (done === n * n) finish(); };
+        img.onerror = () => { done++; if (done === n * n) finish(); };
+        img.src = tpl(x, y, z);
+      }
+    }
+  }
+
+  /* 统一屏幕投影：平面走墨卡托；球体走等距圆柱映射到球内，返回是否在球面内 */
+  _projectScreen(lat, lng, w, h) {
+    if (!this._isGlobe()) {
+      const c = CnTileEngine.project(this.center.lat, this.center.lng);
+      const n = 2 ** this.zoom;
+      const p = CnTileEngine.project(lat, lng);
+      return {
+        x: (p.x - c.x) * n * 256 + w / 2,
+        y: (p.y - c.y) * n * 256 + h / 2,
+        inside: true,
+      };
+    }
+    const g = this._globeGeom(w, h);
+    const u = (lng + 180) / 360;
+    const v = (90 - Math.max(-80, Math.min(80, lat))) / 180;
+    const u0 = (this.center.lng + 180) / 360;
+    const v0 = (90 - Math.max(-80, Math.min(80, this.center.lat))) / 180;
+    let du = u - u0;
+    du = ((du + 0.5) % 1 + 1) % 1 - 0.5; // 经度环绕
+    const x = g.cx + du * 2 * g.Rr;
+    const y = g.cy + (v - v0) * 2 * g.Rr;
+    const inside = (x - g.cx) ** 2 + (y - g.cy) ** 2 <= (g.Rr * 0.985) ** 2;
+    return { x, y, inside };
+  }
+
+  _renderGlobe(w, h) {
+    const canvas = this.globeCanvas;
+    const dpr = Math.min(2, (typeof window !== "undefined" && window.devicePixelRatio) || 1);
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const g = this._globeGeom(w, h);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(g.cx, g.cy, g.Rr, 0, Math.PI * 2); ctx.clip();
+    this._paintOceanBase(ctx, g);
+    if (this._world) this._paintWorld(ctx, g);
+    else this._paintGridSphere(ctx, g);
+    // 球面边缘暗角（limb）
+    const limb = ctx.createRadialGradient(g.cx, g.cy, g.Rr * 0.5, g.cx, g.cy, g.Rr);
+    limb.addColorStop(0, "rgba(0,0,0,0)"); limb.addColorStop(1, "rgba(0,0,0,.55)");
+    ctx.fillStyle = limb; ctx.fillRect(g.cx - g.Rr, g.cy - g.Rr, g.Rr * 2, g.Rr * 2);
+    // 左上高光
+    const hi = ctx.createRadialGradient(g.cx - g.Rr * 0.4, g.cy - g.Rr * 0.45, 0, g.cx - g.Rr * 0.4, g.cy - g.Rr * 0.45, g.Rr * 0.9);
+    hi.addColorStop(0, "rgba(255,255,255,.16)"); hi.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = hi; ctx.fillRect(g.cx - g.Rr, g.cy - g.Rr, g.Rr * 2, g.Rr * 2);
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(g.cx, g.cy, g.Rr, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(120,180,230,.5)"; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  _paintWorld(ctx, g) {
+    const world = this._world, iw = world.width, ih = world.height;
+    const dw = 2 * g.Rr, dh = 2 * g.Rr;
+    const u0 = (this.center.lng + 180) / 360;
+    const v0 = (90 - this.center.lat) / 180;
+    const baseX = g.cx - dw / 2 - (u0 - 0.5) * dw;
+    const baseY = g.cy - dh / 2 - (v0 - 0.5) * dh;
+    for (let ox = -dw; ox <= dw; ox += dw) {
+      ctx.drawImage(world, 0, 0, iw, ih, baseX + ox, baseY, dw, dh);
+    }
+  }
+
+  _paintOceanBase(ctx, g) {
+    const Rr = g.Rr;
+    const grad = ctx.createRadialGradient(g.cx - Rr * 0.35, g.cy - Rr * 0.35, Rr * 0.1, g.cx, g.cy, Rr);
+    grad.addColorStop(0, "#1c5578"); grad.addColorStop(1, "#0d2738");
+    ctx.fillStyle = grad; ctx.fillRect(g.cx - Rr, g.cy - Rr, Rr * 2, Rr * 2);
+  }
+
+  _paintGridSphere(ctx, g) {
+    const Rr = g.Rr;
+    ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 1;
+    const plot = (la, lo) => {
+      const v = CnTileEngine._globeRot(CnTileEngine._globeVec(la, lo), this.center.lat, this.center.lng);
+      if (v.z <= 0.02) return null;
+      return { x: g.cx + Rr * v.x, y: g.cy - Rr * v.y };
+    };
+    for (let lo = -180; lo < 180; lo += 30) {
+      ctx.beginPath(); let prev = false;
+      for (let la = -80; la <= 80; la += 4) {
+        const p = plot(la, lo);
+        if (p) { prev ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
+        prev = !!p;
+      }
+      ctx.stroke();
+    }
+    for (let la = -60; la <= 60; la += 30) {
+      ctx.beginPath(); let prev = false;
+      for (let lo = -180; lo <= 180; lo += 4) {
+        const p = plot(la, lo);
+        if (p) { prev ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
+        prev = !!p;
+      }
+      ctx.stroke();
+    }
+  }
+
+  /* 球体模式拖拽：绕球心旋转视野（经度环绕、纬度钳制） */
+  _panGlobe(dx, dy) {
+    const w = this.container.clientWidth || 400, h = this.container.clientHeight || 300;
+    const g = this._globeGeom(w, h);
+    const lng = ((this.center.lng - (dx * 360) / (2 * g.Rr)) + 540) % 360 - 180;
+    const lat = Math.max(-80, Math.min(80, this.center.lat + (dy * 180) / (2 * g.Rr)));
+    this.setView(lat, lng);
   }
 
   /* 屏幕坐标（clientX/clientY）→ 底图坐标系经纬度（拖动家图标用） */
@@ -192,6 +366,13 @@ class CnTileEngine extends EventTarget {
     if (!this.container.clientWidth || !this.container.clientHeight) this._scheduleRenderRetry();
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
+    const globe = this._isGlobe();
+    this.viewport.style.display = globe ? "none" : "";
+    this.globeCanvas.style.display = globe ? "" : "none";
+    if (globe) {
+      this._ensureWorldTexture();
+      this._renderGlobe(w, h);
+    } else {
     const c = CnTileEngine.tileXY(this.center.lat, this.center.lng, this.zoom);
 
     this.tileSets.forEach((ts) => {
@@ -270,6 +451,7 @@ class CnTileEngine extends EventTarget {
         else { img.style.visibility = "hidden"; }
       });
     });
+    }
 
     this._layoutMarkers(w, h);
     this._layoutPaths(w, h);
@@ -458,15 +640,15 @@ class CnTileEngine extends EventTarget {
     if (!list || !list.length) return;
     const w = this.container.clientWidth || 400;
     const h = this.container.clientHeight || 300;
-    const c = CnTileEngine.project(this.center.lat, this.center.lng);
-    const n = 2 ** this.zoom;
     const group = this._circleGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     this.pathLayer.appendChild(group);
     for (const ci of list) {
       if (!Number.isFinite(ci.lat) || !Number.isFinite(ci.lng) || !Number.isFinite(ci.radius)) continue;
-      const q = CnTileEngine.project(ci.lat, ci.lng);
-      const x = (q.x - c.x) * n * 256 + w / 2;
-      const y = (q.y - c.y) * n * 256 + h / 2;
+      // 球体全球视图不画半径/精度圈（避免低级别放大成径向光晕空场）
+      if (this._isGlobe()) continue;
+      const s = this._projectScreen(ci.lat, ci.lng, w, h);
+      const x = s.x, y = s.y;
+      const n = 2 ** this.zoom;
       // 米 → 像素：当前纬度下 1 像素的米数
       const mPerPx = (156543.03392 * Math.cos((ci.lat * Math.PI) / 180)) / n;
       const r = ci.radius / mPerPx;
@@ -525,8 +707,6 @@ class CnTileEngine extends EventTarget {
       this._hitGroup = null;
       return;
     }
-    const c = CnTileEngine.project(this.center.lat, this.center.lng);
-    const n = 2 ** this.zoom;
     // 大范围时不划线而是靠 SVG 裁剪；只有极端遥远（跨半球）才断开避免坐标溢出
     const margin = 4000;
     // 方向箭头（已知限制 #3 的补齐）：沿轨迹每隔 ~90px 放一个小三角，随平移缩放重算
@@ -544,11 +724,10 @@ class CnTileEngine extends EventTarget {
       let drawing = false;
       const screen = []; // [{x,y}] 供箭头取点
       for (const pt of p.points) {
-        const q = CnTileEngine.project(pt.lat, pt.lng);
-        const x = (q.x - c.x) * n * 256 + w / 2;
-        const y = (q.y - c.y) * n * 256 + h / 2;
-        // 超出视口太多时断线，避免坐标溢出画出跨屏长线
-        if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
+        const s = this._projectScreen(pt.lat, pt.lng, w, h);
+        const x = s.x, y = s.y;
+        // 球面背面 / 超出视口太多时断线，避免坐标溢出画出跨屏长线
+        if (!s.inside || x < -margin || x > w + margin || y < -margin || y > h + margin) {
           drawing = false;
           screen.length = 0;
           continue;
@@ -624,20 +803,16 @@ class CnTileEngine extends EventTarget {
     w = w || this.container.clientWidth || 400;
     h = h || this.container.clientHeight || 300;
     this._vw = w; this._vh = h;
-    const c = CnTileEngine.project(this.center.lat, this.center.lng);
-    const n = 2 ** this.zoom;
     const screen = [];
     this._markers.forEach((m, i) => {
-      const p = CnTileEngine.project(m.lat, m.lng);
-      const px = (p.x - c.x) * n * 256 + w / 2;
-      const py = (p.y - c.y) * n * 256 + h / 2;
+      const s = this._projectScreen(m.lat, m.lng, w, h);
       const el = this._markerEls[i];
-      const offscreen = px < -60 || px > w + 60 || py < -80 || py > h + 60;
-      el.style.left = `${px}px`;
-      el.style.top = `${py}px`;
+      const offscreen = !s.inside || s.x < -60 || s.x > w + 60 || s.y < -80 || s.y > h + 60;
+      el.style.left = `${s.x}px`;
+      el.style.top = `${s.y}px`;
       el.style.display = offscreen ? "none" : "";
       el.style.visibility = "";
-      screen.push({ marker: m, el, x: px, y: py, offscreen });
+      screen.push({ marker: m, el, x: s.x, y: s.y, offscreen });
     });
     this._applyClusters(screen);
   }
@@ -919,6 +1094,7 @@ class CnTileEngine extends EventTarget {
 
     const panBy = (dx, dy) => {
       this._userMoved = true;
+      if (this._isGlobe()) { this._panGlobe(dx, dy); return; }
       const c = CnTileEngine.tileXY(this.center.lat, this.center.lng, this.zoom);
       const n = 2 ** this.zoom;
       const lng = ((c.x * 256 - dx) / 256 / n) * 360 - 180;
@@ -963,7 +1139,7 @@ class CnTileEngine extends EventTarget {
         const d = Math.hypot(a.x - b.x, a.y - b.y);
         if (pinchD0 > 0 && d > 0) {
           if (Math.abs(d - pinchD0) > 6) pinchMoved = true;
-          this.setZoom(Math.max(2, Math.min(19, pinchZ0 + Math.log2(d / pinchD0))), {
+          this.setZoom(pinchZ0 + Math.log2(d / pinchD0), {
             anchor: anchorAt((a.x + b.x) / 2, (a.y + b.y) / 2),
           });
         }
