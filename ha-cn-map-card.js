@@ -4563,14 +4563,20 @@ var HaCnMapCardEditor = class extends HTMLElement {
 };
 
 // src/main.js
-customElements.define("ha-cn-map-card", HaCnMapCard);
-customElements.define("ha-cn-map-card-editor", HaCnMapCardEditor);
+if (!customElements.get("ha-cn-map-card")) {
+  customElements.define("ha-cn-map-card", HaCnMapCard);
+}
+if (!customElements.get("ha-cn-map-card-editor")) {
+  customElements.define("ha-cn-map-card-editor", HaCnMapCardEditor);
+}
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "ha-cn-map-card",
-  name: "中国地图卡片",
-  description: "高德/天地图底图的 HA 地图卡片，免代理直连",
-  preview: true,
-  documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
-});
-console.info("%c ha-cn-map-card v1.9.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card")) {
+  window.customCards.push({
+    type: "ha-cn-map-card",
+    name: "中国地图卡片",
+    description: "高德/天地图底图的 HA 地图卡片，免代理直连",
+    preview: true,
+    documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
+  });
+}
+console.info("%c ha-cn-map-card v1.9.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

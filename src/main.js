@@ -18,17 +18,26 @@
 import { HaCnMapCard } from "./card.js";
 import { HaCnMapCardEditor } from "./editor.js";
 
-customElements.define("ha-cn-map-card", HaCnMapCard);
-customElements.define("ha-cn-map-card-editor", HaCnMapCardEditor);
+// 资源被重复加载（误配多条 Lovelace 资源）时，二次 define 同名标签会抛
+// DOMException 并中断当前模块（编辑器注册 / 条目 / 版本日志都不会落地）。
+// 先判空：已注册则跳过 define，保留先注册的类，不覆盖。
+if (!customElements.get("ha-cn-map-card")) {
+  customElements.define("ha-cn-map-card", HaCnMapCard);
+}
+if (!customElements.get("ha-cn-map-card-editor")) {
+  customElements.define("ha-cn-map-card-editor", HaCnMapCardEditor);
+}
 
-// 让 HA 识别为 Lovelace 卡片（卡片选择器 / 编辑器占位）
+// 让 HA 识别为 Lovelace 卡片（卡片选择器 / 编辑器占位）；按标签判重，避免重复加载时追加多条。
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "ha-cn-map-card",
-  name: "中国地图卡片",
-  description: "高德/天地图底图的 HA 地图卡片，免代理直连",
-  preview: true,
-  documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
-});
+if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card")) {
+  window.customCards.push({
+    type: "ha-cn-map-card",
+    name: "中国地图卡片",
+    description: "高德/天地图底图的 HA 地图卡片，免代理直连",
+    preview: true,
+    documentationURL: "https://github.com/RockJesus/ha-map-cn#readme",
+  });
+}
 
-console.info("%c ha-cn-map-card v1.9.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
