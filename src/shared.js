@@ -134,6 +134,7 @@ const BASEMAPS = {
     name: "高德",
     attribution: "© 高德地图 AutoNavi",
     maxZoom: 18,
+    minZoom: 3, // z2 起为纯色占位瓦片，回退到 z3 平铺
     needsShift: true, // 标记需 WGS84→GCJ02
     layers: [
       { template: (x, y, z) => `https://webrd0${(x % 4) + 1}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=${x}&y=${y}&z=${z}` },
@@ -143,6 +144,7 @@ const BASEMAPS = {
     name: "高德卫星",
     attribution: "© 高德地图 AutoNavi",
     maxZoom: 18,
+    minZoom: 3,
     needsShift: true,
     noFilter: true, // 卫星影像反色会变成"负片"，暗色模式也不套 filter
     layers: [
@@ -154,6 +156,7 @@ const BASEMAPS = {
     name: "天地图",
     attribution: "© 国家天地图",
     maxZoom: 18,
+    minZoom: 3,
     needsShift: false,
     requireKey: true,
     layers: [
@@ -165,6 +168,7 @@ const BASEMAPS = {
     name: "天地图卫星",
     attribution: "© 国家天地图",
     maxZoom: 18,
+    minZoom: 3,
     needsShift: false,
     requireKey: true,
     noFilter: true,
@@ -177,6 +181,7 @@ const BASEMAPS = {
     name: "实时路况",
     attribution: "© 高德路况",
     maxZoom: 18,
+    minZoom: 3,
     needsShift: false,
     layers: [
       { template: (x, y, z) =>
@@ -188,6 +193,7 @@ const BASEMAPS = {
     name: "OpenStreetMap",
     attribution: "© OpenStreetMap",
     maxZoom: 19,
+    minZoom: 2,
     needsShift: false,
     global: true,
     layers: [{ template: (x, y, z) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png` }],
@@ -196,6 +202,7 @@ const BASEMAPS = {
     name: "Esri 全球影像",
     attribution: "© Esri World Imagery",
     maxZoom: 19,
+    minZoom: 2,
     needsShift: false,
     global: true,
     noFilter: true,

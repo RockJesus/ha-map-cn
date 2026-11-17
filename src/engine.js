@@ -143,8 +143,8 @@ class CnTileEngine extends EventTarget {
     raf = requestAnimationFrame(step);
   }
 
-  addTileSet({ url, fallbackUrl = null, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
-    const ts = { url, fallbackUrl, maxZoom, zIndex, opacity, els: new Map(), id: ++this._tileSeq };
+  addTileSet({ url, fallbackUrl = null, maxZoom = 18, minZoom = 3, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
+    const ts = { url, fallbackUrl, maxZoom, minZoom, zIndex, opacity, els: new Map(), id: ++this._tileSeq };
     const layer = document.createElement("div");
     // nofilter：卫星影像 / 路况叠加不参与暗色反色，否则颜色会失真
     layer.className = nofilter ? "cmc-layer cmc-nofilter" : "cmc-layer";
@@ -176,6 +176,7 @@ class CnTileEngine extends EventTarget {
       const ts = this.addTileSet({
         url: l.template,
         maxZoom: spec.maxZoom || 18,
+        minZoom: spec.minZoom ?? 3,
         opacity: l.opacity ?? 1,
         zIndex: 20 + i,
         nofilter: true,
@@ -195,7 +196,8 @@ class CnTileEngine extends EventTarget {
 
     this.tileSets.forEach((ts) => {
       // flyTo 会产生小数 zoom：瓦片只能取整数级放大显示，标记/轨迹仍用精确值
-      const z = Math.min(Math.floor(this.zoom), ts.maxZoom);
+      // zoom 低于源站最低有效级（国内源 z2 为纯色占位）时回退到 minZoom 级瓦片缩小铺满
+      const z = Math.max(ts.minZoom ?? 3, Math.min(Math.floor(this.zoom), ts.maxZoom));
       const scale = 2 ** (this.zoom - z);   // 缩放级差：z 级瓦片放到 zoom 级要放大几倍
       const n = 2 ** z;
       // 当前视口在 z 级瓦片坐标系里的浮点范围（c 是 zoom 级，除回去）

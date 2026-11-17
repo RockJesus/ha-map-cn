@@ -1263,6 +1263,7 @@ class HaCnMapCard extends HTMLElement {
         url: (x, y, z) => l.template(x, y, z, cfg.tianditu_key),
         fallbackUrl: fbTpl ? (x, y, z) => fbTpl(x, y, z) : null,
         maxZoom: base.maxZoom,
+        minZoom: base.minZoom ?? 3,
         opacity: l.opacity ?? 1,
         zIndex: i + 1,
         nofilter: !!base.noFilter,
@@ -1537,7 +1538,7 @@ class HaCnMapCard extends HTMLElement {
       const want = next && String(this._config.basemap).startsWith("amap");
       this._engine.setOverlay(
         "traffic",
-        want ? { maxZoom: traffic.maxZoom, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) } : null
+        want ? { maxZoom: traffic.maxZoom, minZoom: traffic.minZoom ?? 3, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) } : null
       );
       this._syncDrawer();
       this._persistConfig(this._config);
@@ -1588,7 +1589,7 @@ class HaCnMapCard extends HTMLElement {
     this._engine.setOverlay(
       "traffic",
       wantTraffic
-        ? { maxZoom: traffic.maxZoom, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) }
+        ? { maxZoom: traffic.maxZoom, minZoom: traffic.minZoom ?? 3, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) }
         : null
     );
 

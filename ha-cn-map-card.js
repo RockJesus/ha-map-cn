@@ -114,6 +114,8 @@ var BASEMAPS = {
     name: "高德",
     attribution: "© 高德地图 AutoNavi",
     maxZoom: 18,
+    minZoom: 3,
+    // z2 起为纯色占位瓦片，回退到 z3 平铺
     needsShift: true,
     // 标记需 WGS84→GCJ02
     layers: [
@@ -124,6 +126,7 @@ var BASEMAPS = {
     name: "高德卫星",
     attribution: "© 高德地图 AutoNavi",
     maxZoom: 18,
+    minZoom: 3,
     needsShift: true,
     noFilter: true,
     // 卫星影像反色会变成"负片"，暗色模式也不套 filter
@@ -136,6 +139,7 @@ var BASEMAPS = {
     name: "天地图",
     attribution: "© 国家天地图",
     maxZoom: 18,
+    minZoom: 3,
     needsShift: false,
     requireKey: true,
     layers: [
@@ -147,6 +151,7 @@ var BASEMAPS = {
     name: "天地图卫星",
     attribution: "© 国家天地图",
     maxZoom: 18,
+    minZoom: 3,
     needsShift: false,
     requireKey: true,
     noFilter: true,
@@ -159,6 +164,7 @@ var BASEMAPS = {
     name: "实时路况",
     attribution: "© 高德路况",
     maxZoom: 18,
+    minZoom: 3,
     needsShift: false,
     layers: [
       {
@@ -171,6 +177,7 @@ var BASEMAPS = {
     name: "OpenStreetMap",
     attribution: "© OpenStreetMap",
     maxZoom: 19,
+    minZoom: 2,
     needsShift: false,
     global: true,
     layers: [{ template: (x, y, z) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png` }]
@@ -179,6 +186,7 @@ var BASEMAPS = {
     name: "Esri 全球影像",
     attribution: "© Esri World Imagery",
     maxZoom: 19,
+    minZoom: 2,
     needsShift: false,
     global: true,
     noFilter: true,
@@ -318,8 +326,8 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     } };
     raf = requestAnimationFrame(step);
   }
-  addTileSet({ url, fallbackUrl = null, maxZoom = 18, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
-    const ts = { url, fallbackUrl, maxZoom, zIndex, opacity, els: /* @__PURE__ */ new Map(), id: ++this._tileSeq };
+  addTileSet({ url, fallbackUrl = null, maxZoom = 18, minZoom = 3, zIndex = 1, opacity = 1, attribution = "", nofilter = false }) {
+    const ts = { url, fallbackUrl, maxZoom, minZoom, zIndex, opacity, els: /* @__PURE__ */ new Map(), id: ++this._tileSeq };
     const layer = document.createElement("div");
     layer.className = nofilter ? "cmc-layer cmc-nofilter" : "cmc-layer";
     layer.style.cssText = `position:absolute;inset:0;z-index:${zIndex};opacity:${opacity}`;
@@ -350,6 +358,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       const ts = this.addTileSet({
         url: l.template,
         maxZoom: spec.maxZoom || 18,
+        minZoom: spec.minZoom ?? 3,
         opacity: l.opacity ?? 1,
         zIndex: 20 + i,
         nofilter: true
@@ -365,7 +374,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     const h = this.container.clientHeight || 300;
     const c = _CnTileEngine.tileXY(this.center.lat, this.center.lng, this.zoom);
     this.tileSets.forEach((ts) => {
-      const z = Math.min(Math.floor(this.zoom), ts.maxZoom);
+      const z = Math.max(ts.minZoom ?? 3, Math.min(Math.floor(this.zoom), ts.maxZoom));
       const scale = 2 ** (this.zoom - z);
       const n = 2 ** z;
       const cz = 2 ** (this.zoom - z);
@@ -2494,6 +2503,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         url: (x, y, z) => l.template(x, y, z, cfg.tianditu_key),
         fallbackUrl: fbTpl ? (x, y, z) => fbTpl(x, y, z) : null,
         maxZoom: base.maxZoom,
+        minZoom: base.minZoom ?? 3,
         opacity: l.opacity ?? 1,
         zIndex: i + 1,
         nofilter: !!base.noFilter
@@ -2744,7 +2754,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       const want = next && String(this._config.basemap).startsWith("amap");
       this._engine.setOverlay(
         "traffic",
-        want ? { maxZoom: traffic2.maxZoom, layers: traffic2.layers.map((l) => ({ template: l.template, opacity: l.opacity })) } : null
+        want ? { maxZoom: traffic2.maxZoom, minZoom: traffic2.minZoom ?? 3, layers: traffic2.layers.map((l) => ({ template: l.template, opacity: l.opacity })) } : null
       );
       this._syncDrawer();
       this._persistConfig(this._config);
@@ -2786,7 +2796,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const wantTraffic = !!cfg.show_traffic && String(cfg.basemap).startsWith("amap");
     this._engine.setOverlay(
       "traffic",
-      wantTraffic ? { maxZoom: traffic.maxZoom, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) } : null
+      wantTraffic ? { maxZoom: traffic.maxZoom, minZoom: traffic.minZoom ?? 3, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) } : null
     );
     this._basemapShift = base.needsShift;
     this._dark = this._resolveDark();
@@ -4544,4 +4554,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v1.9.8 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.9 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
