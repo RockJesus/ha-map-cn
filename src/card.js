@@ -44,10 +44,6 @@ class HaCnMapCard extends HTMLElement {
     this._trackSig = "";      // 订阅参数签名，避免重复订阅
     this._hiddenIds = null;   // 实体注册表里 hidden_by 非空的实体集合；null = 尚未拉取
     this._registryTried = false; // 注册表只拉一次，失败（权限/旧版本 HA）不重试
-    // 浏览器自动定位：无 app 追踪实体时优先飞到当前位置（仅本机，不写 HA 配置）
-    this._geoPoint = null;      // 定位结果 {lat,lng}，内存态，刷新后重新请求
-    this._geoRequested = false;  // 本会话是否已发起过自动定位
-    this._geoDenied = false;    // 定位被拒/超时/不支持：不再重试，回退静态家/默认中心
     this._onboardDismissed = false; // 新用户引导条本会话是否被手动关闭
     // 官方交互：首次点标记 = 聚焦飞行 + 选中；设 false 恢复"直接弹 more-info"
     this._focusOnMarkerClick = true;
@@ -545,21 +541,17 @@ class HaCnMapCard extends HTMLElement {
     return r ? { lat: r.lat, lng: r.lng } : null;
   }
 
-  /* 主位置点：App 追踪实体 > 浏览器定位 > 静态家。家房子标记跟随该点；
-     仅静态家来源时房子才可拖拽、可写回 zone.home，跟随态只作本会话内存位置、不写 HA。 */
+  /* 主位置点：始终以静态家为准（卡片覆盖 → zone.home → HA 全局 config → 卡片 center）。
+     人员 / 设备追踪只作为叠加标记，不再把家房子顶到追踪点；家房子永远可拖拽、可写回 zone.home。 */
   _primaryWgs84() {
-    const tp = this._trackingPointRef();
-    if (tp) return { point: { lat: tp.lat, lng: tp.lng }, source: "tracking", entityId: tp.entityId };
-    if (this._geoPoint) return { point: this._geoPoint, source: "geo", entityId: null };
     const home = this._homeWgs84();
     if (home) return { point: home, source: "home", entityId: "zone.home" };
     return null;
   }
 
-  /* 任意一个有效定位点（家 → 追踪实体 → 浏览器定位结果），供底图/纠偏判定取点；
-     首屏飞行优先级见 _maybeAutoLocate（app 追踪 > 浏览器定位 > 静态家）。 */
+  /* 任意一个有效定位点（家 → 追踪实体兜底），仅供底图/境内外纠偏判定取点，不参与家标记落点。 */
   _anyWgs84Point() {
-    return this._homeWgs84() || this._trackingPoint() || this._geoPoint || null;
+    return this._homeWgs84() || this._trackingPoint() || null;
   }
 
   /* 默认高德；auto 为兼容旧配置的别名，等同高德。OSM / Esri 仅在用户手动指定时作为全球图源使用 */
@@ -582,55 +574,11 @@ class HaCnMapCard extends HTMLElement {
     this._engine.flyTo(lat, lng, Number(cfg.default_zoom) || 12);
   }
 
-  /* 飞到浏览器自动定位点：按当前底图坐标系做 WGS84→GCJ 纠偏 */
-  _flyToGeoPoint() {
-    const p = this._geoPoint;
-    if (!p || !this._engine) return;
-    let lat = p.lat, lng = p.lng;
-    if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
-    this._didFit = true;
-    this._engine.flyTo(lat, lng, Number(this._config?.default_zoom) || 12);
-  }
-
-  /* 首屏优先飞到当前位置：app 追踪实体（人 / 设备 / 地理定位）已上报坐标则跟随它；
-     否则尝试浏览器定位飞到当前位置；定位被拒/超时/不支持时回退静态家/默认中心。
-     只取本机坐标、不写 HA 家配置、不外发；预览缩略卡 / 编辑视图不发起，避免读到操作者位置或弹出权限请求。 */
-  _maybeAutoLocate() {
-    if (this._geoRequested || this._geoDenied) return;
-    if (this._isPreviewCard() || this._inEditContext()) return;
-    if (!this.isConnected || !this._engine) return;
-    if (typeof navigator === "undefined" || !navigator.geolocation) { this._geoDenied = true; return; }
-    // app 已上报当前位置：跟随它，浏览器定位让位、不抢视角
-    if (this._trackingPoint()) return;
-    // 静态家不再阻断：无 app 位置时优先尝试浏览器当前定位，定位失败再回退到家
-    if (this._engine._userMoved) return;
-    this._geoRequested = true;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos?.coords?.latitude, lng = pos?.coords?.longitude;
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) { this._geoDenied = true; return; }
-        this._geoPoint = { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
-        // 定位坐标可能改变境内外判定：需要换底图图层时重建一次，重建后的 _update 会补飞
-        const resolved = this._resolvedBasemap();
-        if (this._renderedBasemap && resolved !== this._renderedBasemap) { this._render(); return; }
-        // 重绘标记让跟随态房子落到定位点，再飞到该点（_update 末尾未必补飞：首屏可能已 fit 过）
-        Promise.resolve().then(() => {
-          this._update();
-          if (!this._engine._userMoved) this._flyToGeoPoint();
-        });
-      },
-      () => { this._geoDenied = true; },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-    );
-  }
-
-  /* 是否需要展示新用户引导：无 App 追踪、无浏览器定位结果、也没有有效静态家，
-     且预览/编辑态、本轮已手动关闭时不展示。 */
+  /* 是否需要展示新用户引导：没有有效静态家坐标时提示手动设置家位置；
+     预览/编辑态、本轮已手动关闭时不展示。 */
   _needsOnboard() {
     if (this._onboardDismissed) return false;
     if (this._isPreviewCard() || this._inEditContext()) return false;
-    if (this._trackingPointRef()) return false;
-    if (this._geoPoint) return false;
     if (this._homeWgs84()) return false;
     return true;
   }
@@ -1099,8 +1047,8 @@ class HaCnMapCard extends HTMLElement {
 
         <div class="cmc-onboard" data-onboard hidden>
           <div class="cmc-onboard-tx">
-            <div class="cmc-onboard-title">还没有定位到当前位置</div>
-            <div class="cmc-onboard-msg" data-onboard-msg>点按钮用浏览器定位，把家标到这里</div>
+            <div class="cmc-onboard-title">还没有设置家位置</div>
+            <div class="cmc-onboard-msg" data-onboard-msg>点按钮用浏览器定位，把家标到这里；也可在设置里手动填经纬度</div>
           </div>
           <button class="cmc-onboard-btn" data-onboard-locate>定位到我的位置</button>
           <button class="cmc-onboard-close" data-onboard-close aria-label="关闭引导">×</button>
@@ -2573,15 +2521,12 @@ class HaCnMapCard extends HTMLElement {
     const scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     if (scaleEl) scaleEl.style.display = cfg.show_scale === false ? "none" : "";
     const states = this._collectEntities();
-    const primary = this._primaryWgs84();
     const markers = [];
     const pts = [];
 
     states.forEach((s) => {
       const { latitude, longitude, friendly_name } = s.attributes;
       if (latitude == null) return;
-      // 主位置来自该追踪实体时，其标记由跟随态家房子承载，避免同点双标
-      if (primary.source === "tracking" && s.entity_id === primary.entityId) return;
       let lat = latitude, lng = longitude;
       if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
       const pic = s.attributes.entity_picture;
@@ -2619,8 +2564,6 @@ class HaCnMapCard extends HTMLElement {
         const { latitude, longitude, friendly_name, passive, radius } = z.attributes;
         if (latitude == null || passive) return;
         if ((cfg.hidden_entities || []).includes(z.entity_id)) return;
-        // 跟随 App 追踪 / 浏览器定位时，静态家房子与半径圈让位到当前位置（见下方跟随态房子标记）
-        if (z.entity_id === "zone.home" && primary && primary.source !== "home") return;
         let lat = latitude, lng = longitude, radiusAttr = radius;
         // 家：用户在设置里自定义了坐标/半径就覆盖 HA zone.home 的属性（只影响卡片，不改 HA 配置）
         if (z.entity_id === "zone.home") {
@@ -2670,27 +2613,6 @@ class HaCnMapCard extends HTMLElement {
       });
     }
 
-    // 跟随当前位置：App 追踪或浏览器定位时，家房子标记画在主位置点；
-    // 静态家房子/圈已在上面跳过，此标记不可拖拽、不写回 zone.home（仅本会话内存位置）。
-    if (primary && primary.source !== "home") {
-      let hlat = primary.point.lat, hlng = primary.point.lng;
-      if (this._basemapShift) [hlat, hlng] = GCJ.wgs2gcj(hlat, hlng);
-      const srcState = primary.entityId ? this._hass?.states?.[primary.entityId] : null;
-      const homeName = srcState?.attributes?.friendly_name || primary.entityId || "我的家";
-      markers.push({
-        lat: hlat, lng: hlng,
-        entityId: primary.entityId || null,
-        short: homeName,
-        label: cfg.show_labels === false ? "" : homeName,
-        clusterable: false,
-        home: true,
-        draggable: false,
-        icon: srcState?.attributes?.icon || "mdi:home",
-        color: srcState?.attributes?.color || "#03a9f4",
-      });
-      pts.push({ lat: hlat, lng: hlng });
-    }
-
     this._lastMarkers = markers; // 聚焦缩放要用显示坐标（已按底图纠偏）算最近标记
     this._engine.setMarkers(markers, { cluster: cfg.show_cluster !== false });
     this._syncTracks(states);
@@ -2720,10 +2642,6 @@ class HaCnMapCard extends HTMLElement {
     } else if (!this._didFit) {
       this._engine.render();
     }
-    // 浏览器自动定位结果：无 app 追踪实体时飞到当前位置（换底图重建后也由此补飞）
-    if (this._geoPoint && !this._didFit && !this._engine._userMoved) {
-      this._flyToGeoPoint();
-    }
     // URL 深链：链接里带 ?entity_id=… 时首次渲染后直接定位到该实体
     this._applyUrlSelection();
     // entities 对象里的 focus: true：首次渲染后把视野聚焦到该实体（URL 深链优先，v1.1.5）
@@ -2742,9 +2660,7 @@ class HaCnMapCard extends HTMLElement {
     // 列表里的状态文字（"离家 · 4 分钟前"）需要跟着 hass 刷新
     if (this._panelView === "detail") this._renderDetailHeader();
     else if (this._panelView !== "settings") this._renderList();
-    // 无 app 追踪实体时尝试浏览器自动定位（只发起一次，预览/编辑态豁免）
-    this._maybeAutoLocate();
-    // 新用户引导条：未设家且无追踪/定位结果时提示手动定位
+    // 新用户引导条：未设置有效家坐标时提示手动定位到家里
     this._syncOnboard();
   }
 

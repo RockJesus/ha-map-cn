@@ -1321,9 +1321,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._trackSig = "";
     this._hiddenIds = null;
     this._registryTried = false;
-    this._geoPoint = null;
-    this._geoRequested = false;
-    this._geoDenied = false;
     this._onboardDismissed = false;
     this._focusOnMarkerClick = true;
     this._bleedUser = void 0;
@@ -1786,20 +1783,16 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const r = this._trackingPointRef();
     return r ? { lat: r.lat, lng: r.lng } : null;
   }
-  /* 主位置点：App 追踪实体 > 浏览器定位 > 静态家。家房子标记跟随该点；
-     仅静态家来源时房子才可拖拽、可写回 zone.home，跟随态只作本会话内存位置、不写 HA。 */
+  /* 主位置点：始终以静态家为准（卡片覆盖 → zone.home → HA 全局 config → 卡片 center）。
+     人员 / 设备追踪只作为叠加标记，不再把家房子顶到追踪点；家房子永远可拖拽、可写回 zone.home。 */
   _primaryWgs84() {
-    const tp = this._trackingPointRef();
-    if (tp) return { point: { lat: tp.lat, lng: tp.lng }, source: "tracking", entityId: tp.entityId };
-    if (this._geoPoint) return { point: this._geoPoint, source: "geo", entityId: null };
     const home = this._homeWgs84();
     if (home) return { point: home, source: "home", entityId: "zone.home" };
     return null;
   }
-  /* 任意一个有效定位点（家 → 追踪实体 → 浏览器定位结果），供底图/纠偏判定取点；
-     首屏飞行优先级见 _maybeAutoLocate（app 追踪 > 浏览器定位 > 静态家）。 */
+  /* 任意一个有效定位点（家 → 追踪实体兜底），仅供底图/境内外纠偏判定取点，不参与家标记落点。 */
   _anyWgs84Point() {
-    return this._homeWgs84() || this._trackingPoint() || this._geoPoint || null;
+    return this._homeWgs84() || this._trackingPoint() || null;
   }
   /* 默认高德；auto 为兼容旧配置的别名，等同高德。OSM / Esri 仅在用户手动指定时作为全球图源使用 */
   _resolvedBasemap() {
@@ -1819,60 +1812,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._engine._userMoved = false;
     this._engine.flyTo(lat, lng, Number(cfg.default_zoom) || 12);
   }
-  /* 飞到浏览器自动定位点：按当前底图坐标系做 WGS84→GCJ 纠偏 */
-  _flyToGeoPoint() {
-    const p = this._geoPoint;
-    if (!p || !this._engine) return;
-    let lat = p.lat, lng = p.lng;
-    if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
-    this._didFit = true;
-    this._engine.flyTo(lat, lng, Number(this._config?.default_zoom) || 12);
-  }
-  /* 首屏优先飞到当前位置：app 追踪实体（人 / 设备 / 地理定位）已上报坐标则跟随它；
-     否则尝试浏览器定位飞到当前位置；定位被拒/超时/不支持时回退静态家/默认中心。
-     只取本机坐标、不写 HA 家配置、不外发；预览缩略卡 / 编辑视图不发起，避免读到操作者位置或弹出权限请求。 */
-  _maybeAutoLocate() {
-    if (this._geoRequested || this._geoDenied) return;
-    if (this._isPreviewCard() || this._inEditContext()) return;
-    if (!this.isConnected || !this._engine) return;
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      this._geoDenied = true;
-      return;
-    }
-    if (this._trackingPoint()) return;
-    if (this._engine._userMoved) return;
-    this._geoRequested = true;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos?.coords?.latitude, lng = pos?.coords?.longitude;
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-          this._geoDenied = true;
-          return;
-        }
-        this._geoPoint = { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
-        const resolved = this._resolvedBasemap();
-        if (this._renderedBasemap && resolved !== this._renderedBasemap) {
-          this._render();
-          return;
-        }
-        Promise.resolve().then(() => {
-          this._update();
-          if (!this._engine._userMoved) this._flyToGeoPoint();
-        });
-      },
-      () => {
-        this._geoDenied = true;
-      },
-      { enableHighAccuracy: false, timeout: 1e4, maximumAge: 6e4 }
-    );
-  }
-  /* 是否需要展示新用户引导：无 App 追踪、无浏览器定位结果、也没有有效静态家，
-     且预览/编辑态、本轮已手动关闭时不展示。 */
+  /* 是否需要展示新用户引导：没有有效静态家坐标时提示手动设置家位置；
+     预览/编辑态、本轮已手动关闭时不展示。 */
   _needsOnboard() {
     if (this._onboardDismissed) return false;
     if (this._isPreviewCard() || this._inEditContext()) return false;
-    if (this._trackingPointRef()) return false;
-    if (this._geoPoint) return false;
     if (this._homeWgs84()) return false;
     return true;
   }
@@ -2336,8 +2280,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
 
         <div class="cmc-onboard" data-onboard hidden>
           <div class="cmc-onboard-tx">
-            <div class="cmc-onboard-title">还没有定位到当前位置</div>
-            <div class="cmc-onboard-msg" data-onboard-msg>点按钮用浏览器定位，把家标到这里</div>
+            <div class="cmc-onboard-title">还没有设置家位置</div>
+            <div class="cmc-onboard-msg" data-onboard-msg>点按钮用浏览器定位，把家标到这里；也可在设置里手动填经纬度</div>
           </div>
           <button class="cmc-onboard-btn" data-onboard-locate>定位到我的位置</button>
           <button class="cmc-onboard-close" data-onboard-close aria-label="关闭引导">×</button>
@@ -3733,13 +3677,11 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     if (scaleEl) scaleEl.style.display = cfg.show_scale === false ? "none" : "";
     const states = this._collectEntities();
-    const primary = this._primaryWgs84();
     const markers = [];
     const pts = [];
     states.forEach((s) => {
       const { latitude, longitude, friendly_name } = s.attributes;
       if (latitude == null) return;
-      if (primary.source === "tracking" && s.entity_id === primary.entityId) return;
       let lat = latitude, lng = longitude;
       if (this._basemapShift) [lat, lng] = GCJ.wgs2gcj(lat, lng);
       const pic = s.attributes.entity_picture;
@@ -3770,7 +3712,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         const { latitude, longitude, friendly_name, passive, radius } = z.attributes;
         if (latitude == null || passive) return;
         if ((cfg.hidden_entities || []).includes(z.entity_id)) return;
-        if (z.entity_id === "zone.home" && primary && primary.source !== "home") return;
         let lat = latitude, lng = longitude, radiusAttr = radius;
         if (z.entity_id === "zone.home") {
           if (cfg.home_lat != null && cfg.home_lat !== "" && cfg.home_lng != null && cfg.home_lng !== "") {
@@ -3821,25 +3762,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         }
       });
     }
-    if (primary && primary.source !== "home") {
-      let hlat = primary.point.lat, hlng = primary.point.lng;
-      if (this._basemapShift) [hlat, hlng] = GCJ.wgs2gcj(hlat, hlng);
-      const srcState = primary.entityId ? this._hass?.states?.[primary.entityId] : null;
-      const homeName = srcState?.attributes?.friendly_name || primary.entityId || "我的家";
-      markers.push({
-        lat: hlat,
-        lng: hlng,
-        entityId: primary.entityId || null,
-        short: homeName,
-        label: cfg.show_labels === false ? "" : homeName,
-        clusterable: false,
-        home: true,
-        draggable: false,
-        icon: srcState?.attributes?.icon || "mdi:home",
-        color: srcState?.attributes?.color || "#03a9f4"
-      });
-      pts.push({ lat: hlat, lng: hlng });
-    }
     this._lastMarkers = markers;
     this._engine.setMarkers(markers, { cluster: cfg.show_cluster !== false });
     this._syncTracks(states);
@@ -3863,9 +3785,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     } else if (!this._didFit) {
       this._engine.render();
     }
-    if (this._geoPoint && !this._didFit && !this._engine._userMoved) {
-      this._flyToGeoPoint();
-    }
     this._applyUrlSelection();
     if (!this._urlApplied && !this._focusApplied) {
       const fe = (cfg.entities || []).find((e) => typeof e === "object" && e.focus && e.entity);
@@ -3879,7 +3798,6 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     }
     if (this._panelView === "detail") this._renderDetailHeader();
     else if (this._panelView !== "settings") this._renderList();
-    this._maybeAutoLocate();
     this._syncOnboard();
   }
   /* 自动适配时的内边距：全屏 + 面板展开时避开面板覆盖区
@@ -4579,4 +4497,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v1.9.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
