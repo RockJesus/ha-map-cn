@@ -378,7 +378,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         for (let tx = tx0; tx <= tx1; tx++) {
           if (ty < 0 || ty >= n) continue;
           const wx = (tx % n + n) % n;
-          const key = `${z}/${wx}/${ty}`;
+          const key = `${z}/${tx}/${ty}`;
           keep.add(key);
           let img = ts.els.get(key);
           if (!img) {
@@ -4497,4 +4497,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v1.9.5 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

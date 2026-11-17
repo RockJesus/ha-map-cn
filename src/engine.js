@@ -210,7 +210,10 @@ class CnTileEngine extends EventTarget {
         for (let tx = tx0; tx <= tx1; tx++) {
           if (ty < 0 || ty >= n) continue;
           const wx = ((tx % n) + n) % n;
-          const key = `${z}/${wx}/${ty}`;
+          // key 必须用屏幕网格坐标 tx/ty，不能用取模后的 wx：低级别（n 小）宽屏
+          // 横向需要把同一瓦片重复平铺多列，若按 wx 复用同一个 <img>，重复位置
+          // 只会保留最后一个 left，其余列留空露出卡片底色（z3 宽屏左侧大片灰空）。
+          const key = `${z}/${tx}/${ty}`;
           keep.add(key);
           let img = ts.els.get(key);
           if (!img) {
