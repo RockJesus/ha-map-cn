@@ -1322,6 +1322,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._hiddenIds = null;
     this._registryTried = false;
     this._onboardDismissed = false;
+    this._homeAutoSynced = false;
     this._focusOnMarkerClick = true;
     this._bleedUser = void 0;
     this._isBleed = false;
@@ -1811,6 +1812,43 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     this._didFit = true;
     this._engine._userMoved = false;
     this._engine.flyTo(lat, lng, Number(cfg.default_zoom) || 12);
+  }
+  /* HA 全局 config 的有效非默认坐标（服务器安装时记录的网络位置）；出厂默认坐标视为未设置 */
+  _configHomePoint() {
+    const conf = this._hass?.config;
+    const lat = Number(conf?.latitude), lng = Number(conf?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !this._isDefaultHome(lat, lng)) {
+      return { lat, lng };
+    }
+    return null;
+  }
+  /* 首次且家仍是出厂默认、用户还没在卡片里手填/拖拽过时，允许自动把家落到网络位置。
+     预览/编辑态不写 HA 配置；本会话只自动同步一次，不反复弹权限或重复写回。 */
+  _shouldAutoHome() {
+    if (this._homeAutoSynced) return false;
+    if (this._isPreviewCard() || this._inEditContext()) return false;
+    const cfg = this._config || {};
+    if (cfg.home_lat != null && cfg.home_lat !== "" && cfg.home_lng != null && cfg.home_lng !== "") return false;
+    const home = this._hass?.states?.["zone.home"]?.attributes;
+    const lat = Number(home?.latitude), lng = Number(home?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !this._isDefaultHome(lat, lng)) return false;
+    return true;
+  }
+  /* 首次进入自动定位：优先 HA 服务器网络位置；服务器位置也缺时再退设备浏览器定位。
+     写回 zone.home 后家房子落到该点，之后仍可拖拽 / 调半径。 */
+  _autoLocateHome() {
+    if (!this._shouldAutoHome()) return;
+    const cfgPoint = this._configHomePoint();
+    if (cfgPoint) {
+      this._homeAutoSynced = true;
+      this._syncHomeToZone(
+        { latitude: cfgPoint.lat, longitude: cfgPoint.lng },
+        "已按服务器位置定位到家"
+      );
+      return;
+    }
+    this._homeAutoSynced = true;
+    this._locateHome();
   }
   /* 是否需要展示新用户引导：没有有效静态家坐标时提示手动设置家位置；
      预览/编辑态、本轮已手动关闭时不展示。 */
@@ -3673,6 +3711,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       this._applyPreviewState();
       return;
     }
+    this._autoLocateHome();
     const hass = this._hass, cfg = this._config;
     const scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     if (scaleEl) scaleEl.style.display = cfg.show_scale === false ? "none" : "";
@@ -4497,4 +4536,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v1.9.6 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.9.7 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

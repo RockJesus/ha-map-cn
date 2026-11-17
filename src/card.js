@@ -45,6 +45,7 @@ class HaCnMapCard extends HTMLElement {
     this._hiddenIds = null;   // 实体注册表里 hidden_by 非空的实体集合；null = 尚未拉取
     this._registryTried = false; // 注册表只拉一次，失败（权限/旧版本 HA）不重试
     this._onboardDismissed = false; // 新用户引导条本会话是否被手动关闭
+    this._homeAutoSynced = false;   // 首次自动定位写回 zone.home 本会话是否已执行
     // 官方交互：首次点标记 = 聚焦飞行 + 选中；设 false 恢复"直接弹 more-info"
     this._focusOnMarkerClick = true;
     this._bleedUser = undefined; // 用户点全屏按钮的选择：true 铺满 / false 不铺满 / undefined 自动
@@ -572,6 +573,47 @@ class HaCnMapCard extends HTMLElement {
     this._didFit = true;
     this._engine._userMoved = false;
     this._engine.flyTo(lat, lng, Number(cfg.default_zoom) || 12);
+  }
+
+  /* HA 全局 config 的有效非默认坐标（服务器安装时记录的网络位置）；出厂默认坐标视为未设置 */
+  _configHomePoint() {
+    const conf = this._hass?.config;
+    const lat = Number(conf?.latitude), lng = Number(conf?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !this._isDefaultHome(lat, lng)) {
+      return { lat, lng };
+    }
+    return null;
+  }
+
+  /* 首次且家仍是出厂默认、用户还没在卡片里手填/拖拽过时，允许自动把家落到网络位置。
+     预览/编辑态不写 HA 配置；本会话只自动同步一次，不反复弹权限或重复写回。 */
+  _shouldAutoHome() {
+    if (this._homeAutoSynced) return false;
+    if (this._isPreviewCard() || this._inEditContext()) return false;
+    const cfg = this._config || {};
+    if (cfg.home_lat != null && cfg.home_lat !== "" && cfg.home_lng != null && cfg.home_lng !== "") return false;
+    const home = this._hass?.states?.["zone.home"]?.attributes;
+    const lat = Number(home?.latitude), lng = Number(home?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !this._isDefaultHome(lat, lng)) return false;
+    return true;
+  }
+
+  /* 首次进入自动定位：优先 HA 服务器网络位置；服务器位置也缺时再退设备浏览器定位。
+     写回 zone.home 后家房子落到该点，之后仍可拖拽 / 调半径。 */
+  _autoLocateHome() {
+    if (!this._shouldAutoHome()) return;
+    const cfgPoint = this._configHomePoint();
+    if (cfgPoint) {
+      this._homeAutoSynced = true;
+      this._syncHomeToZone(
+        { latitude: cfgPoint.lat, longitude: cfgPoint.lng },
+        "已按服务器位置定位到家"
+      );
+      return;
+    }
+    // 服务器位置也缺：退设备浏览器定位（需位置权限）；标记已尝试，避免每帧重复请求权限
+    this._homeAutoSynced = true;
+    this._locateHome();
   }
 
   /* 是否需要展示新用户引导：没有有效静态家坐标时提示手动设置家位置；
@@ -2516,6 +2558,7 @@ class HaCnMapCard extends HTMLElement {
       this._applyPreviewState();
       return;
     }
+    this._autoLocateHome();
     const hass = this._hass, cfg = this._config;
     // 比例尺开关（官方字段 scale_ruler；默认保留常显）
     const scaleEl = this.shadowRoot.querySelector(".cmc-scale");
