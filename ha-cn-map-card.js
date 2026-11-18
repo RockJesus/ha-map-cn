@@ -200,8 +200,8 @@ var escapeAttr = (v) => escapeHtml(v);
 var CnTileEngine = class _CnTileEngine extends EventTarget {
   static MIN_ZOOM = 1;
   static MAX_ZOOM = 19;
-  // 缩放低于该级别（标尺约 ≥1000km 的全球视图）切换为 3D 球体；高于此值回到平面瓦片
-  static GLOBE_ZOOM = 3;
+  // 缩放低于该级别（标尺约 ≥2500km 的全球视图）切换为 3D 球体；高于此值回到平面瓦片
+  static GLOBE_ZOOM = 2;
   static clampZoom(z) {
     return Math.max(_CnTileEngine.MIN_ZOOM, Math.min(_CnTileEngine.MAX_ZOOM, z));
   }
@@ -232,6 +232,10 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     this._world = null;
     this._worldPending = false;
     this._worldFailed = false;
+    this._worldData = null;
+    this._worldW = 0;
+    this._worldH = 0;
+    this._globeOff = null;
     this.viewport.style.position = "absolute";
     this.viewport.style.inset = "0";
     this.viewport.style.zIndex = "1";
@@ -284,11 +288,20 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
   }
   static _globeRot(v, lat0, lng0) {
     const lo = lng0 * Math.PI / 180, la = lat0 * Math.PI / 180;
-    const x1 = v.x * Math.cos(lo) + v.z * Math.sin(lo);
-    const z1 = -v.x * Math.sin(lo) + v.z * Math.cos(lo);
+    const x1 = v.x * Math.cos(lo) - v.z * Math.sin(lo);
+    const z1 = v.x * Math.sin(lo) + v.z * Math.cos(lo);
     const y2 = v.y * Math.cos(la) - z1 * Math.sin(la);
     const z2 = v.y * Math.sin(la) + z1 * Math.cos(la);
     return { x: x1, y: y2, z: z2 };
+  }
+  /* _globeRot 的逆：视角坐标系向量还原到球坐标系（逐像素反投影采样用） */
+  static _globeUnrot(a, lat0, lng0) {
+    const lo = lng0 * Math.PI / 180, la = lat0 * Math.PI / 180;
+    const z1 = -a.y * Math.sin(la) + a.z * Math.cos(la);
+    const y = a.y * Math.cos(la) + a.z * Math.sin(la);
+    const x = a.x * Math.cos(lo) + z1 * Math.sin(lo);
+    const z = -a.x * Math.sin(lo) + z1 * Math.cos(lo);
+    return { x, y, z };
   }
   /* 异步拉取全球影像最低级瓦片拼合离屏世界图；失败则退回经纬网兜底球 */
   _ensureWorldTexture() {
@@ -302,8 +315,19 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     let done = 0, ok = 0;
     const finish = () => {
       this._worldPending = false;
-      if (ok > 0) this._world = cv;
-      else this._worldFailed = true;
+      if (ok > 0) {
+        this._world = cv;
+        try {
+          const id = ctx.getImageData(0, 0, cv.width, cv.height);
+          this._worldData = id.data;
+          this._worldW = cv.width;
+          this._worldH = cv.height;
+        } catch {
+          this._worldFailed = true;
+        }
+      } else {
+        this._worldFailed = true;
+      }
       if (this.container.isConnected) this.render();
     };
     const tpl = BASEMAPS.esri.layers[0].template;
@@ -325,7 +349,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       }
     }
   }
-  /* 统一屏幕投影：平面走墨卡托；球体走等距圆柱映射到球内，返回是否在球面内 */
+  /* 统一屏幕投影：平面走墨卡托；球体走正射球面投影，背面点返回 inside=false */
   _projectScreen(lat, lng, w, h) {
     if (!this._isGlobe()) {
       const c = _CnTileEngine.project(this.center.lat, this.center.lng);
@@ -338,16 +362,13 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
       };
     }
     const g = this._globeGeom(w, h);
-    const u = (lng + 180) / 360;
-    const v = (90 - Math.max(-80, Math.min(80, lat))) / 180;
-    const u0 = (this.center.lng + 180) / 360;
-    const v0 = (90 - Math.max(-80, Math.min(80, this.center.lat))) / 180;
-    let du = u - u0;
-    du = ((du + 0.5) % 1 + 1) % 1 - 0.5;
-    const x = g.cx + du * 2 * g.Rr;
-    const y = g.cy + (v - v0) * 2 * g.Rr;
-    const inside = (x - g.cx) ** 2 + (y - g.cy) ** 2 <= (g.Rr * 0.985) ** 2;
-    return { x, y, inside };
+    const v = _CnTileEngine._globeRot(
+      _CnTileEngine._globeVec(lat, lng),
+      this.center.lat,
+      this.center.lng
+    );
+    if (v.z <= 0.02) return { x: g.cx, y: g.cy, inside: false };
+    return { x: g.cx + g.Rr * v.x, y: g.cy - g.Rr * v.y, inside: true };
   }
   _renderGlobe(w, h) {
     const canvas = this.globeCanvas;
@@ -365,7 +386,7 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     ctx.arc(g.cx, g.cy, g.Rr, 0, Math.PI * 2);
     ctx.clip();
     this._paintOceanBase(ctx, g);
-    if (this._world) this._paintWorld(ctx, g);
+    if (this._worldData) this._paintGlobeTexture(ctx, g, w, h);
     else this._paintGridSphere(ctx, g);
     const limb = ctx.createRadialGradient(g.cx, g.cy, g.Rr * 0.5, g.cx, g.cy, g.Rr);
     limb.addColorStop(0, "rgba(0,0,0,0)");
@@ -384,16 +405,53 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
     ctx.lineWidth = 2;
     ctx.stroke();
   }
-  _paintWorld(ctx, g) {
-    const world = this._world, iw = world.width, ih = world.height;
-    const dw = 2 * g.Rr, dh = 2 * g.Rr;
-    const u0 = (this.center.lng + 180) / 360;
-    const v0 = (90 - this.center.lat) / 180;
-    const baseX = g.cx - dw / 2 - (u0 - 0.5) * dw;
-    const baseY = g.cy - dh / 2 - (v0 - 0.5) * dh;
-    for (let ox = -dw; ox <= dw; ox += dw) {
-      ctx.drawImage(world, 0, 0, iw, ih, baseX + ox, baseY, dw, dh);
+  /* 真 3D 球面：圆内每个像素做正射反投影，还原经纬度后采样世界贴图，叠加球面漫反射光照 */
+  _paintGlobeTexture(ctx, g, w, h) {
+    const data = this._worldData, W = this._worldW, H = this._worldH;
+    if (!data || !W || !H) return;
+    if (!this._globeOff) this._globeOff = document.createElement("canvas");
+    const off = this._globeOff;
+    if (off.width !== w || off.height !== h) {
+      off.width = w;
+      off.height = h;
     }
+    const octx = off.getContext("2d");
+    const img = octx.createImageData(w, h);
+    const d = img.data;
+    const R = g.Rr, cx = g.cx, cy = g.cy;
+    const x0 = Math.max(0, Math.floor(cx - R)), x1 = Math.min(w - 1, Math.ceil(cx + R));
+    const y0 = Math.max(0, Math.floor(cy - R)), y1 = Math.min(h - 1, Math.ceil(cy + R));
+    let Lx = -0.45, Ly = -0.55, Lz = 0.72;
+    const Ll = Math.hypot(Lx, Ly, Lz);
+    Lx /= Ll;
+    Ly /= Ll;
+    Lz /= Ll;
+    const RAD = 180 / Math.PI;
+    for (let py = y0; py <= y1; py++) {
+      const dy = (cy - py) / R;
+      for (let px = x0; px <= x1; px++) {
+        const dx = (px - cx) / R;
+        const r2 = dx * dx + dy * dy;
+        if (r2 > 1) continue;
+        const z = Math.sqrt(1 - r2);
+        const u = _CnTileEngine._globeUnrot({ x: dx, y: dy, z }, this.center.lat, this.center.lng);
+        const latR = Math.asin(Math.max(-1, Math.min(1, u.y)));
+        const lngDeg = Math.atan2(u.x, u.z) * RAD;
+        const p = _CnTileEngine.project(latR * RAD, lngDeg);
+        const ix = Math.min(W - 1, Math.max(0, Math.round(p.x * (W - 1))));
+        const iy = Math.min(H - 1, Math.max(0, Math.round(p.y * (H - 1))));
+        const si = (iy * W + ix) * 4;
+        const diff = dx * Lx + dy * Ly + z * Lz;
+        const bright = 0.6 + 0.4 * Math.max(0, diff);
+        const di = (py * w + px) * 4;
+        d[di] = data[si] * bright;
+        d[di + 1] = data[si + 1] * bright;
+        d[di + 2] = data[si + 2] * bright;
+        d[di + 3] = 255;
+      }
+    }
+    octx.putImageData(img, 0, 0);
+    ctx.drawImage(off, 0, 0, w, h);
   }
   _paintOceanBase(ctx, g) {
     const Rr = g.Rr;
@@ -4746,4 +4804,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v1.10.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v1.10.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
