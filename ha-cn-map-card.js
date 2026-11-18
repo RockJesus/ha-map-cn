@@ -1578,7 +1578,7 @@ var EDIT_VIEW_TAGS = /* @__PURE__ */ new Set([
 var PREVIEW_CENTER = { lat: 39.9042, lng: 116.4074 };
 var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   static getStubConfig() {
-    return { show_all: true };
+    return { show_all: true, show_zones: true, show_zone_radius: true };
   }
   constructor() {
     super();
@@ -4809,4 +4809,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v2.0.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v2.0.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

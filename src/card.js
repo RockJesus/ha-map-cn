@@ -33,7 +33,7 @@ const PREVIEW_CENTER = { lat: 39.9042, lng: 116.4074 };
 
 class HaCnMapCard extends HTMLElement {
   static getStubConfig() {
-    return { show_all: true };
+    return { show_all: true, show_zones: true, show_zone_radius: true };
   }
   constructor() {
     super();
