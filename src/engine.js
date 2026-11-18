@@ -455,11 +455,12 @@ class CnTileEngine extends EventTarget {
 
       for (let ty = ty0; ty <= ty1; ty++) {
         for (let tx = tx0; tx <= tx1; tx++) {
+          // 平面世界横向、纵向都不回绕平铺：瓦片越出世界 [0, n) 一律跳过，
+          // 两侧/极地之外留基底色，避免超宽屏把同一大陆重复铺成多份。
           if (ty < 0 || ty >= n) continue;
-          const wx = ((tx % n) + n) % n;
-          // key 必须用屏幕网格坐标 tx/ty，不能用取模后的 wx：低级别（n 小）宽屏
-          // 横向需要把同一瓦片重复平铺多列，若按 wx 复用同一个 <img>，重复位置
-          // 只会保留最后一个 left，其余列留空露出卡片底色（z3 宽屏左侧大片灰空）。
+          if (tx < 0 || tx >= n) continue;
+          const wx = tx;
+          // key 用屏幕网格坐标 tx/ty（平面模式 wx===tx），离屏清理按网格坐标区分。
           const key = `${z}/${tx}/${ty}`;
           keep.add(key);
           let img = ts.els.get(key);

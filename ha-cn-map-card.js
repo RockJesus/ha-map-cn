@@ -644,7 +644,8 @@ var CnTileEngine = class _CnTileEngine extends EventTarget {
         for (let ty = ty0; ty <= ty1; ty++) {
           for (let tx = tx0; tx <= tx1; tx++) {
             if (ty < 0 || ty >= n) continue;
-            const wx = (tx % n + n) % n;
+            if (tx < 0 || tx >= n) continue;
+            const wx = tx;
             const key = `${z}/${tx}/${ty}`;
             keep.add(key);
             let img = ts.els.get(key);
@@ -2226,7 +2227,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         :host(.cmc-bleed) .cmc-card {
           border-radius:0; border:none;
           height:100%; width:100%;
-          background:var(--map-background-color, #121212);
+          background:var(--map-background-color, var(--cmc-map-bg));
         }
         /* 轨迹点悬停提示（v1.0.8）：跟随鼠标的极小浮层 */
         .cmc-tip {
@@ -2239,10 +2240,14 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
         }
         .cmc-tip[hidden] { display:none; }
         .cmc-card.is-aspect { height:auto; position:relative; }
+        /* 地图外露基底（超宽屏两侧、极地上下、世界矩形之外）：用与海洋接近的中性海色，
+           不再用近黑 #121212 露出黑边；暗/亮分档，卫星影像瓦片覆盖处不受影响。 */
+        .cmc-card { --cmc-map-bg: #dbe7f1; }
+        .cmc-card.is-dark { --cmc-map-bg: #182634; }
         .cmc-card {
           position:absolute; inset:0; overflow:hidden;
           border-radius:var(--cmc-radius);
-          background:${isFull ? "var(--map-background-color, #121212)" : "var(--cmc-surface)"};
+          background:${isFull ? "var(--map-background-color, var(--cmc-map-bg))" : "var(--cmc-surface)"};
           ${isFull ? "border:none;" : "border:1px solid var(--ha-card-border-color, rgba(0,0,0,.12));"}
           box-sizing:border-box;
         }
@@ -4804,4 +4809,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v2.0.0 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v2.0.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
