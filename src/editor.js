@@ -402,8 +402,8 @@ class HaCnMapCardEditor extends HTMLElement {
     sr.querySelectorAll("[data-k]").forEach((el) => {
       const k = el.dataset.k;
       if (el.type === "checkbox") {
-        // fit_entities 默认为 true，其余默认为 false
-        el.checked = c[k] === undefined ? ["fit_entities", "show_cluster", "show_status", "show_accuracy", "show_zone_radius", "dedupe_trackers", "respect_hidden"].includes(k) : !!c[k];
+        // 下列开关缺省时默认开启，与卡片运行时默认值保持一致
+        el.checked = c[k] === undefined ? ["show_all", "show_zones", "show_zone_radius", "dedupe_trackers", "respect_hidden", "fit_zones", "show_cluster", "fit_entities", "show_status", "show_accuracy"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
         el.value = k === "layout" ? (c[k] || "auto")
           : k === "theme_mode" ? (c[k] || "auto")

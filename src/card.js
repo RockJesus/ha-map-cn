@@ -142,7 +142,7 @@ class HaCnMapCard extends HTMLElement {
       show_zone_radius: true,    // zone 半径圈（官方把半径当 zone 的核心属性）
       dedupe_trackers: true,     // person 已覆盖的 device_tracker 不再单独画点
       respect_hidden: true,      // 实体注册表里被用户隐藏（hidden_by）的实体不再上地图
-      fit_zones: false,          // 自动适配视野时把区域半径圈也算进去
+      fit_zones: true,           // 自动适配视野时把区域半径圈也算进去（默认开启）
       show_labels: true,
       label_mode: "name",        // name | state | attribute | none（可在 entities 里逐实体覆盖）
       show_status: true,         // 标记下方状态行（在家 / 离线 / 速度 / 电量 / 相对时间）

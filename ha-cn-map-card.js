@@ -1691,8 +1691,8 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
       // person 已覆盖的 device_tracker 不再单独画点
       respect_hidden: true,
       // 实体注册表里被用户隐藏（hidden_by）的实体不再上地图
-      fit_zones: false,
-      // 自动适配视野时把区域半径圈也算进去
+      fit_zones: true,
+      // 自动适配视野时把区域半径圈也算进去（默认开启）
       show_labels: true,
       label_mode: "name",
       // name | state | attribute | none（可在 entities 里逐实体覆盖）
@@ -4764,7 +4764,7 @@ var HaCnMapCardEditor = class extends HTMLElement {
     sr.querySelectorAll("[data-k]").forEach((el) => {
       const k = el.dataset.k;
       if (el.type === "checkbox") {
-        el.checked = c[k] === void 0 ? ["fit_entities", "show_cluster", "show_status", "show_accuracy", "show_zone_radius", "dedupe_trackers", "respect_hidden"].includes(k) : !!c[k];
+        el.checked = c[k] === void 0 ? ["show_all", "show_zones", "show_zone_radius", "dedupe_trackers", "respect_hidden", "fit_zones", "show_cluster", "fit_entities", "show_status", "show_accuracy"].includes(k) : !!c[k];
       } else if (el.tagName === "SELECT") {
         el.value = k === "layout" ? c[k] || "auto" : k === "theme_mode" ? c[k] || "auto" : k === "label_mode" ? c[k] || "name" : String(c[k] === void 0 ? 0 : c[k]);
       } else {
@@ -4809,4 +4809,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v2.0.1 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v2.0.2 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
