@@ -43,6 +43,8 @@ var GCJ = /* @__PURE__ */ (() => {
   };
 })();
 var LS_PREFIX = "ha-cn-map-card:";
+var CARD_VERSION = "2.0.4";
+var ZONE_DEFAULT_ON_VERSION = "2.0.2";
 var OFFLINE_STATES = /* @__PURE__ */ new Set(["unavailable", "unknown"]);
 var RUNTIME_KEYS = [
   "basemap",
@@ -66,11 +68,21 @@ var RUNTIME_KEYS = [
   "show_accuracy",
   "height"
 ];
+var LEGACY_FALSE_RESET_KEYS = ["show_zones", "show_zone_radius"];
 function storageKey(config) {
   const v = config?.view_index ?? 0;
   const i = config?.card_index ?? 0;
   const path = typeof window !== "undefined" && window.location?.pathname || "/";
   return `${LS_PREFIX}${path}#v${v}c${i}`;
+}
+function versionLess(a, b) {
+  const pa = String(a || "0.0.0").split(".").map(Number);
+  const pb = String(b || "0.0.0").split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x < y;
+  }
+  return false;
 }
 function loadRuntime(key) {
   try {
@@ -79,9 +91,10 @@ function loadRuntime(key) {
     return {};
   }
 }
-function saveRuntime(key, opts) {
+function saveRuntime(key, opts, version) {
   try {
-    window.localStorage.setItem(key, JSON.stringify(opts));
+    const out = { ...opts, _rt_version: version || CARD_VERSION };
+    window.localStorage.setItem(key, JSON.stringify(out));
   } catch {
   }
 }
@@ -1815,9 +1828,12 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
   /* 把 localStorage 里的运行时设置合并进当前配置（YAML 里的显式值仍可通过 persist:false 关闭） */
   _applyRuntime(opts) {
     if (!opts || typeof opts !== "object") return;
+    const legacy = !opts._rt_version || versionLess(opts._rt_version, ZONE_DEFAULT_ON_VERSION);
     const cfg = { ...this._config };
     RUNTIME_KEYS.forEach((k) => {
-      if (opts[k] !== void 0) cfg[k] = opts[k];
+      if (opts[k] === void 0) return;
+      if (legacy && LEGACY_FALSE_RESET_KEYS.includes(k) && opts[k] === false) return;
+      cfg[k] = opts[k];
     });
     for (const k of ["home_lat", "home_lng", "home_radius"]) {
       const v = cfg[k];
@@ -1832,7 +1848,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     RUNTIME_KEYS.forEach((k) => {
       if (this._config[k] !== void 0 && this._config[k] !== "") out[k] = this._config[k];
     });
-    saveRuntime(this._lsKey || storageKey(this._rawConfig), out);
+    saveRuntime(this._lsKey || storageKey(this._rawConfig), out, CARD_VERSION);
   }
   /* 解析布局：官方 panel 视图 / sections 紧凑 / 自定义全屏 */
   _resolveLayout() {
@@ -3263,7 +3279,7 @@ var HaCnMapCard = class _HaCnMapCard extends HTMLElement {
     const explicit = (cfg.entities || []).map((e) => typeof e === "object" ? e.entity : e).filter(Boolean);
     const showAll = cfg.show_all !== false;
     const nameOf = (st) => st.attributes?.friendly_name || st.entity_id;
-    const groups = [["person.", "人员"], ["device_tracker.", "设备"], ["zone.", "区域"]];
+    const groups = [["person.", "人员"], ["device_tracker.", "设备"], ["geo_location.", "地理定位"], ["zone.", "区域"]];
     let html = "", total = 0;
     groups.forEach(([pre, label]) => {
       const rows = Object.values(hass.states).filter((st) => st.entity_id.startsWith(pre) && st.attributes?.latitude != null).sort((a, b) => String(nameOf(a)).localeCompare(String(nameOf(b)), "zh"));
@@ -4809,4 +4825,4 @@ if (!window.customCards.some((entry) => entry && entry.type === "ha-cn-map-card"
     documentationURL: "https://github.com/RockJesus/ha-map-cn#readme"
   });
 }
-console.info("%c ha-cn-map-card v2.0.3 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");
+console.info("%c ha-cn-map-card v2.0.4 ", "background:#e53935;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px", "background:#424242;color:#fff;padding:2px 4px;border-radius:0 3px 3px 0");

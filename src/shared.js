@@ -47,6 +47,12 @@ const GCJ = (() => {
 
 /* ---- 运行时设置持久化（浏览器本地，不改 /config/.storage 里的仪表盘 YAML） ---- */
 const LS_PREFIX = "ha-cn-map-card:";
+// 当前卡片版本（与 package.json、main.js console 串三处保持一致）
+const CARD_VERSION = "2.0.4";
+// 默认策略翻向版本：该版本起 show_zones / show_zone_radius 默认改为 true。
+// 早于该版本写入的本地快照里，这两个键的 false 属旧默认遗留，升级后回退新默认，
+// 不再被旧 LS 覆盖；新版用户在抽屉里主动关掉的 false 才继续尊重。
+const ZONE_DEFAULT_ON_VERSION = "2.0.2";
 // 实体处于这些状态时视为"无有效位置/失联"，标记灰显
 const OFFLINE_STATES = new Set(["unavailable", "unknown"]);
 // 设置抽屉 / 快捷按钮可写回本地的键
@@ -72,12 +78,25 @@ const RUNTIME_KEYS = [
   "show_accuracy",
   "height",
 ];
-// 同一张卡片在多个视图里会被实例化成多个实例；按「仪表盘路径 + 卡片顺序」生成稳定 id
+// 默认值在 ZONE_DEFAULT_ON_VERSION 翻为 true 的键：旧快照遗留的 false 升级后回退默认
+const LEGACY_FALSE_RESET_KEYS = ["show_zones", "show_zone_radius"];
+
+/* 同一张卡片在多个视图里会被实例化成多个实例；按「仪表盘路径 + 卡片顺序」生成稳定 id */
 function storageKey(config) {
   const v = config?.view_index ?? 0;
   const i = config?.card_index ?? 0;
   const path = (typeof window !== "undefined" && window.location?.pathname) || "/";
   return `${LS_PREFIX}${path}#v${v}c${i}`;
+}
+// 三段 SemVer 比较：a < b 返回 true（缺段按 0 补）
+function versionLess(a, b) {
+  const pa = String(a || "0.0.0").split(".").map(Number);
+  const pb = String(b || "0.0.0").split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x < y;
+  }
+  return false;
 }
 function loadRuntime(key) {
   try {
@@ -86,9 +105,10 @@ function loadRuntime(key) {
     return {};
   }
 }
-function saveRuntime(key, opts) {
+function saveRuntime(key, opts, version) {
   try {
-    window.localStorage.setItem(key, JSON.stringify(opts));
+    const out = { ...opts, _rt_version: version || CARD_VERSION };
+    window.localStorage.setItem(key, JSON.stringify(out));
   } catch {
     /* 隐私模式 / 配额满：忽略 */
   }
@@ -216,7 +236,9 @@ const escapeHtml = (v) =>
 const escapeAttr = (v) => escapeHtml(v);
 
 export {
-  GCJ, LS_PREFIX, OFFLINE_STATES, RUNTIME_KEYS, storageKey, loadRuntime, saveRuntime,
+  GCJ, LS_PREFIX, OFFLINE_STATES, RUNTIME_KEYS, LEGACY_FALSE_RESET_KEYS,
+  CARD_VERSION, ZONE_DEFAULT_ON_VERSION, versionLess,
+  storageKey, loadRuntime, saveRuntime,
   CLUSTER_RADIUS_PX, CLUSTER_MAX_AVATAR, LAYOUT, VIEWPORT_H, ICONS, BASEMAPS,
   escapeHtml, escapeAttr,
 };

@@ -1,7 +1,8 @@
 /* ---- HaCnMapCard：Lovelace 卡片主类 ---- */
 
 import {
-  GCJ, OFFLINE_STATES, RUNTIME_KEYS, storageKey, loadRuntime, saveRuntime,
+  GCJ, OFFLINE_STATES, RUNTIME_KEYS, LEGACY_FALSE_RESET_KEYS, storageKey,
+  loadRuntime, saveRuntime, CARD_VERSION, ZONE_DEFAULT_ON_VERSION, versionLess,
   LAYOUT, ICONS, BASEMAPS, escapeHtml, escapeAttr,
 } from "./shared.js";
 import { CnTileEngine } from "./engine.js";
@@ -275,9 +276,14 @@ class HaCnMapCard extends HTMLElement {
   /* 把 localStorage 里的运行时设置合并进当前配置（YAML 里的显式值仍可通过 persist:false 关闭） */
   _applyRuntime(opts) {
     if (!opts || typeof opts !== "object") return;
+    // 旧版本（默认策略翻向之前）写入的本地快照：show_zones / show_zone_radius 的 false
+    // 属旧默认遗留，升级后回退新默认 true；快照带版本且不早于翻向版本时，用户主动关的 false 才尊重。
+    const legacy = !opts._rt_version || versionLess(opts._rt_version, ZONE_DEFAULT_ON_VERSION);
     const cfg = { ...this._config };
     RUNTIME_KEYS.forEach((k) => {
-      if (opts[k] !== undefined) cfg[k] = opts[k];
+      if (opts[k] === undefined) return;
+      if (legacy && LEGACY_FALSE_RESET_KEYS.includes(k) && opts[k] === false) return;
+      cfg[k] = opts[k];
     });
     // 清理之前 NaN/异常的 home 覆盖值（老版本拖动半径写脏过）
     for (const k of ["home_lat", "home_lng", "home_radius"]) {
@@ -295,7 +301,7 @@ class HaCnMapCard extends HTMLElement {
       // 注意：false / 0 都是有效状态，不能被当成"未设置"过滤掉
       if (this._config[k] !== undefined && this._config[k] !== "") out[k] = this._config[k];
     });
-    saveRuntime(this._lsKey || storageKey(this._rawConfig), out);
+    saveRuntime(this._lsKey || storageKey(this._rawConfig), out, CARD_VERSION);
   }
 
   /* 解析布局：官方 panel 视图 / sections 紧凑 / 自定义全屏 */
@@ -1814,7 +1820,7 @@ class HaCnMapCard extends HTMLElement {
     const explicit = (cfg.entities || []).map((e) => (typeof e === "object" ? e.entity : e)).filter(Boolean);
     const showAll = cfg.show_all !== false;
     const nameOf = (st) => st.attributes?.friendly_name || st.entity_id;
-    const groups = [["person.", "人员"], ["device_tracker.", "设备"], ["zone.", "区域"]];
+    const groups = [["person.", "人员"], ["device_tracker.", "设备"], ["geo_location.", "地理定位"], ["zone.", "区域"]];
     let html = "", total = 0;
     groups.forEach(([pre, label]) => {
       const rows = Object.values(hass.states)
