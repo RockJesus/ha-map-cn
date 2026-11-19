@@ -29,9 +29,6 @@ const EDIT_VIEW_TAGS = new Set([
   "hui-card-edit-mode", "hui-section-edit-mode", "hui-edit-view",
   "hui-edit-dashboard-view",
 ]);
-// 预览示意中心：北京（固定公开坐标，不读用户/开发者家位置）
-const PREVIEW_CENTER = { lat: 39.9042, lng: 116.4074 };
-
 class HaCnMapCard extends HTMLElement {
   static getStubConfig() {
     return { show_all: true, show_zones: true, show_zone_radius: true };
@@ -392,20 +389,32 @@ class HaCnMapCard extends HTMLElement {
     return false;
   }
 
-  /* 收敛到预览静态态：只读、北京示意中心、清空标记/精度圈/轨迹、退订历史、隐藏面板与控件。
-     首帧 _render() 时卡片往往还没挂进 DOM、preview 也未置位，会先按真实分支 fit 到用户家附近；
-     后置进入预览（官方回写 preview 属性 / 挂载后祖先链才就位）时必须再跑一次本方法兜底。 */
+  /* 预览占位：清空地图容器，写一个不请求任何图片的纯 CSS 示意骨架。 */
+  _fillPreviewPlaceholder(mapEl) {
+    const host = mapEl || this.shadowRoot?.querySelector(".cmc-map");
+    if (!host) return;
+    host.innerHTML = `
+      <div class="cmc-preview-badge">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="${ICONS.focus}"/></svg>
+        <div class="cmc-pb-title">中国地图</div>
+      </div>`;
+  }
+
+  /* 收敛到预览静态态：只读、不挂瓦片/不拉位图，清空标记/精度圈/轨迹，退订历史。
+     首帧 _render() 时卡片往往还没挂进 DOM、preview 也未置位，会先按真实分支建引擎；
+     后置进入预览（挂载后祖先链就位）时再跑一次本方法兜底，把瓦片层清掉换成静态占位。 */
   _applyPreviewState() {
     if (!this._isPreviewCard()) return;
     const eng = this._engine;
     if (eng) {
       eng.setReadOnly(true);
-      eng.setView(PREVIEW_CENTER.lat, PREVIEW_CENTER.lng, Number(this._config?.default_zoom) || 12);
+      // 预览不挂瓦片源、不渲染底图：清掉瓦片层与标记/轨迹，容器换成静态占位，避免残留位图占内存
+      eng.removeTileSets();
       eng.setMarkers([], { cluster: false });
       eng.setAccuracyCircles([]);
       eng.clearPaths();
-      eng.render();
     }
+    this._fillPreviewPlaceholder();
     if (this._trackUnsub) { this._trackUnsub(); this._trackUnsub = null; }
     this._trackSig = "";
     this._trackPoints = {};
@@ -761,6 +770,18 @@ class HaCnMapCard extends HTMLElement {
           box-sizing:border-box;
         }
         .cmc-map { position:absolute; inset:0; overflow:hidden; cursor:grab; }
+        /* 选择器/编辑器预览缩略卡：不挂瓦片源、不拉任何底图位图，纯 CSS 静态占位，
+           避免选择器网格里多张缩略图并发加载瓦片位图，把移动端 WebView 内存顶高 */
+        .cmc-preview-badge {
+          position:absolute; inset:0; display:flex; flex-direction:column;
+          align-items:center; justify-content:center; gap:10px;
+          background:
+            linear-gradient(135deg, rgba(3,169,244,.10), rgba(88,166,240,.05)),
+            var(--map-background-color, var(--cmc-map-bg));
+          color:var(--cmc-sub, var(--primary-text-color, #888));
+        }
+        .cmc-preview-badge svg { width:40px; height:40px; opacity:.55; }
+        .cmc-preview-badge .cmc-pb-title { font-size:13px; font-weight:500; opacity:.8; }
         /* ---- 暗色底图：高德/天地图没有暗色瓦片，用 CSS filter 近似（官方矢量图是双配色，
            栅格图只能这么来）。卫星影像与路况叠加带 .cmc-nofilter，不参与反色 ---- */
         .cmc-card.is-dark .cmc-layer:not(.cmc-nofilter) {
@@ -1262,29 +1283,30 @@ class HaCnMapCard extends HTMLElement {
 
     const mapEl = this.shadowRoot.querySelector(".cmc-map");
     const previewCard = this._isPreviewCard();
-    // 引擎是纯 DOM 瓦片（无 WebGL、无 WS），预览缩略卡也建引擎画真实底图；
-    // 预览态只读、不挂实体/轨迹/手势交互，不拉注册表、不订阅历史，避免选择器卡顿。
+    // 引擎是纯 DOM 瓦片（无 WebGL、无 WS）。只有真实卡片挂瓦片源；预览缩略卡不挂底图、
+    // 不拉瓦片位图，只用纯 CSS 静态占位，避免选择器网格里多张缩略图并发加载瓦片把移动端
+    // WebView 内存顶高（App 添加卡片时崩溃）。
     this._engine = new CnTileEngine(mapEl);
-    this._engine.removeTileSets();
-    base.layers.forEach((l, i) => {
-      // 国内图源（高德/天地图）在境外取不到瓦片时，回退到全球 OSM 同层瓦片，避免整图空白
-      const fbTpl = base.global ? null : BASEMAPS.osm.layers[0].template;
-      this._engine.addTileSet({
-        url: (x, y, z) => l.template(x, y, z, cfg.tianditu_key),
-        fallbackUrl: fbTpl ? (x, y, z) => fbTpl(x, y, z) : null,
-        maxZoom: base.maxZoom,
-        minZoom: base.minZoom ?? 3,
-        opacity: l.opacity ?? 1,
-        zIndex: i + 1,
-        nofilter: !!base.noFilter,
-      });
-    });
-    this._engine.attribution.textContent = base.attribution;
     this._engine.scaleEl = this.shadowRoot.querySelector(".cmc-scale");
     if (previewCard) {
       this._engine.setReadOnly(true);
-      this._engine.setView(PREVIEW_CENTER.lat, PREVIEW_CENTER.lng, Number(cfg.default_zoom) || 12);
+      this._fillPreviewPlaceholder(mapEl);
     } else {
+      this._engine.removeTileSets();
+      base.layers.forEach((l, i) => {
+        // 国内图源（高德/天地图）在境外取不到瓦片时，回退到全球 OSM 同层瓦片，避免整图空白
+        const fbTpl = base.global ? null : BASEMAPS.osm.layers[0].template;
+        this._engine.addTileSet({
+          url: (x, y, z) => l.template(x, y, z, cfg.tianditu_key),
+          fallbackUrl: fbTpl ? (x, y, z) => fbTpl(x, y, z) : null,
+          maxZoom: base.maxZoom,
+          minZoom: base.minZoom ?? 3,
+          opacity: l.opacity ?? 1,
+          zIndex: i + 1,
+          nofilter: !!base.noFilter,
+        });
+      });
+      this._engine.attribution.textContent = base.attribution;
     this._homeLocked = true; // 默认锁定，防止误触拖动
     this._engine._homeLocked = true;
     this._engine.onTrackHover = (info) => this._showTrackTip(info);
@@ -1593,32 +1615,38 @@ class HaCnMapCard extends HTMLElement {
       if (document.fullscreenElement === this) this._engine?.render();
     });
 
-    // 实时路况：仅高德底图支持（路况瓦片与底图同属 GCJ-02 坐标系）
-    const traffic = BASEMAPS.traffic;
-    const wantTraffic = !!cfg.show_traffic && String(cfg.basemap).startsWith("amap");
-    this._engine.setOverlay(
-      "traffic",
-      wantTraffic
-        ? { maxZoom: traffic.maxZoom, minZoom: traffic.minZoom ?? 3, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) }
-        : null
-    );
+    if (!previewCard) {
+      // 实时路况：仅高德底图支持（路况瓦片与底图同属 GCJ-02 坐标系）
+      const traffic = BASEMAPS.traffic;
+      const wantTraffic = !!cfg.show_traffic && String(cfg.basemap).startsWith("amap");
+      this._engine.setOverlay(
+        "traffic",
+        wantTraffic
+          ? { maxZoom: traffic.maxZoom, minZoom: traffic.minZoom ?? 3, layers: traffic.layers.map((l) => ({ template: l.template, opacity: l.opacity })) }
+          : null
+      );
 
-    this._basemapShift = base.needsShift;
-    // 主题：重建 DOM 后要把暗色类补回来（_render 会换掉整个 shadowRoot）
-    this._dark = this._resolveDark();
-    this.shadowRoot.querySelector(".cmc-card")?.classList.toggle("is-dark", !!this._dark);
-    if (prevView) {
-      this._engine.center = prevView.c;
-      this._engine.zoom = prevView.z;
-      this._engine._userMoved = prevView.moved;
-      if (prevView.sel && this._hass?.states?.[prevView.sel]) {
-        this._engine.setSelected(prevView.sel);
+      this._basemapShift = base.needsShift;
+      // 主题：重建 DOM 后要把暗色类补回来（_render 会换掉整个 shadowRoot）
+      this._dark = this._resolveDark();
+      this.shadowRoot.querySelector(".cmc-card")?.classList.toggle("is-dark", !!this._dark);
+      if (prevView) {
+        this._engine.center = prevView.c;
+        this._engine.zoom = prevView.z;
+        this._engine._userMoved = prevView.moved;
+        if (prevView.sel && this._hass?.states?.[prevView.sel]) {
+          this._engine.setSelected(prevView.sel);
+        }
       }
+      if (this._hass) this._update(); else this._engine.render();
+      // 必须补一帧：_didFit 已为 true 时 _update 走不到 render()，
+      // 换底图后地图会是一片空白（v1.0.3 修）
+      this._engine.render();
+    } else {
+      this._basemapShift = base.needsShift;
+      this._dark = this._resolveDark();
+      this.shadowRoot.querySelector(".cmc-card")?.classList.toggle("is-dark", !!this._dark);
     }
-    if (this._hass) this._update(); else this._engine.render();
-    // 必须补一帧：_didFit 已为 true 时 _update 走不到 render()，
-    // 换底图后地图会是一片空白（v1.0.3 修）
-    this._engine.render();
     this._applyAspect();
     this._applyConditions();   // 换配置后立即评估（不满足时连渲染都省掉）
     this._renderList();

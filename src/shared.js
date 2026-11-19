@@ -48,7 +48,7 @@ const GCJ = (() => {
 /* ---- 运行时设置持久化（浏览器本地，不改 /config/.storage 里的仪表盘 YAML） ---- */
 const LS_PREFIX = "ha-cn-map-card:";
 // 当前卡片版本（与 package.json、main.js console 串三处保持一致）
-const CARD_VERSION = "2.0.4";
+const CARD_VERSION = "2.0.5";
 // 默认策略翻向版本：该版本起 show_zones / show_zone_radius 默认改为 true。
 // 早于该版本写入的本地快照里，这两个键的 false 属旧默认遗留，升级后回退新默认，
 // 不再被旧 LS 覆盖；新版用户在抽屉里主动关掉的 false 才继续尊重。
